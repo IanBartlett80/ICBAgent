@@ -493,12 +493,13 @@ Once connected and authenticated, I'll be able to help you with:
 
     const toolName = lokkaTool.name;
 
-    // Map user intent to Lokka MCP tool calls
+    // Map user intent to Lokka MCP tool calls - ALL USING v1.0 endpoints
     if (lowerMessage.includes('users') || lowerMessage.includes('list users')) {
       toolCalls.push({
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/users',
           queryParams: {
@@ -513,6 +514,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/subscribedSkus'
         }
@@ -524,6 +526,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/security/alerts_v2',
           queryParams: {
@@ -538,6 +541,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/auditLogs/signIns',
           queryParams: {
@@ -553,6 +557,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/sites',
           queryParams: {
@@ -567,6 +572,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/groups',
           queryParams: {
@@ -581,22 +587,39 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/organization'
         }
       });
     }
 
+    // Enhanced device queries with proper compliance filtering
     if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices')) {
+      let queryParams = {
+        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,complianceGracePeriodExpirationDateTime'
+      };
+
+      // Check for specific compliance-related queries
+      if (lowerMessage.includes('grace period') || lowerMessage.includes('compliance grace')) {
+        // Filter for devices in grace period (complianceState = 'inGracePeriod')
+        queryParams['$filter'] = "complianceState eq 'inGracePeriod'";
+      } else if (lowerMessage.includes('non-compliant') || lowerMessage.includes('noncompliant')) {
+        // Filter for non-compliant devices
+        queryParams['$filter'] = "complianceState eq 'noncompliant'";
+      } else if (lowerMessage.includes('compliant')) {
+        // Filter for compliant devices only
+        queryParams['$filter'] = "complianceState eq 'compliant'";
+      }
+
       toolCalls.push({
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/deviceManagement/managedDevices',
-          queryParams: {
-            '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType'
-          }
+          queryParams: queryParams
         }
       });
     }
@@ -606,6 +629,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/applications',
           queryParams: {
@@ -620,6 +644,7 @@ Once connected and authenticated, I'll be able to help you with:
         name: toolName,
         arguments: {
           apiType: 'graph',
+          graphApiVersion: 'v1.0',
           method: 'get',
           path: '/contacts',
           queryParams: {
@@ -668,6 +693,16 @@ I'm connected to your tenant via the Lokka-Microsoft MCP server and can help you
 **🌐 Collaboration:**
 • "List SharePoint sites" - Site collection info
 • "Show groups and teams" - Group directory
+
+**🔧 Technical Notes:**
+• All queries use Microsoft Graph API v1.0 endpoints for maximum compatibility
+• Device compliance queries include grace period expiration tracking
+• Proper OData filtering is applied for specific compliance states
+
+**📱 Enhanced Device Queries:**
+• "Show me devices that are in grace period for compliance" - Devices in compliance grace period
+• "Show me non-compliant devices" - Devices that are not compliant
+• "Show me compliant devices" - Devices that are compliant
 
 Try asking me any of these questions to get real data from your Microsoft 365 tenant!`;
   }
@@ -875,14 +910,51 @@ ${groupList}`;
       const os = device.operatingSystem || 'Unknown';
       const version = device.osVersion || 'Unknown';
       
-      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ Compliance: ${compliance} | Last Sync: ${lastSync} | Enrolled: ${enrolled}`;
+      // Handle grace period expiration date
+      let graceInfo = '';
+      if (device.complianceGracePeriodExpirationDateTime) {
+        const graceExpiry = new Date(device.complianceGracePeriodExpirationDateTime);
+        const now = new Date();
+        const daysLeft = Math.ceil((graceExpiry - now) / (1000 * 60 * 60 * 24));
+        
+        if (compliance === 'inGracePeriod') {
+          graceInfo = ` | Grace expires in ${daysLeft} days`;
+        }
+      }
+      
+      // Add compliance status emoji
+      let complianceEmoji = '';
+      switch (compliance) {
+        case 'compliant': complianceEmoji = '✅'; break;
+        case 'noncompliant': complianceEmoji = '❌'; break;
+        case 'inGracePeriod': complianceEmoji = '⏳'; break;
+        case 'conflict': complianceEmoji = '⚠️'; break;
+        default: complianceEmoji = '❓'; break;
+      }
+      
+      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ ${complianceEmoji} Compliance: ${compliance}${graceInfo} | Last Sync: ${lastSync} | Enrolled: ${enrolled}`;
     }).join('\n');
+
+    // Add summary statistics
+    const complianceStats = devices.reduce((stats, device) => {
+      const state = device.complianceState || 'unknown';
+      stats[state] = (stats[state] || 0) + 1;
+      return stats;
+    }, {});
+
+    let statsText = '';
+    if (Object.keys(complianceStats).length > 1) {
+      const statsList = Object.entries(complianceStats)
+        .map(([state, count]) => `${state}: ${count}`)
+        .join(', ');
+      statsText = `\n\n**Compliance Summary:** ${statsList}`;
+    }
 
     return `📱 **Managed Devices in ${this.tenantDomain}** (${devices.length} total, showing first 15)
 
 ${deviceList}
 
-${devices.length > 15 ? `\n*...and ${devices.length - 15} more devices*` : ''}`;
+${devices.length > 15 ? `\n*...and ${devices.length - 15} more devices*` : ''}${statsText}`;
   }
 
   formatApplicationsResponse(apps) {
