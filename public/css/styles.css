@@ -261,16 +261,21 @@ body::before {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-4);
+  gap: var(--spacing-6);
   animation: slideInRight 0.8s var(--bounce);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* Connection Wrapper */
 .connection-wrapper {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--spacing-2);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-width: 0; /* Allow text truncation */
+  flex: 1;
+  max-width: 400px;
 }
 
 /* Home Button Styling */
@@ -341,6 +346,15 @@ body::before {
   transition: all var(--animation-medium);
   position: relative;
   overflow: hidden;
+  min-width: 0; /* Allow text truncation */
+  white-space: nowrap;
+}
+
+.connection-status .status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
 }
 
 .connection-status::before {
@@ -1549,6 +1563,17 @@ body::before {
   }
 }
 
+/* Tablet and small desktop responsive improvements */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .header-actions {
+    gap: var(--spacing-5);
+  }
+  
+  .connection-status .status-text {
+    max-width: 220px;
+  }
+}
+
 /* Enhanced Responsive Design */
 @media (max-width: 768px) {
   .header-content {
@@ -1556,6 +1581,12 @@ body::before {
     gap: var(--spacing-4);
     text-align: center;
     padding: 0 var(--spacing-4);
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: center;
+    gap: var(--spacing-4);
   }
 
   .brand-text h1 {
@@ -1569,10 +1600,23 @@ body::before {
   .home-btn {
     padding: var(--spacing-3);
     min-width: 40px;
+    flex-shrink: 0;
   }
 
   .connection-wrapper {
     align-items: center;
+    max-width: none;
+    flex: 1;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .connection-status {
+    max-width: 100%;
+  }
+
+  .connection-status .status-text {
+    max-width: 200px;
   }
 
   .disconnect-btn span {
@@ -1582,6 +1626,7 @@ body::before {
   .disconnect-btn {
     padding: var(--spacing-2);
     min-width: 32px;
+    flex-shrink: 0;
   }
 
   .logo-image {
@@ -1680,6 +1725,12 @@ body::before {
   .connection-status {
     padding: var(--spacing-2) var(--spacing-3);
     font-size: var(--font-size-xs);
+  }
+
+  .connection-wrapper {
+    flex-direction: column;
+    gap: var(--spacing-2);
+    align-items: center;
   }
 }
 
