@@ -76,7 +76,7 @@ class MCPClient {
           env: {
             ...process.env,
             USE_INTERACTIVE: 'true',
-            REDIRECT_URI: 'http://localhost:3200',
+            REDIRECT_URI: 'http://localhost:3000/auth/success',
             // Set tenant domain if provided (for organizational logins)
             ...(this.tenantDomain && !this.tenantDomain.includes('.onmicrosoft.com') ? {} : {
               TENANT_ID: this.tenantDomain.replace('.onmicrosoft.com', '')
@@ -555,6 +555,48 @@ Once connected and authenticated, I'll be able to help you with:
       });
     }
 
+    if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices')) {
+      toolCalls.push({
+        name: toolName,
+        arguments: {
+          apiType: 'graph',
+          method: 'get',
+          path: '/deviceManagement/managedDevices',
+          queryParams: {
+            '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType'
+          }
+        }
+      });
+    }
+
+    if (lowerMessage.includes('applications') || lowerMessage.includes('apps') || lowerMessage.includes('registered apps')) {
+      toolCalls.push({
+        name: toolName,
+        arguments: {
+          apiType: 'graph',
+          method: 'get',
+          path: '/applications',
+          queryParams: {
+            '$select': 'displayName,appId,createdDateTime,signInAudience'
+          }
+        }
+      });
+    }
+
+    if (lowerMessage.includes('contacts') || lowerMessage.includes('directory contacts')) {
+      toolCalls.push({
+        name: toolName,
+        arguments: {
+          apiType: 'graph',
+          method: 'get',
+          path: '/contacts',
+          queryParams: {
+            '$select': 'displayName,emailAddresses,companyName,jobTitle'
+          }
+        }
+      });
+    }
+
     return toolCalls;
   }
 
@@ -569,7 +611,12 @@ I'm connected to your tenant via the Lokka-Microsoft MCP server and can help you
 • "Show me all users" - List tenant users
 • "List users" - User directory information
 
-**📊 License Information:**
+**� Device Management:**
+• "Show me all devices" - List managed devices
+• "What devices are in the tenant?" - Device inventory
+• "List devices" - Device compliance status
+
+**�📊 License Information:**
 • "What's our license usage?" - License allocation
 • "Show licenses" - Subscription details
 
@@ -578,17 +625,19 @@ I'm connected to your tenant via the Lokka-Microsoft MCP server and can help you
 • "Show security status" - Compliance information
 
 **📈 Activity Monitoring:**
-• "Show sign-in activity" - Authentication logs
-• "Recent activity" - User activity patterns
+• "Show sign-in activity" - Recent login events
+• "User activity" - Authentication logs
 
-**🌐 SharePoint & Teams:**
-• "List SharePoint sites" - Site inventory
-• "Show all groups" - Teams and security groups
-
-**🏢 Organization Info:**
+**🏢 Organization & Apps:**
 • "Show tenant info" - Organization details
+• "List applications" - Registered applications
+• "What apps are registered?" - App inventory
 
-Try asking me about any of these areas for live data from your Microsoft 365 environment!`;
+**🌐 Collaboration:**
+• "List SharePoint sites" - Site collection info
+• "Show groups and teams" - Group directory
+
+Try asking me any of these questions to get real data from your Microsoft 365 tenant!`;
   }
 
   formatToolResponse(toolName, toolResponse) {
@@ -1095,6 +1144,54 @@ app.post('/api/auth/refresh/:sessionId', async (req, res) => {
     console.error('Error refreshing auth status:', error);
     res.status(500).json({ error: 'Failed to refresh authentication status' });
   }
+});
+
+// Authentication redirect endpoint
+app.get('/auth/callback', (req, res) => {
+  // This endpoint will handle the redirect from Lokka authentication
+  console.log('Authentication callback received:', req.query);
+  
+  // Redirect user back to the main application
+  res.redirect('/?auth=success');
+});
+
+// Authentication success page
+app.get('/auth/success', (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>Authentication Successful</title>
+        <style>
+          body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+          .success { color: #28a745; }
+          .container { max-width: 500px; margin: 0 auto; }
+          .button { 
+            background: #007bff; 
+            color: white; 
+            padding: 10px 20px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            display: inline-block; 
+            margin-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1 class="success">✅ Authentication Successful!</h1>
+          <p>You have successfully authenticated with Microsoft 365.</p>
+          <p>You can now return to the ICB Agent application to start querying your tenant data.</p>
+          <a href="/" class="button">Return to ICB Agent</a>
+          <script>
+            // Automatically redirect after 3 seconds
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 3000);
+          </script>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 // Helper functions
