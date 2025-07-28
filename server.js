@@ -208,9 +208,21 @@ class MCPClient {
       
       const previousStatus = this.authStatus;
       
-      if (authResponse.content && authResponse.content.isAuthenticated) {
+      // Parse the authentication response correctly
+      let authData = null;
+      if (authResponse.content && Array.isArray(authResponse.content) && authResponse.content[0]) {
+        try {
+          authData = JSON.parse(authResponse.content[0].text);
+        } catch (parseError) {
+          console.error('Error parsing auth status:', parseError);
+        }
+      } else if (authResponse.content && authResponse.content.isAuthenticated) {
+        authData = authResponse.content;
+      }
+      
+      if (authData && authData.isReady && authData.tokenStatus && !authData.tokenStatus.isExpired) {
         this.authStatus = 'authenticated';
-        this.accessToken = authResponse.content.accessToken;
+        this.accessToken = 'authenticated'; // Lokka manages the actual token
         
         // Emit authentication success event
         if (previousStatus !== 'authenticated') {
@@ -332,13 +344,20 @@ class MCPClient {
         // Execute the identified tools
         for (const toolCall of toolCalls) {
           try {
+            console.log(`Calling MCP tool: ${toolCall.name} with args:`, toolCall.arguments);
+            
             const toolResponse = await this.sendMCPRequest('tools/call', {
               name: toolCall.name,
               arguments: toolCall.arguments
             });
             
-            response += this.formatToolResponse(toolCall.name, toolResponse) + '\n\n';
+            console.log(`MCP tool response received for ${toolCall.name}`);
+            
+            const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
+            response += formattedResponse + '\n\n';
+            
           } catch (error) {
+            console.error(`Error calling MCP tool ${toolCall.name}:`, error);
             response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
           }
         }
@@ -649,6 +668,25 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
         data = toolResponse.content;
       }
       
+      // Handle Lokka MCP response format with content array
+      if (Array.isArray(data) && data[0] && data[0].text) {
+        const responseText = data[0].text;
+        
+        // Check if the response text looks like JSON
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          try {
+            data = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error('Error parsing Lokka JSON response:', parseError);
+            // If JSON parsing fails, return the raw text formatted nicely
+            return `**Live Data from ${toolName}:**\n\n${responseText}`;
+          }
+        } else {
+          // It's plain text, return it formatted
+          return `**Response from ${toolName}:**\n\n${responseText}`;
+        }
+      }
+      
       if (typeof data === 'string') {
         return data;
       }
@@ -671,6 +709,12 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
           return this.formatGroupsResponse(items);
         } else if (toolName.includes('organization') || data['@odata.context']?.includes('organization')) {
           return this.formatOrganizationResponse(items);
+        } else if (toolName.includes('devices') || toolName.includes('deviceManagement') || data['@odata.context']?.includes('deviceManagement')) {
+          return this.formatDevicesResponse(items);
+        } else if (toolName.includes('applications') || data['@odata.context']?.includes('applications')) {
+          return this.formatApplicationsResponse(items);
+        } else if (toolName.includes('contacts') || data['@odata.context']?.includes('contacts')) {
+          return this.formatContactsResponse(items);
         }
       }
 
@@ -678,6 +722,7 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
       return `**Live Data from ${toolName}:**\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
 
     } catch (error) {
+      console.error(`Error formatting response from ${toolName}:`, error);
       return `**Error formatting response from ${toolName}:** ${error.message}`;
     }
   }
@@ -799,6 +844,75 @@ ${groupList}`;
 • **Verified Domains:** ${org.verifiedDomains?.map(d => d.name).join(', ') || 'Not available'}
 • **Created:** ${org.createdDateTime ? new Date(org.createdDateTime).toLocaleDateString() : 'Not available'}
 • **Country:** ${org.countryLetterCode || 'Not specified'}`;
+  }
+
+  formatDevicesResponse(devices) {
+    if (!devices || devices.length === 0) {
+      return `📱 **No managed devices found for ${this.tenantDomain}**`;
+    }
+
+    const deviceList = devices.slice(0, 15).map(device => {
+      const lastSync = device.lastSyncDateTime 
+        ? new Date(device.lastSyncDateTime).toLocaleDateString()
+        : 'Never';
+      const enrolled = device.enrolledDateTime
+        ? new Date(device.enrolledDateTime).toLocaleDateString()
+        : 'Unknown';
+      const compliance = device.complianceState || 'Unknown';
+      const os = device.operatingSystem || 'Unknown';
+      const version = device.osVersion || 'Unknown';
+      
+      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ Compliance: ${compliance} | Last Sync: ${lastSync} | Enrolled: ${enrolled}`;
+    }).join('\n');
+
+    return `📱 **Managed Devices in ${this.tenantDomain}** (${devices.length} total, showing first 15)
+
+${deviceList}
+
+${devices.length > 15 ? `\n*...and ${devices.length - 15} more devices*` : ''}`;
+  }
+
+  formatApplicationsResponse(apps) {
+    if (!apps || apps.length === 0) {
+      return `📋 **No registered applications found for ${this.tenantDomain}**`;
+    }
+
+    const appList = apps.slice(0, 12).map(app => {
+      const created = app.createdDateTime 
+        ? new Date(app.createdDateTime).toLocaleDateString()
+        : 'Unknown';
+      const audience = app.signInAudience || 'Unknown';
+      
+      return `• **${app.displayName || 'Unknown App'}**\n  └ App ID: ${app.appId || 'N/A'} | Audience: ${audience} | Created: ${created}`;
+    }).join('\n');
+
+    return `📋 **Registered Applications in ${this.tenantDomain}** (${apps.length} total, showing first 12)
+
+${appList}
+
+${apps.length > 12 ? `\n*...and ${apps.length - 12} more applications*` : ''}`;
+  }
+
+  formatContactsResponse(contacts) {
+    if (!contacts || contacts.length === 0) {
+      return `👤 **No contacts found for ${this.tenantDomain}**`;
+    }
+
+    const contactList = contacts.slice(0, 10).map(contact => {
+      const email = contact.emailAddresses && contact.emailAddresses[0] 
+        ? contact.emailAddresses[0].address 
+        : 'No email';
+      const company = contact.companyName || 'No company';
+      const title = contact.jobTitle || 'No title';
+      
+      return `• **${contact.displayName || 'Unknown Contact'}**\n  └ ${email} | ${company} | ${title}`;
+    }).join('\n');
+
+    return `👤 **Contacts in ${this.tenantDomain}** (${contacts.length} total, showing first 10)
+
+${contactList}
+
+${contacts.length > 10 ? `\n*...and ${contacts.length - 10} more contacts*` : ''}`;
   }
 
   async getAccessToken() {
