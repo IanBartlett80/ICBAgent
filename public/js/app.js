@@ -13,7 +13,61 @@ class ICBAgent {
         this.initializeSocket();
         this.bindEvents();
         this.updateConnectionStatus('disconnected');
+        this.setupAuthenticationListener();
         console.log('ICBAgent initialized'); // Debug log
+    }
+
+    setupAuthenticationListener() {
+        // Listen for messages from authentication popup windows
+        window.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'auth_success') {
+                console.log('Authentication success message received:', event.data);
+                
+                if (event.data.permissionsApproved) {
+                    console.log('Permissions were approved, checking for pending query rerun...');
+                    this.handlePermissionApproval();
+                }
+            }
+        });
+    }
+
+    async handlePermissionApproval() {
+        if (!this.sessionId) {
+            console.log('No active session for permission approval handling');
+            return;
+        }
+
+        try {
+            console.log('Attempting to rerun pending query after permission approval...');
+            
+            // Clear any waiting permission request
+            this.lastPermissionRequest = null;
+            
+            // Show a loading message
+            this.addMessage('🔄 **Permissions Approved!** \n\nRe-running your query with the newly granted permissions...', 'system');
+            
+            // Call the rerun endpoint
+            const response = await fetch(`/api/auth/rerun-query/${this.sessionId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                console.log('Pending query rerun completed successfully');
+                // The result will be emitted via socket, so no need to add message here
+            } else {
+                console.log('No pending query found or rerun failed:', data.message);
+                this.addMessage(`ℹ️ **Permission Status Update**\n\n${data.message}`, 'system');
+            }
+            
+        } catch (error) {
+            console.error('Error handling permission approval:', error);
+            this.addMessage('❌ **Error processing permission approval**\n\nPlease try running your query again.', 'system');
+        }
     }
 
     initializeSocket() {
@@ -514,19 +568,37 @@ ${data.scopes.map(scope => `• ${scope}`).join('\n')}
 
 **⏳ Please complete the permission consent process...**
 
-A browser window should open shortly for you to grant the additional permissions.`;
+The authentication window should open automatically. If it doesn't, please check for popup blockers or [click here to open manually](http://localhost:3200).
+
+After granting permissions, your query will be automatically rerun and results displayed below.`;
 
         this.addMessage(permissionMessage, 'system');
         
         // Show notification
         this.showNotification(`Permission consent required for: ${data.scopes.join(', ')}`, 'info', 10000);
         
-        // Optional: You could also open the permission URL if provided
-        // setTimeout(() => {
-        //     if (data.authUrl) {
-        //         window.open(data.authUrl, '_blank');
-        //     }
-        // }, 1000);
+        // Store the permission request data for potential manual rerun
+        this.lastPermissionRequest = {
+            scopes: data.scopes,
+            originalMessage: data.originalMessage,
+            timestamp: data.timestamp
+        };
+        
+        // Add a timeout to check if the user needs help
+        setTimeout(() => {
+            if (this.lastPermissionRequest) {
+                this.addMessage(`⏰ **Still waiting for permission approval?**
+
+If the permission window didn't open or you're having trouble:
+
+1. **Check for popup blockers** - Allow popups for this site
+2. **Manual authentication** - Visit: http://localhost:3200
+3. **Browser issues** - Try refreshing this page after authentication
+4. **Need help** - Contact your administrator if permissions are blocked
+
+Once you complete the permission process, your query will be automatically processed!`, 'system');
+            }
+        }, 30000); // Show help after 30 seconds
     }
 
     setButtonLoading(buttonId, isLoading) {

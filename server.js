@@ -1037,172 +1037,6 @@ ${contacts.length > 10 ? `\n*...and ${contacts.length - 10} more contacts*` : ''
     return JSON.stringify(response);
   }
 
-  async handlePermissionRequest(toolCall, originalMessage) {
-    try {
-      console.log(`Handling permission request for tool: ${toolCall.name}`);
-      
-      // Determine required permissions based on the API endpoint
-      const requiredScopes = this.getRequiredScopes(toolCall);
-      
-      if (requiredScopes.length === 0) {
-        return `❌ **Permission Error**: Unable to determine required permissions for this request.`;
-      }
-      
-      // Store the original query for rerun after permission approval
-      this.pendingQuery = {
-        toolCall: toolCall,
-        originalMessage: originalMessage,
-        timestamp: new Date().toISOString()
-      };
-      
-      console.log(`Requesting additional permissions: ${requiredScopes.join(', ')}`);
-      
-      // Request additional permissions via Lokka MCP
-      try {
-        const permissionResponse = await this.sendMCPRequest('tools/call', {
-          name: 'add-graph-permission',
-          arguments: {
-            scopes: requiredScopes
-          }
-        });
-        
-        console.log('Permission request response:', permissionResponse);
-        
-        // Emit permission request event to frontend
-        this.io.to(this.sessionId).emit('permission_request', {
-          scopes: requiredScopes,
-          endpoint: toolCall.arguments.path,
-          originalMessage: originalMessage,
-          timestamp: new Date().toISOString()
-        });
-        
-        return `🔐 **Additional Permissions Required**
-
-To process your request: "${originalMessage}"
-
-**Required Microsoft Graph Permissions:**
-${requiredScopes.map(scope => `• ${scope}`).join('\n')}
-
-**🚀 Permission Request Process:**
-
-1. **Browser Window Opening** - A new tab will open for permission consent
-2. **Review Permissions** - Please review and approve the requested permissions
-3. **Grant Access** - Click "Accept" to grant the required permissions
-4. **Automatic Redirect** - You'll be redirected back to the ICB Agent
-5. **Query Rerun** - Your original query will be automatically processed
-
-**⏳ Please complete the permission consent process...**
-
-Once permissions are granted, I'll automatically rerun your query and provide the results!`;
-        
-      } catch (permissionError) {
-        console.error('Error requesting permissions:', permissionError);
-        return `❌ **Permission Request Failed**
-
-Unable to request additional permissions: ${permissionError.message}
-
-**Required Permissions:**
-${requiredScopes.map(scope => `• ${scope}`).join('\n')}
-
-**Manual Steps:**
-1. Contact your Microsoft 365 administrator
-2. Request the above permissions for the Lokka MCP application
-3. Try your query again once permissions are granted`;
-      }
-      
-    } catch (error) {
-      console.error('Error handling permission request:', error);
-      return `❌ **Permission Error**: ${error.message}`;
-    }
-  }
-
-  getRequiredScopes(toolCall) {
-    const path = toolCall.arguments?.path || '';
-    const scopes = [];
-    
-    // Map API endpoints to required permissions
-    const scopeMapping = {
-      '/users': ['User.Read.All', 'Directory.Read.All'],
-      '/subscribedSkus': ['Organization.Read.All'],
-      '/security/alerts': ['SecurityEvents.Read.All'],
-      '/security/alerts_v2': ['SecurityEvents.Read.All'],
-      '/auditLogs/signIns': ['AuditLog.Read.All', 'Directory.Read.All'],
-      '/sites': ['Sites.Read.All'],
-      '/groups': ['Group.Read.All', 'Directory.Read.All'],
-      '/organization': ['Organization.Read.All'],
-      '/deviceManagement/managedDevices': ['DeviceManagementManagedDevices.Read.All'],
-      '/applications': ['Application.Read.All', 'Directory.Read.All'],
-      '/contacts': ['Contacts.Read']
-    };
-    
-    // Find matching scope requirements
-    for (const [endpoint, requiredScopes] of Object.entries(scopeMapping)) {
-      if (path.includes(endpoint)) {
-        scopes.push(...requiredScopes);
-        break;
-      }
-    }
-    
-    // Remove duplicates
-    return [...new Set(scopes)];
-  }
-
-  async rerunPendingQuery() {
-    if (!this.pendingQuery) {
-      console.log('No pending query to rerun');
-      return null;
-    }
-    
-    console.log('Rerunning pending query after permission approval');
-    
-    const { toolCall, originalMessage } = this.pendingQuery;
-    this.pendingQuery = null; // Clear pending query
-    
-    try {
-      const toolResponse = await this.sendMCPRequest('tools/call', {
-        name: toolCall.name,
-        arguments: toolCall.arguments
-      });
-      
-      const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
-      
-      const response = {
-        id: uuidv4(),
-        message: `✅ **Permissions Approved - Query Completed!**
-
-Your original request: "${originalMessage}"
-
-${formattedResponse}`,
-        timestamp: new Date().toISOString(),
-        type: 'permission_approved_response'
-      };
-      
-      // Emit the response to the frontend
-      this.io.to(this.sessionId).emit('query_rerun_complete', response);
-      
-      return response;
-      
-    } catch (error) {
-      console.error('Error rerunning query after permission approval:', error);
-      
-      const errorResponse = {
-        id: uuidv4(),
-        message: `❌ **Error after permission approval**
-
-Your request: "${originalMessage}"
-
-Unfortunately, there was still an error after granting permissions: ${error.message}
-
-Please try your query again or contact support if the issue persists.`,
-        timestamp: new Date().toISOString(),
-        type: 'permission_error_response'
-      };
-      
-      this.io.to(this.sessionId).emit('query_rerun_complete', errorResponse);
-      return errorResponse;
-    }
-  }
-
   isPermissionError(response) {
     // Check for permission-related errors in response or error object
     const responseText = this.getResponseText(response);
@@ -1266,6 +1100,9 @@ Please try your query again or contact support if the issue persists.`,
       
       console.log(`Requesting additional permissions: ${requiredScopes.join(', ')}`);
       
+      // Start monitoring for permission approval
+      this.startPermissionMonitoring();
+      
       // Request additional permissions via Lokka MCP
       try {
         const permissionResponse = await this.sendMCPRequest('tools/call', {
@@ -1412,10 +1249,68 @@ Please try your query again or contact support if the issue persists.`,
     }
   }
 
+  startPermissionMonitoring() {
+    if (this.permissionMonitorInterval) {
+      clearInterval(this.permissionMonitorInterval);
+    }
+    
+    console.log(`Starting permission monitoring for session ${this.sessionId}`);
+    
+    // Check every 3 seconds for permission approval
+    this.permissionMonitorInterval = setInterval(async () => {
+      try {
+        if (!this.pendingQuery) {
+          // No pending query, stop monitoring
+          clearInterval(this.permissionMonitorInterval);
+          this.permissionMonitorInterval = null;
+          return;
+        }
+        
+        const previousStatus = this.authStatus;
+        await this.checkAuthStatus();
+        
+        // If auth status changed to authenticated and we have a pending query
+        if (this.authStatus === 'authenticated' && previousStatus !== 'authenticated' && this.pendingQuery) {
+          console.log(`Permission approval detected for session ${this.sessionId}, rerunning query`);
+          
+          // Stop monitoring
+          clearInterval(this.permissionMonitorInterval);
+          this.permissionMonitorInterval = null;
+          
+          // Rerun the pending query
+          await this.rerunPendingQuery();
+        }
+        
+      } catch (error) {
+        console.error('Error during permission monitoring:', error);
+      }
+    }, 3000);
+    
+    // Stop monitoring after 10 minutes to prevent infinite loops
+    setTimeout(() => {
+      if (this.permissionMonitorInterval) {
+        console.log(`Permission monitoring timeout for session ${this.sessionId}`);
+        clearInterval(this.permissionMonitorInterval);
+        this.permissionMonitorInterval = null;
+      }
+    }, 600000); // 10 minutes
+  }
+
+  stopPermissionMonitoring() {
+    if (this.permissionMonitorInterval) {
+      clearInterval(this.permissionMonitorInterval);
+      this.permissionMonitorInterval = null;
+      console.log(`Stopped permission monitoring for session ${this.sessionId}`);
+    }
+  }
+
   async stop() {
     try {
       // Stop authentication monitoring
       this.stopAuthMonitoring();
+      
+      // Stop permission monitoring
+      this.stopPermissionMonitoring();
       
       if (this.process) {
         this.process.kill('SIGTERM');
@@ -1691,17 +1586,108 @@ app.post('/api/auth/refresh/:sessionId', async (req, res) => {
   }
 });
 
+// Rerun pending query endpoint (for permission approval completion)
+app.post('/api/auth/rerun-query/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+  
+  try {
+    const mcpClient = mcpConnections.get(sessionId);
+    
+    if (!mcpClient) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    // Check if there's a pending query to rerun
+    if (!mcpClient.pendingQuery) {
+      return res.json({ 
+        success: false, 
+        message: 'No pending query found',
+        hasPendingQuery: false
+      });
+    }
+    
+    console.log(`Manually triggering pending query rerun for session ${sessionId}`);
+    
+    // Re-check authentication status first
+    await mcpClient.checkAuthStatus();
+    
+    if (mcpClient.authStatus !== 'authenticated') {
+      return res.json({
+        success: false,
+        message: 'Authentication required before rerunning query',
+        authStatus: mcpClient.authStatus
+      });
+    }
+    
+    // Rerun the pending query
+    const result = await mcpClient.rerunPendingQuery();
+    
+    res.json({
+      success: true,
+      message: 'Pending query rerun completed',
+      result: result
+    });
+    
+  } catch (error) {
+    console.error('Error rerunning pending query:', error);
+    res.status(500).json({ 
+      error: 'Failed to rerun pending query: ' + error.message 
+    });
+  }
+});
+
 // Authentication redirect endpoint
-app.get('/auth/callback', (req, res) => {
+app.get('/auth/callback', async (req, res) => {
   // This endpoint will handle the redirect from Lokka authentication
   console.log('Authentication callback received:', req.query);
   
-  // Redirect user back to the main application
-  res.redirect('/?auth=success');
+  // Check if there are any sessions with pending queries that need permission approval
+  for (const [sessionId, mcpClient] of mcpConnections.entries()) {
+    if (mcpClient && mcpClient.pendingQuery) {
+      console.log(`Found pending query for session ${sessionId}, checking auth status...`);
+      
+      // Check if authentication/permissions were approved
+      try {
+        await mcpClient.checkAuthStatus();
+        
+        // If authenticated, rerun the pending query
+        if (mcpClient.authStatus === 'authenticated') {
+          console.log(`Authentication successful, rerunning pending query for session ${sessionId}`);
+          await mcpClient.rerunPendingQuery();
+        }
+      } catch (error) {
+        console.error(`Error checking auth status for session ${sessionId}:`, error);
+      }
+    }
+  }
+  
+  // Redirect user back to the main application with success indicator
+  res.redirect('/?auth=success&permissions=approved');
 });
 
 // Authentication success page
-app.get('/auth/success', (req, res) => {
+app.get('/auth/success', async (req, res) => {
+  // Check for sessions with pending queries and attempt to rerun them
+  const permissionsApproved = req.query.permissions === 'approved';
+  
+  for (const [sessionId, mcpClient] of mcpConnections.entries()) {
+    if (mcpClient && mcpClient.pendingQuery && permissionsApproved) {
+      console.log(`Permissions approved, checking and rerunning query for session ${sessionId}`);
+      
+      try {
+        // Re-check authentication status
+        await mcpClient.checkAuthStatus();
+        
+        // If authenticated, rerun the pending query
+        if (mcpClient.authStatus === 'authenticated') {
+          await mcpClient.rerunPendingQuery();
+        }
+      } catch (error) {
+        console.error(`Error rerunning query for session ${sessionId}:`, error);
+      }
+    }
+  }
+  
   res.send(`
     <html>
       <head>
@@ -1720,17 +1706,31 @@ app.get('/auth/success', (req, res) => {
             margin-top: 20px;
           }
         </style>
+        <script>
+          // Notify parent window of successful authentication
+          if (window.opener) {
+            window.opener.postMessage({ 
+              type: 'auth_success', 
+              permissionsApproved: ${permissionsApproved}
+            }, '*');
+          }
+        </script>
       </head>
       <body>
         <div class="container">
           <h1 class="success">✅ Authentication Successful!</h1>
           <p>You have successfully authenticated with Microsoft 365.</p>
+          ${permissionsApproved ? '<p><strong>🎉 Permissions approved! Your query is being processed automatically.</strong></p>' : ''}
           <p>You can now return to the ICB Agent application to start querying your tenant data.</p>
           <a href="/" class="button">Return to ICB Agent</a>
           <script>
             // Automatically redirect after 3 seconds
             setTimeout(() => {
-              window.location.href = '/';
+              if (window.opener) {
+                window.close();
+              } else {
+                window.location.href = '/';
+              }
             }, 3000);
           </script>
         </div>
