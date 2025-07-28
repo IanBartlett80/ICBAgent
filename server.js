@@ -594,22 +594,42 @@ Once connected and authenticated, I'll be able to help you with:
       });
     }
 
-    // Enhanced device queries with proper compliance filtering
-    if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices')) {
+    // Enhanced device queries with proper compliance and OS filtering
+    if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices') || 
+        lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad') ||
+        lowerMessage.includes('android') || lowerMessage.includes('windows') || lowerMessage.includes('macos')) {
       let queryParams = {
-        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,complianceGracePeriodExpirationDateTime'
+        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,complianceGracePeriodExpirationDateTime,serialNumber,manufacturer,model,deviceOwnerType,deviceRegistrationState,managementState,enrollmentType,azureADDeviceId,emailAddress,userId,userDisplayName,userPrincipalName,deviceCategoryDisplayName,exchangeLastSuccessfulSyncDateTime,freeStorageSpaceInBytes,totalStorageSpaceInBytes,partnerReportedThreatState,requireUserEnrollmentApproval,managementCertificateExpirationDate,iccid,udid,roleScopeTagIds,windowsActiveMalwareCount,windowsRemediatedMalwareCount,notes,configurationManagerClientEnabledFeatures,deviceHealthAttestationState,subscriberCarrier,meid,imei,cellularTechnology,wiFiMacAddress,phoneNumber,hardwareInformation,deviceActionResults'
       };
+
+      let filterConditions = [];
+
+      // Check for specific OS-related queries  
+      if (lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad')) {
+        filterConditions.push("operatingSystem eq 'iOS'");
+      } else if (lowerMessage.includes('android')) {
+        filterConditions.push("operatingSystem eq 'Android'");  
+      } else if (lowerMessage.includes('windows')) {
+        filterConditions.push("operatingSystem eq 'Windows'");
+      } else if (lowerMessage.includes('macos')) {
+        filterConditions.push("operatingSystem eq 'macOS'");
+      }
 
       // Check for specific compliance-related queries
       if (lowerMessage.includes('grace period') || lowerMessage.includes('compliance grace')) {
         // Filter for devices in grace period (complianceState = 'inGracePeriod')
-        queryParams['$filter'] = "complianceState eq 'inGracePeriod'";
+        filterConditions.push("complianceState eq 'inGracePeriod'");
       } else if (lowerMessage.includes('non-compliant') || lowerMessage.includes('noncompliant')) {
         // Filter for non-compliant devices
-        queryParams['$filter'] = "complianceState eq 'noncompliant'";
-      } else if (lowerMessage.includes('compliant')) {
+        filterConditions.push("complianceState eq 'noncompliant'");
+      } else if (lowerMessage.includes('compliant') && !lowerMessage.includes('non-compliant')) {
         // Filter for compliant devices only
-        queryParams['$filter'] = "complianceState eq 'compliant'";
+        filterConditions.push("complianceState eq 'compliant'");
+      }
+
+      // Combine filter conditions with 'and'
+      if (filterConditions.length > 0) {
+        queryParams['$filter'] = filterConditions.join(' and ');
       }
 
       toolCalls.push({
@@ -899,7 +919,33 @@ ${groupList}`;
       return `📱 **No managed devices found for ${this.tenantDomain}**`;
     }
 
-    const deviceList = devices.slice(0, 15).map(device => {
+    // Determine if this is a filtered query based on the devices returned
+    const osTypes = [...new Set(devices.map(d => d.operatingSystem).filter(Boolean))];
+    let titlePrefix = '📱';
+    let titleText = 'Managed Devices';
+    
+    if (osTypes.length === 1) {
+      switch (osTypes[0]) {
+        case 'iOS': 
+          titlePrefix = '📱'; 
+          titleText = 'iOS Devices';
+          break;
+        case 'Android': 
+          titlePrefix = '🤖'; 
+          titleText = 'Android Devices';
+          break;
+        case 'Windows': 
+          titlePrefix = '💻'; 
+          titleText = 'Windows Devices';
+          break;
+        case 'macOS': 
+          titlePrefix = '🖥️'; 
+          titleText = 'macOS Devices';
+          break;
+      }
+    }
+
+    const deviceList = devices.slice(0, 20).map(device => {
       const lastSync = device.lastSyncDateTime 
         ? new Date(device.lastSyncDateTime).toLocaleDateString()
         : 'Never';
@@ -909,6 +955,26 @@ ${groupList}`;
       const compliance = device.complianceState || 'Unknown';
       const os = device.operatingSystem || 'Unknown';
       const version = device.osVersion || 'Unknown';
+      
+      // Add device-specific information for iOS devices
+      let deviceDetails = '';
+      if (os === 'iOS') {
+        const carrier = device.subscriberCarrier || 'Unknown carrier';
+        const phoneNumber = device.phoneNumber || 'No phone number';
+        const model = device.model || 'Unknown model';
+        const serialNumber = device.serialNumber || 'Unknown S/N';
+        
+        deviceDetails = `\n    📞 ${phoneNumber} | 📶 ${carrier} | 🔢 ${serialNumber.slice(-4)} | 📦 ${model}`;
+      } else if (os === 'Android') {
+        const model = device.model || 'Unknown model';
+        const manufacturer = device.manufacturer || 'Unknown manufacturer';
+        const serialNumber = device.serialNumber || 'Unknown S/N';
+        
+        deviceDetails = `\n    🏭 ${manufacturer} | 📦 ${model} | 🔢 ${serialNumber.slice(-4)}`;
+      } else if (os === 'Windows' || os === 'macOS') {
+        const serialNumber = device.serialNumber || 'Unknown S/N';
+        deviceDetails = `\n    🔢 S/N: ${serialNumber.slice(-4)}`;
+      }
       
       // Handle grace period expiration date
       let graceInfo = '';
@@ -932,13 +998,20 @@ ${groupList}`;
         default: complianceEmoji = '❓'; break;
       }
       
-      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ ${complianceEmoji} Compliance: ${compliance}${graceInfo} | Last Sync: ${lastSync} | Enrolled: ${enrolled}`;
+      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ ${complianceEmoji} Compliance: ${compliance}${graceInfo} | Last Sync: ${lastSync} | Enrolled: ${enrolled}${deviceDetails}`;
     }).join('\n');
 
     // Add summary statistics
     const complianceStats = devices.reduce((stats, device) => {
       const state = device.complianceState || 'unknown';
       stats[state] = (stats[state] || 0) + 1;
+      return stats;
+    }, {});
+
+    // Add OS breakdown if multiple OS types
+    const osStats = devices.reduce((stats, device) => {
+      const os = device.operatingSystem || 'unknown';
+      stats[os] = (stats[os] || 0) + 1;
       return stats;
     }, {});
 
@@ -949,12 +1022,19 @@ ${groupList}`;
         .join(', ');
       statsText = `\n\n**Compliance Summary:** ${statsList}`;
     }
+    
+    if (Object.keys(osStats).length > 1) {
+      const osList = Object.entries(osStats)
+        .map(([os, count]) => `${os}: ${count}`)
+        .join(', ');
+      statsText += `\n**OS Breakdown:** ${osList}`;
+    }
 
-    return `📱 **Managed Devices in ${this.tenantDomain}** (${devices.length} total, showing first 15)
+    return `${titlePrefix} **${titleText} in ${this.tenantDomain}** (${devices.length} total, showing first 20)
 
 ${deviceList}
 
-${devices.length > 15 ? `\n*...and ${devices.length - 15} more devices*` : ''}${statsText}`;
+${devices.length > 20 ? `\n*...and ${devices.length - 20} more devices*` : ''}${statsText}`;
   }
 
   formatApplicationsResponse(apps) {

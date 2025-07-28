@@ -214,9 +214,9 @@ body::before {
 }
 
 .logo-image {
-  width: 120px;
+  width: 240px;
   height: auto;
-  max-height: 120px;
+  max-height: 240px;
   object-fit: contain;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
   transition: transform var(--animation-medium);
@@ -1630,8 +1630,8 @@ body::before {
   }
 
   .logo-image {
-    width: 80px;
-    max-height: 80px;
+    width: 160px;
+    max-height: 160px;
   }
 
   .welcome-header h2 {
