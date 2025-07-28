@@ -353,12 +353,25 @@ class MCPClient {
             
             console.log(`MCP tool response received for ${toolCall.name}`);
             
-            const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
-            response += formattedResponse + '\n\n';
+            // Check if response indicates permission error
+            if (this.isPermissionError(toolResponse)) {
+              const permissionResponse = await this.handlePermissionRequest(toolCall, userMessage);
+              response += permissionResponse + '\n\n';
+            } else {
+              const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
+              response += formattedResponse + '\n\n';
+            }
             
           } catch (error) {
             console.error(`Error calling MCP tool ${toolCall.name}:`, error);
-            response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
+            
+            // Check if error is permission-related
+            if (this.isPermissionError(error)) {
+              const permissionResponse = await this.handlePermissionRequest(toolCall, userMessage);
+              response += permissionResponse + '\n\n';
+            } else {
+              response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
+            }
           }
         }
       }
@@ -978,6 +991,424 @@ ${contacts.length > 10 ? `\n*...and ${contacts.length - 10} more contacts*` : ''
       clearInterval(this.authMonitorInterval);
       this.authMonitorInterval = null;
       console.log(`Stopped authentication monitoring for session ${this.sessionId}`);
+    }
+  }
+
+  isPermissionError(response) {
+    // Check for permission-related errors in response or error object
+    const responseText = this.getResponseText(response);
+    
+    const permissionIndicators = [
+      'insufficient privileges',
+      'access denied',
+      'forbidden',
+      'unauthorized',
+      'permission',
+      'consent required',
+      'scope',
+      'AADSTS',
+      'InsufficientPrivileges',
+      'Forbidden',
+      'Authorization_RequestDenied'
+    ];
+    
+    return permissionIndicators.some(indicator => 
+      responseText.toLowerCase().includes(indicator.toLowerCase())
+    );
+  }
+
+  getResponseText(response) {
+    if (typeof response === 'string') {
+      return response;
+    }
+    
+    if (response?.message) {
+      return response.message;
+    }
+    
+    if (response?.content && Array.isArray(response.content) && response.content[0]?.text) {
+      return response.content[0].text;
+    }
+    
+    if (response?.content) {
+      return JSON.stringify(response.content);
+    }
+    
+    return JSON.stringify(response);
+  }
+
+  async handlePermissionRequest(toolCall, originalMessage) {
+    try {
+      console.log(`Handling permission request for tool: ${toolCall.name}`);
+      
+      // Determine required permissions based on the API endpoint
+      const requiredScopes = this.getRequiredScopes(toolCall);
+      
+      if (requiredScopes.length === 0) {
+        return `❌ **Permission Error**: Unable to determine required permissions for this request.`;
+      }
+      
+      // Store the original query for rerun after permission approval
+      this.pendingQuery = {
+        toolCall: toolCall,
+        originalMessage: originalMessage,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log(`Requesting additional permissions: ${requiredScopes.join(', ')}`);
+      
+      // Request additional permissions via Lokka MCP
+      try {
+        const permissionResponse = await this.sendMCPRequest('tools/call', {
+          name: 'add-graph-permission',
+          arguments: {
+            scopes: requiredScopes
+          }
+        });
+        
+        console.log('Permission request response:', permissionResponse);
+        
+        // Emit permission request event to frontend
+        this.io.to(this.sessionId).emit('permission_request', {
+          scopes: requiredScopes,
+          endpoint: toolCall.arguments.path,
+          originalMessage: originalMessage,
+          timestamp: new Date().toISOString()
+        });
+        
+        return `🔐 **Additional Permissions Required**
+
+To process your request: "${originalMessage}"
+
+**Required Microsoft Graph Permissions:**
+${requiredScopes.map(scope => `• ${scope}`).join('\n')}
+
+**🚀 Permission Request Process:**
+
+1. **Browser Window Opening** - A new tab will open for permission consent
+2. **Review Permissions** - Please review and approve the requested permissions
+3. **Grant Access** - Click "Accept" to grant the required permissions
+4. **Automatic Redirect** - You'll be redirected back to the ICB Agent
+5. **Query Rerun** - Your original query will be automatically processed
+
+**⏳ Please complete the permission consent process...**
+
+Once permissions are granted, I'll automatically rerun your query and provide the results!`;
+        
+      } catch (permissionError) {
+        console.error('Error requesting permissions:', permissionError);
+        return `❌ **Permission Request Failed**
+
+Unable to request additional permissions: ${permissionError.message}
+
+**Required Permissions:**
+${requiredScopes.map(scope => `• ${scope}`).join('\n')}
+
+**Manual Steps:**
+1. Contact your Microsoft 365 administrator
+2. Request the above permissions for the Lokka MCP application
+3. Try your query again once permissions are granted`;
+      }
+      
+    } catch (error) {
+      console.error('Error handling permission request:', error);
+      return `❌ **Permission Error**: ${error.message}`;
+    }
+  }
+
+  getRequiredScopes(toolCall) {
+    const path = toolCall.arguments?.path || '';
+    const scopes = [];
+    
+    // Map API endpoints to required permissions
+    const scopeMapping = {
+      '/users': ['User.Read.All', 'Directory.Read.All'],
+      '/subscribedSkus': ['Organization.Read.All'],
+      '/security/alerts': ['SecurityEvents.Read.All'],
+      '/security/alerts_v2': ['SecurityEvents.Read.All'],
+      '/auditLogs/signIns': ['AuditLog.Read.All', 'Directory.Read.All'],
+      '/sites': ['Sites.Read.All'],
+      '/groups': ['Group.Read.All', 'Directory.Read.All'],
+      '/organization': ['Organization.Read.All'],
+      '/deviceManagement/managedDevices': ['DeviceManagementManagedDevices.Read.All'],
+      '/applications': ['Application.Read.All', 'Directory.Read.All'],
+      '/contacts': ['Contacts.Read']
+    };
+    
+    // Find matching scope requirements
+    for (const [endpoint, requiredScopes] of Object.entries(scopeMapping)) {
+      if (path.includes(endpoint)) {
+        scopes.push(...requiredScopes);
+        break;
+      }
+    }
+    
+    // Remove duplicates
+    return [...new Set(scopes)];
+  }
+
+  async rerunPendingQuery() {
+    if (!this.pendingQuery) {
+      console.log('No pending query to rerun');
+      return null;
+    }
+    
+    console.log('Rerunning pending query after permission approval');
+    
+    const { toolCall, originalMessage } = this.pendingQuery;
+    this.pendingQuery = null; // Clear pending query
+    
+    try {
+      const toolResponse = await this.sendMCPRequest('tools/call', {
+        name: toolCall.name,
+        arguments: toolCall.arguments
+      });
+      
+      const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
+      
+      const response = {
+        id: uuidv4(),
+        message: `✅ **Permissions Approved - Query Completed!**
+
+Your original request: "${originalMessage}"
+
+${formattedResponse}`,
+        timestamp: new Date().toISOString(),
+        type: 'permission_approved_response'
+      };
+      
+      // Emit the response to the frontend
+      this.io.to(this.sessionId).emit('query_rerun_complete', response);
+      
+      return response;
+      
+    } catch (error) {
+      console.error('Error rerunning query after permission approval:', error);
+      
+      const errorResponse = {
+        id: uuidv4(),
+        message: `❌ **Error after permission approval**
+
+Your request: "${originalMessage}"
+
+Unfortunately, there was still an error after granting permissions: ${error.message}
+
+Please try your query again or contact support if the issue persists.`,
+        timestamp: new Date().toISOString(),
+        type: 'permission_error_response'
+      };
+      
+      this.io.to(this.sessionId).emit('query_rerun_complete', errorResponse);
+      return errorResponse;
+    }
+  }
+
+  isPermissionError(response) {
+    // Check for permission-related errors in response or error object
+    const responseText = this.getResponseText(response);
+    
+    const permissionIndicators = [
+      'insufficient privileges',
+      'access denied',
+      'forbidden',
+      'unauthorized',
+      'permission',
+      'consent required',
+      'scope',
+      'AADSTS',
+      'InsufficientPrivileges',
+      'Forbidden',
+      'Authorization_RequestDenied'
+    ];
+    
+    return permissionIndicators.some(indicator => 
+      responseText.toLowerCase().includes(indicator.toLowerCase())
+    );
+  }
+
+  getResponseText(response) {
+    if (typeof response === 'string') {
+      return response;
+    }
+    
+    if (response?.message) {
+      return response.message;
+    }
+    
+    if (response?.content && Array.isArray(response.content) && response.content[0]?.text) {
+      return response.content[0].text;
+    }
+    
+    if (response?.content) {
+      return JSON.stringify(response.content);
+    }
+    
+    return JSON.stringify(response);
+  }
+
+  async handlePermissionRequest(toolCall, originalMessage) {
+    try {
+      console.log(`Handling permission request for tool: ${toolCall.name}`);
+      
+      // Determine required permissions based on the API endpoint
+      const requiredScopes = this.getRequiredScopes(toolCall);
+      
+      if (requiredScopes.length === 0) {
+        return `❌ **Permission Error**: Unable to determine required permissions for this request.`;
+      }
+      
+      // Store the original query for rerun after permission approval
+      this.pendingQuery = {
+        toolCall: toolCall,
+        originalMessage: originalMessage,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log(`Requesting additional permissions: ${requiredScopes.join(', ')}`);
+      
+      // Request additional permissions via Lokka MCP
+      try {
+        const permissionResponse = await this.sendMCPRequest('tools/call', {
+          name: 'add-graph-permission',
+          arguments: {
+            scopes: requiredScopes
+          }
+        });
+        
+        console.log('Permission request response:', permissionResponse);
+        
+        // Emit permission request event to frontend
+        this.io.to(this.sessionId).emit('permission_request', {
+          scopes: requiredScopes,
+          endpoint: toolCall.arguments.path,
+          originalMessage: originalMessage,
+          timestamp: new Date().toISOString()
+        });
+        
+        return `🔐 **Additional Permissions Required**
+
+To process your request: "${originalMessage}"
+
+**Required Microsoft Graph Permissions:**
+${requiredScopes.map(scope => `• ${scope}`).join('\n')}
+
+**🚀 Permission Request Process:**
+
+1. **Browser Window Opening** - A new tab will open for permission consent
+2. **Review Permissions** - Please review and approve the requested permissions
+3. **Grant Access** - Click "Accept" to grant the required permissions
+4. **Automatic Redirect** - You'll be redirected back to the ICB Agent
+5. **Query Rerun** - Your original query will be automatically processed
+
+**⏳ Please complete the permission consent process...**
+
+Once permissions are granted, I'll automatically rerun your query and provide the results!`;
+        
+      } catch (permissionError) {
+        console.error('Error requesting permissions:', permissionError);
+        return `❌ **Permission Request Failed**
+
+Unable to request additional permissions: ${permissionError.message}
+
+**Required Permissions:**
+${requiredScopes.map(scope => `• ${scope}`).join('\n')}
+
+**Manual Steps:**
+1. Contact your Microsoft 365 administrator
+2. Request the above permissions for the Lokka MCP application
+3. Try your query again once permissions are granted`;
+      }
+      
+    } catch (error) {
+      console.error('Error handling permission request:', error);
+      return `❌ **Permission Error**: ${error.message}`;
+    }
+  }
+
+  getRequiredScopes(toolCall) {
+    const path = toolCall.arguments?.path || '';
+    const scopes = [];
+    
+    // Map API endpoints to required permissions
+    const scopeMapping = {
+      '/users': ['User.Read.All', 'Directory.Read.All'],
+      '/subscribedSkus': ['Organization.Read.All'],
+      '/security/alerts': ['SecurityEvents.Read.All'],
+      '/security/alerts_v2': ['SecurityEvents.Read.All'],
+      '/auditLogs/signIns': ['AuditLog.Read.All', 'Directory.Read.All'],
+      '/sites': ['Sites.Read.All'],
+      '/groups': ['Group.Read.All', 'Directory.Read.All'],
+      '/organization': ['Organization.Read.All'],
+      '/deviceManagement/managedDevices': ['DeviceManagementManagedDevices.Read.All'],
+      '/applications': ['Application.Read.All', 'Directory.Read.All'],
+      '/contacts': ['Contacts.Read']
+    };
+    
+    // Find matching scope requirements
+    for (const [endpoint, requiredScopes] of Object.entries(scopeMapping)) {
+      if (path.includes(endpoint)) {
+        scopes.push(...requiredScopes);
+        break;
+      }
+    }
+    
+    // Remove duplicates
+    return [...new Set(scopes)];
+  }
+
+  async rerunPendingQuery() {
+    if (!this.pendingQuery) {
+      console.log('No pending query to rerun');
+      return null;
+    }
+    
+    console.log('Rerunning pending query after permission approval');
+    
+    const { toolCall, originalMessage } = this.pendingQuery;
+    this.pendingQuery = null; // Clear pending query
+    
+    try {
+      const toolResponse = await this.sendMCPRequest('tools/call', {
+        name: toolCall.name,
+        arguments: toolCall.arguments
+      });
+      
+      const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
+      
+      const response = {
+        id: uuidv4(),
+        message: `✅ **Permissions Approved - Query Completed!**
+
+Your original request: "${originalMessage}"
+
+${formattedResponse}`,
+        timestamp: new Date().toISOString(),
+        type: 'permission_approved_response'
+      };
+      
+      // Emit the response to the frontend
+      this.io.to(this.sessionId).emit('query_rerun_complete', response);
+      
+      return response;
+      
+    } catch (error) {
+      console.error('Error rerunning query after permission approval:', error);
+      
+      const errorResponse = {
+        id: uuidv4(),
+        message: `❌ **Error after permission approval**
+
+Your request: "${originalMessage}"
+
+Unfortunately, there was still an error after granting permissions: ${error.message}
+
+Please try your query again or contact support if the issue persists.`,
+        timestamp: new Date().toISOString(),
+        type: 'permission_error_response'
+      };
+      
+      this.io.to(this.sessionId).emit('query_rerun_complete', errorResponse);
+      return errorResponse;
     }
   }
 

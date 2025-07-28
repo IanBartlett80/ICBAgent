@@ -40,6 +40,14 @@ class ICBAgent {
         this.socket.on('chat_response', (data) => {
             this.addMessage(data.message, 'assistant');
         });
+
+        this.socket.on('permission_request', (data) => {
+            this.handlePermissionRequest(data);
+        });
+
+        this.socket.on('query_rerun_complete', (data) => {
+            this.addMessage(data.message, 'assistant');
+        });
     }
 
     bindEvents() {
@@ -483,6 +491,42 @@ Once you complete authentication, you'll be able to query your Microsoft 365 env
         
         // Also show as a notification
         this.showNotification('Authentication window opened - please complete sign-in process', 'info', 8000);
+    }
+
+    handlePermissionRequest(data) {
+        console.log('Permission request received:', data);
+        
+        // Add a prominent system message about the permission request
+        const permissionMessage = `🔐 **Additional Permissions Required**
+
+Your query: "${data.originalMessage}"
+
+**Required Microsoft Graph Permissions:**
+${data.scopes.map(scope => `• ${scope}`).join('\n')}
+
+**🚀 Permission Request Process:**
+
+1. **Browser Window Opening** - A new tab will open for permission consent
+2. **Review Permissions** - Please review and approve the requested permissions
+3. **Grant Access** - Click "Accept" to grant the required permissions
+4. **Automatic Redirect** - You'll be redirected back to the ICB Agent
+5. **Query Rerun** - Your original query will be automatically processed
+
+**⏳ Please complete the permission consent process...**
+
+A browser window should open shortly for you to grant the additional permissions.`;
+
+        this.addMessage(permissionMessage, 'system');
+        
+        // Show notification
+        this.showNotification(`Permission consent required for: ${data.scopes.join(', ')}`, 'info', 10000);
+        
+        // Optional: You could also open the permission URL if provided
+        // setTimeout(() => {
+        //     if (data.authUrl) {
+        //         window.open(data.authUrl, '_blank');
+        //     }
+        // }, 1000);
     }
 
     setButtonLoading(buttonId, isLoading) {
