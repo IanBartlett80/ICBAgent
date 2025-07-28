@@ -442,7 +442,7 @@ class ICBAgent {
             this.showSuccess(`💬 Welcome to the AI Chat! You're connected to ${this.currentTenant} and ready to start conversing.`);
         } else {
             // If not connected, prompt them to connect first
-            this.showInfo(`🚀 To use AI-Powered Natural Language features, please connect to your Microsoft 365 tenant first. Enter your tenant domain below and click "Launch Platform".`);
+            this.showInfo(`🚀 To use AI-Powered Natural Language features, please connect to your Microsoft 365 tenant first. Enter your tenant domain below and click "Connect".`);
             
             // Scroll to the tenant setup form
             const setupForm = document.querySelector('.tenant-setup');

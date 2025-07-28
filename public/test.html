@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Connection Test</title>
+</head>
+<body>
+    <h1>ICB Agent Connection Test</h1>
+    <input type="text" id="domain" placeholder="Enter domain" value="contoso.com">
+    <button onclick="testConnection()">Test Connection</button>
+    <div id="result"></div>
+
+    <script>
+        async function testConnection() {
+            const domain = document.getElementById('domain').value;
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                resultDiv.innerHTML = '<p>Testing session creation...</p>';
+                
+                // Step 1: Create session
+                const sessionResponse = await fetch('/api/session/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ tenantDomain: domain }),
+                });
+
+                const sessionData = await sessionResponse.json();
+                console.log('Session response:', sessionData);
+                
+                if (!sessionResponse.ok) {
+                    throw new Error(sessionData.error || 'Failed to create session');
+                }
+
+                resultDiv.innerHTML += '<p>✅ Session created: ' + sessionData.sessionId + '</p>';
+                
+                // Step 2: Start MCP connection
+                resultDiv.innerHTML += '<p>Testing MCP connection...</p>';
+                
+                const mcpResponse = await fetch('/api/mcp/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        sessionId: sessionData.sessionId,
+                        tenantDomain: domain 
+                    }),
+                });
+
+                const mcpData = await mcpResponse.json();
+                console.log('MCP response:', mcpData);
+                
+                if (!mcpResponse.ok) {
+                    throw new Error(mcpData.error || 'Failed to start MCP connection');
+                }
+
+                resultDiv.innerHTML += '<p>✅ MCP connection successful!</p>';
+                resultDiv.innerHTML += '<p>Status: ' + mcpData.status + '</p>';
+                resultDiv.innerHTML += '<p>Message: ' + mcpData.message + '</p>';
+                
+            } catch (error) {
+                console.error('Connection error:', error);
+                resultDiv.innerHTML += '<p>❌ Error: ' + error.message + '</p>';
+            }
+        }
+    </script>
+</body>
+</html>

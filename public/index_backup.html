@@ -30,7 +30,18 @@
             <div class="header-content">
                 <div class="logo-section">
                     <div class="logo">
-                        <img src="/images/icblogo.jpg" alt="ICB Solutions Logo" class="logo-image">
+                        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="50" cy="50" r="45" fill="url(#logoGradient)" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+                            <path d="M30 35h40v30H30z" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                            <path d="M35 45h30M35 55h25" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                            <circle cx="60" cy="40" r="6" fill="white" opacity="0.9"/>
+                            <defs>
+                                <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#022541"/>
+                                    <stop offset="100%" style="stop-color:#2f6b8a"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
                     </div>
                     <div class="brand-text">
                         <h1>ICB Agent</h1>
@@ -38,23 +49,9 @@
                     </div>
                 </div>
                 <div class="header-actions">
-                    <button class="home-btn" id="homeBtn" style="display: none;" title="Return to Dashboard">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-                        </svg>
-                        <span>Home</span>
-                    </button>
-                    <div class="connection-wrapper">
-                        <div class="connection-status" id="connectionStatus">
-                            <div class="status-indicator disconnected" id="statusIndicator"></div>
-                            <span id="statusText">Disconnected</span>
-                        </div>
-                        <button class="disconnect-btn" id="disconnectBtn" style="display: none;" title="Disconnect from tenant">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-                            </svg>
-                            <span>Disconnect</span>
-                        </button>
+                    <div class="connection-status">
+                        <div class="status-indicator disconnected" id="statusIndicator"></div>
+                        <span id="statusText">Disconnected</span>
                     </div>
                 </div>
             </div>
@@ -64,76 +61,68 @@
         <main class="main-content">
             <!-- Welcome Section -->
             <section class="welcome-section" id="welcomeSection">
+                <div class="welcome-content">
                 <div class="welcome-header">
                     <h2>Revolutionize Your Microsoft 365 Management</h2>
                     <p>Experience next-generation tenant administration with AI-powered insights, natural language commands, and enterprise-grade automation.</p>
-                </div>
-
-                <!-- Enhanced Features Grid -->
-                <div class="features-grid">
-                    <div class="feature-card ai-chat-link" id="aiChatFeature" title="Click to access AI Chat Interface">
-                        <div class="feature-icon">
-                            <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                            </svg>
-                        </div>
-                        <h3>AI-Powered Natural Language</h3>
-                        <p>Transform complex M365 administration into simple conversations. Ask questions in plain English and watch your environment respond intelligently.</p>
-                        <div class="feature-link-indicator">
-                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                            </svg>
-                        </div>
-                        <h3>Intelligent Health Reports</h3>
-                        <p>Generate comprehensive, actionable health reports with predictive insights and customizable branding for your customers.</p>
-                    </div>
-                    
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-                            </svg>
-                        </div>
-                        <h3>Enterprise Security</h3>
-                        <p>Bank-level security with zero-trust authentication, encrypted communications, and compliance with international standards.</p>
-                    </div>
-                </div>
-
-                <!-- Enhanced Tenant Setup -->
-                <div class="tenant-setup">
-                    <div class="setup-form">
-                        <h3>Begin Your Journey</h3>
-                        <p>Connect to your Microsoft 365 tenant and unlock the future of IT management.</p>
-                        
-                        <div class="input-group">
-                            <label for="tenantDomain">Tenant Domain</label>
-                            <input 
-                                type="text" 
-                                id="tenantDomain" 
-                                placeholder="your-company.onmicrosoft.com"
-                                class="domain-input"
-                                autocomplete="organization"
-                            >
-                            <small class="input-help">Enter any verified domain for your Microsoft 365 tenant (e.g., contoso.onmicrosoft.com, contoso.com, mail.contoso.com)</small>
-                        </div>
-                        
-                        <button class="get-started-btn" id="getStartedBtn">
-                            <span class="btn-text">Connect</span>
-                            <span class="btn-loader" style="display: none;">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
-                                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </div>                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                                 </svg>
-                            </span>
-                        </button>
+                            </div>
+                            <h3>Natural Language Commands</h3>
+                            <p>Manage your M365 environment using simple, conversational language</p>
+                        </div>
+                        
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                </svg>
+                            </div>
+                            <h3>Health Check Reports</h3>
+                            <p>Generate comprehensive monthly reports for your customers</p>
+                        </div>
+                        
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                </svg>
+                            </div>
+                            <h3>Secure Authentication</h3>
+                            <p>Enterprise-grade security with Microsoft Graph API integration</p>
+                        </div>
+                    </div>
+
+                    <div class="tenant-setup">
+                        <div class="setup-form">
+                            <h3>Get Started</h3>
+                            <p>Enter the tenant domain you want to manage:</p>
+                            
+                            <div class="input-group">
+                                <label for="tenantDomain">Tenant Domain</label>
+                                <input 
+                                    type="text" 
+                                    id="tenantDomain" 
+                                    placeholder="contoso.onmicrosoft.com or contoso.com"
+                                    class="domain-input"
+                                >
+                                <small class="input-help">Enter any verified domain for your Microsoft 365 tenant (e.g., contoso.onmicrosoft.com, contoso.com, mail.contoso.com)</small>
+                            </div>
+                            
+                            <button class="get-started-btn" id="getStartedBtn">
+                                <span class="btn-text">Get Started</span>
+                                <span class="btn-loader" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>

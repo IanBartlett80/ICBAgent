@@ -155,14 +155,15 @@ body::before {
   position: relative;
 }
 
-/* Modern Glassmorphism Header */
+/* Modern Glassmorphism Header - Compact */
 .header {
   background: var(--gradient-hero);
   color: white;
-  padding: var(--spacing-4) 0;
+  padding: var(--spacing-3) 0;
   box-shadow: var(--shadow-hero);
   position: relative;
   overflow: hidden;
+  min-height: 100px;
 }
 
 .header::before {
@@ -214,9 +215,9 @@ body::before {
 }
 
 .logo-image {
-  width: 240px;
+  width: 180px;
   height: auto;
-  max-height: 240px;
+  max-height: 180px;
   object-fit: contain;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
   transition: transform var(--animation-medium);
@@ -504,35 +505,43 @@ body::before {
   animation: rippleYellow 2s infinite;
 }
 
-/* Main Content with Enhanced Styling */
+/* Main Content with Enhanced Styling - Optimized for single viewport */
 .main-content {
   flex: 1;
   max-width: 1200px;
   margin: 0 auto;
-  padding: var(--spacing-6) var(--spacing-6);
+  padding: var(--spacing-3) var(--spacing-6);
   width: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 140px); /* Account for header height */
 }
 
-/* Welcome Section with Hero Animation */
+/* Welcome Section with Hero Animation - Compact layout */
 .welcome-section {
   text-align: center;
   position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  max-height: calc(100vh - 140px);
 }
 
 .welcome-header {
-  margin-bottom: var(--spacing-6);
+  margin-bottom: var(--spacing-3);
   animation: fadeInUp 1s var(--animation-slow);
 }
 
 .welcome-header h2 {
-  font-size: clamp(1rem, 2vw, 1.75rem);
+  font-size: clamp(1rem, 2vw, 1.5rem);
   font-weight: 800;
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin-bottom: var(--spacing-4);
+  margin-bottom: var(--spacing-3);
   line-height: 1.2;
   position: relative;
 }
@@ -551,34 +560,42 @@ body::before {
 }
 
 .welcome-header p {
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   color: var(--gray-600);
-  max-width: 700px;
+  max-width: 600px;
   margin: 0 auto;
-  line-height: 1.8;
+  line-height: 1.6;
   font-weight: 500;
 }
 
-/* Enhanced Features Grid with Modern Cards */
+/* Enhanced Features Grid with Modern Cards - Compact layout */
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: var(--spacing-4);
-  margin-bottom: var(--spacing-6);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-3);
   animation: fadeInUp 1s var(--animation-slow) 0.3s both;
+  flex: 1;
+  align-content: start;
+  max-height: 180px;
+  overflow: hidden;
 }
 
 .feature-card {
   background: var(--gradient-card);
   backdrop-filter: var(--backdrop-blur);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: var(--spacing-5);
-  border-radius: var(--radius-xl);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   transition: all var(--animation-medium);
   position: relative;
   overflow: hidden;
   cursor: pointer;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .feature-card::before {
@@ -606,15 +623,15 @@ body::before {
 .feature-card:nth-child(3) { animation-delay: 0.3s; }
 
 .feature-icon {
-  width: 48px;
-  height: 48px;
+  width: 32px;
+  height: 32px;
   background: var(--gradient-primary);
   color: white;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto var(--spacing-4);
+  margin: 0 auto var(--spacing-2);
   position: relative;
   transition: all var(--animation-medium);
 }
@@ -642,21 +659,22 @@ body::before {
 }
 
 .feature-card h3 {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-sm);
   font-weight: 700;
   color: var(--gray-900);
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-1);
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  line-height: 1.3;
 }
 
 .feature-card p {
   color: var(--gray-600);
-  line-height: 1.6;
+  line-height: 1.4;
   font-weight: 500;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
 }
 
 /* AI Chat Link Feature Card */
@@ -706,18 +724,19 @@ body::before {
   background: rgba(16, 185, 129, 0.2);
 }
 
-/* Enhanced Tenant Setup with Glassmorphism */
+/* Enhanced Tenant Setup with Glassmorphism - Compact layout */
 .tenant-setup {
-  max-width: 500px;
+  max-width: 420px;
   margin: 0 auto;
   animation: fadeInUp 1s var(--animation-slow) 0.6s both;
+  flex-shrink: 0;
 }
 
 .setup-form {
   background: var(--gradient-card);
   backdrop-filter: var(--backdrop-blur);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: var(--spacing-6);
+  padding: var(--spacing-4);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   position: relative;
@@ -736,26 +755,27 @@ body::before {
 }
 
 .setup-form h3 {
-  font-size: var(--font-size-2xl);
+  font-size: var(--font-size-lg);
   font-weight: 700;
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-2);
   text-align: center;
 }
 
 .setup-form > p {
   color: var(--gray-600);
-  margin-bottom: var(--spacing-6);
+  margin-bottom: var(--spacing-3);
   text-align: center;
   font-weight: 500;
-  line-height: 1.6;
+  line-height: 1.4;
+  font-size: var(--font-size-sm);
 }
 
 .input-group {
-  margin-bottom: var(--spacing-6);
+  margin-bottom: var(--spacing-3);
   text-align: left;
 }
 
@@ -763,18 +783,18 @@ body::before {
   display: block;
   font-weight: 600;
   color: var(--gray-700);
-  margin-bottom: var(--spacing-3);
-  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .domain-input {
   width: 100%;
-  padding: var(--spacing-5);
+  padding: var(--spacing-3);
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--radius-xl);
-  font-size: var(--font-size-base);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
   transition: all var(--animation-medium);
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(10px);
@@ -791,29 +811,29 @@ body::before {
 
 .input-help {
   display: block;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   color: var(--gray-500);
-  margin-top: var(--spacing-3);
-  line-height: 1.5;
+  margin-top: var(--spacing-2);
+  line-height: 1.4;
 }
 
-/* Enhanced Get Started Button */
+/* Enhanced Get Started Button - Compact */
 .get-started-btn {
   width: 100%;
   background: var(--gradient-primary);
   color: white;
   border: none;
-  padding: var(--spacing-5) var(--spacing-6);
-  border-radius: var(--radius-xl);
-  font-size: var(--font-size-lg);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
   font-weight: 700;
   cursor: pointer;
   transition: all var(--animation-medium);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-3);
-  min-height: 56px;
+  gap: var(--spacing-2);
+  min-height: 44px;
   position: relative;
   overflow: hidden;
   text-transform: uppercase;
@@ -1566,31 +1586,86 @@ body::before {
 /* Tablet and small desktop responsive improvements */
 @media (max-width: 1024px) and (min-width: 769px) {
   .header-actions {
-    gap: var(--spacing-5);
+    gap: var(--spacing-4);
   }
   
   .connection-status .status-text {
-    max-width: 220px;
+    max-width: 200px;
+  }
+
+  .logo-image {
+    width: 140px;
+    max-height: 140px;
+  }
+
+  .main-content {
+    min-height: calc(100vh - 120px);
+    padding: var(--spacing-2) var(--spacing-4);
+  }
+
+  .welcome-header {
+    margin-bottom: var(--spacing-2);
+  }
+
+  .features-grid {
+    max-height: 140px;
+    gap: var(--spacing-2);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .feature-card {
+    min-height: 130px;
+    padding: var(--spacing-2);
+  }
+
+  .setup-form {
+    padding: var(--spacing-3);
+  }
+
+  .tenant-setup {
+    max-width: 380px;
   }
 }
 
-/* Enhanced Responsive Design */
+/* Large desktop viewport optimization */
+@media (min-width: 1025px) {
+  .welcome-section {
+    max-height: calc(100vh - 120px);
+    justify-content: space-evenly;
+  }
+
+  .features-grid {
+    max-height: 180px;
+    align-content: center;
+  }
+}
+
+/* Enhanced Responsive Design - Optimized for single viewport */
 @media (max-width: 768px) {
   .header-content {
     flex-direction: column;
-    gap: var(--spacing-4);
+    gap: var(--spacing-2);
     text-align: center;
-    padding: 0 var(--spacing-4);
+    padding: 0 var(--spacing-3);
+  }
+
+  .header {
+    padding: var(--spacing-2) 0;
+    min-height: 80px;
   }
 
   .header-actions {
     width: 100%;
     justify-content: center;
-    gap: var(--spacing-4);
+    gap: var(--spacing-2);
   }
 
   .brand-text h1 {
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
+  }
+
+  .brand-text p {
+    font-size: var(--font-size-xs);
   }
 
   .home-btn span {
@@ -1598,8 +1673,8 @@ body::before {
   }
 
   .home-btn {
-    padding: var(--spacing-3);
-    min-width: 40px;
+    padding: var(--spacing-2);
+    min-width: 36px;
     flex-shrink: 0;
   }
 
@@ -1613,10 +1688,12 @@ body::before {
 
   .connection-status {
     max-width: 100%;
+    padding: var(--spacing-2) var(--spacing-3);
+    font-size: var(--font-size-xs);
   }
 
   .connection-status .status-text {
-    max-width: 200px;
+    max-width: 160px;
   }
 
   .disconnect-btn span {
@@ -1624,31 +1701,101 @@ body::before {
   }
 
   .disconnect-btn {
-    padding: var(--spacing-2);
-    min-width: 32px;
+    padding: var(--spacing-1);
+    min-width: 28px;
     flex-shrink: 0;
   }
 
   .logo-image {
-    width: 160px;
-    max-height: 160px;
+    width: 100px;
+    max-height: 100px;
   }
 
   .welcome-header h2 {
-    font-size: clamp(0.75rem, 3vw, 1.25rem);
+    font-size: clamp(0.875rem, 4vw, 1.125rem);
+    margin-bottom: var(--spacing-2);
+  }
+
+  .welcome-header p {
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+  }
+
+  .welcome-header {
+    margin-bottom: var(--spacing-2);
   }
 
   .features-grid {
     grid-template-columns: 1fr;
-    gap: var(--spacing-6);
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-2);
+    max-height: none;
   }
 
   .feature-card {
-    padding: var(--spacing-6);
+    padding: var(--spacing-2);
+    min-height: 120px;
+  }
+
+  .feature-card h3 {
+    font-size: var(--font-size-xs);
+    margin-bottom: var(--spacing-1);
+  }
+
+  .feature-card p {
+    font-size: 0.7rem;
+    line-height: 1.3;
+  }
+
+  .feature-icon {
+    width: 28px;
+    height: 28px;
+    margin-bottom: var(--spacing-1);
   }
 
   .main-content {
-    padding: var(--spacing-8) var(--spacing-4);
+    padding: var(--spacing-2) var(--spacing-3);
+    min-height: calc(100vh - 90px);
+  }
+
+  .setup-form {
+    padding: var(--spacing-3);
+  }
+
+  .setup-form h3 {
+    font-size: var(--font-size-base);
+    margin-bottom: var(--spacing-1);
+  }
+
+  .setup-form > p {
+    font-size: var(--font-size-xs);
+    margin-bottom: var(--spacing-2);
+    line-height: 1.3;
+  }
+
+  .tenant-setup {
+    max-width: 320px;
+  }
+
+  .input-group {
+    margin-bottom: var(--spacing-2);
+  }
+
+  .domain-input {
+    padding: var(--spacing-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .input-help {
+    font-size: 0.65rem;
+    margin-top: var(--spacing-1);
+    line-height: 1.2;
+  }
+
+  .get-started-btn {
+    padding: var(--spacing-2) var(--spacing-3);
+    min-height: 40px;
+    font-size: var(--font-size-xs);
   }
 
   .tenant-info {
@@ -1706,7 +1853,7 @@ body::before {
 
 @media (max-width: 480px) {
   .setup-form {
-    padding: var(--spacing-6);
+    padding: var(--spacing-3);
   }
 
   .chat-container {
@@ -1714,12 +1861,13 @@ body::before {
   }
 
   .feature-card {
-    padding: var(--spacing-5);
+    padding: var(--spacing-3);
   }
 
   .get-started-btn {
-    padding: var(--spacing-4);
-    font-size: var(--font-size-base);
+    padding: var(--spacing-3);
+    font-size: var(--font-size-sm);
+    min-height: 44px;
   }
 
   .connection-status {
@@ -1731,6 +1879,11 @@ body::before {
     flex-direction: column;
     gap: var(--spacing-2);
     align-items: center;
+  }
+
+  .logo-image {
+    width: 100px;
+    max-height: 100px;
   }
 }
 
