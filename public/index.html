@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICB Agent - Microsoft 365 Management Assistant</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="40" height="40" rx="8" fill="#2563eb"/>
+                            <path d="M10 15h20v2H10v-2zm0 4h20v2H10v-2zm0 4h20v2H10v-2z" fill="white"/>
+                            <circle cx="15" cy="12" r="2" fill="#60a5fa"/>
+                            <circle cx="25" cy="28" r="2" fill="#60a5fa"/>
+                        </svg>
+                    </div>
+                    <div class="brand-text">
+                        <h1>ICB Agent</h1>
+                        <p>Microsoft 365 Management Assistant</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <div class="connection-status" id="connectionStatus">
+                        <span class="status-indicator disconnected"></span>
+                        <span class="status-text">Disconnected</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Welcome Section -->
+            <section class="welcome-section" id="welcomeSection">
+                <div class="welcome-content">
+                    <div class="welcome-header">
+                        <h2>Welcome to ICB Agent</h2>
+                        <p>Your AI-powered assistant for managing Microsoft 365 environments with ease and efficiency.</p>
+                    </div>
+                    
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                </svg>
+                            </div>
+                            <h3>Natural Language Commands</h3>
+                            <p>Manage your M365 environment using simple, conversational language</p>
+                        </div>
+                        
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                </svg>
+                            </div>
+                            <h3>Health Check Reports</h3>
+                            <p>Generate comprehensive monthly reports for your customers</p>
+                        </div>
+                        
+                        <div class="feature-card">
+                            <div class="feature-icon">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                </svg>
+                            </div>
+                            <h3>Secure Authentication</h3>
+                            <p>Enterprise-grade security with Microsoft Graph API integration</p>
+                        </div>
+                    </div>
+
+                    <div class="tenant-setup">
+                        <div class="setup-form">
+                            <h3>Get Started</h3>
+                            <p>Enter the tenant domain you want to manage:</p>
+                            
+                            <div class="input-group">
+                                <label for="tenantDomain">Tenant Domain</label>
+                                <input 
+                                    type="text" 
+                                    id="tenantDomain" 
+                                    placeholder="contoso.onmicrosoft.com or contoso.com"
+                                    class="domain-input"
+                                >
+                                <small class="input-help">Enter any verified domain for your Microsoft 365 tenant (e.g., contoso.onmicrosoft.com, contoso.com, mail.contoso.com)</small>
+                            </div>
+                            
+                            <button class="get-started-btn" id="getStartedBtn">
+                                <span class="btn-text">Get Started</span>
+                                <span class="btn-loader" style="display: none;">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chat Interface -->
+            <section class="chat-section" id="chatSection" style="display: none;">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <div class="tenant-info">
+                            <h3>Managing: <span id="currentTenant">-</span></h3>
+                            <div class="session-controls">
+                                <button class="btn-secondary" id="generateReportBtn">Generate Health Report</button>
+                                <button class="btn-danger" id="disconnectBtn">Disconnect</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="system-message">
+                            <div class="message-content">
+                                <p>🎉 Successfully connected to your Microsoft 365 tenant!</p>
+                                <p>You can now ask me anything about your environment. For example:</p>
+                                <ul>
+                                    <li>"Show me all users in the tenant"</li>
+                                    <li>"What are the current security policies?"</li>
+                                    <li>"Generate a license usage report"</li>
+                                    <li>"Check for any security alerts"</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="chat-input-container">
+                        <div class="chat-input">
+                            <textarea 
+                                id="messageInput" 
+                                placeholder="Ask me anything about your Microsoft 365 environment..."
+                                rows="1"
+                            ></textarea>
+                            <button class="send-btn" id="sendBtn">
+                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="quick-actions">
+                            <button class="quick-action-btn" data-message="Show me all users in this tenant">👥 List Users</button>
+                            <button class="quick-action-btn" data-message="What is the current license usage?">📊 License Usage</button>
+                            <button class="quick-action-btn" data-message="Check security alerts and policies">🔒 Security Status</button>
+                            <button class="quick-action-btn" data-message="Show me recent sign-in activity">📈 Sign-in Activity</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Report Modal -->
+            <div class="modal" id="reportModal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Microsoft 365 Health Check Report</h3>
+                        <button class="modal-close" id="closeReportModal">&times;</button>
+                    </div>
+                    <div class="modal-body" id="reportContent">
+                        <!-- Report content will be populated here -->
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" id="downloadReportBtn">Download PDF</button>
+                        <button class="btn-primary" id="emailReportBtn">Email to Customer</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; 2024 ICB Solutions. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="#privacy">Privacy Policy</a>
+                    <a href="#terms">Terms of Service</a>
+                    <a href="#support">Support</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
