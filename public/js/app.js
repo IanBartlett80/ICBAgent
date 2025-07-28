@@ -75,7 +75,10 @@ class ICBAgent {
         
         this.socket.on('connect', () => {
             console.log('Socket connected');
-            this.updateConnectionStatus('connected');
+            // Don't automatically set connected status - only when actually connected to a tenant
+            if (this.currentTenant && this.sessionId) {
+                this.updateConnectionStatus('connected', this.currentTenant);
+            }
         });
 
         this.socket.on('disconnect', () => {
@@ -136,6 +139,14 @@ class ICBAgent {
         const sendBtn = document.getElementById('sendBtn');
         const messageInput = document.getElementById('messageInput');
 
+        // Home button
+        const homeBtn = document.getElementById('homeBtn');
+        if (homeBtn) {
+            homeBtn.addEventListener('click', () => {
+                this.goHome();
+            });
+        }
+
         sendBtn.addEventListener('click', () => {
             this.sendMessage();
         });
@@ -159,6 +170,14 @@ class ICBAgent {
                 this.sendQuickMessage(message);
             }
         });
+
+        // AI Chat feature card click handler
+        const aiChatFeature = document.getElementById('aiChatFeature');
+        if (aiChatFeature) {
+            aiChatFeature.addEventListener('click', () => {
+                this.handleAIChatFeatureClick();
+            });
+        }
 
         // Report generation
         const generateReportBtn = document.getElementById('generateReportBtn');
@@ -205,7 +224,7 @@ class ICBAgent {
         }
 
         this.setButtonLoading('getStartedBtn', true);
-        this.updateConnectionStatus('connecting');
+        this.updateConnectionStatus('connecting', tenantDomain);
 
         try {
             console.log('Making session create request...'); // Debug log
@@ -252,7 +271,7 @@ class ICBAgent {
 
             // Switch to chat interface
             this.showChatInterface();
-            this.updateConnectionStatus('connected');
+            this.updateConnectionStatus('connected', this.currentTenant);
 
         } catch (error) {
             console.error('Error during startup:', error);
@@ -374,6 +393,12 @@ class ICBAgent {
         document.getElementById('chatSection').style.display = 'block';
         document.getElementById('currentTenant').textContent = this.currentTenant;
         
+        // Show home button when in chat interface
+        const homeBtn = document.getElementById('homeBtn');
+        if (homeBtn) {
+            homeBtn.style.display = 'flex';
+        }
+        
         // Focus on message input
         document.getElementById('messageInput').focus();
     }
@@ -382,8 +407,67 @@ class ICBAgent {
         document.getElementById('chatSection').style.display = 'none';
         document.getElementById('welcomeSection').style.display = 'block';
         
+        // Hide home button when on welcome interface
+        const homeBtn = document.getElementById('homeBtn');
+        if (homeBtn) {
+            homeBtn.style.display = 'none';
+        }
+        
         // Clear form
         document.getElementById('tenantDomain').value = '';
+    }
+
+    goHome() {
+        // Navigate back to welcome interface while keeping the connection active
+        this.showWelcomeInterface();
+        
+        // Show a friendly message that they can return to chat anytime
+        if (this.isConnected && this.currentTenant) {
+            // Add a subtle notification that connection is maintained
+            this.showSuccess(`🏠 Welcome back! You're still connected to ${this.currentTenant}. You can return to the chat interface anytime by clicking the connection status above.`);
+        }
+        
+        // Scroll to top for better UX
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }
+
+    handleAIChatFeatureClick() {
+        // Check if user is already connected to a tenant
+        if (this.isConnected && this.currentTenant) {
+            // If connected, navigate directly to chat interface
+            this.scrollToChatSection();
+            this.showSuccess(`💬 Welcome to the AI Chat! You're connected to ${this.currentTenant} and ready to start conversing.`);
+        } else {
+            // If not connected, prompt them to connect first
+            this.showInfo(`🚀 To use AI-Powered Natural Language features, please connect to your Microsoft 365 tenant first. Enter your tenant domain below and click "Launch Platform".`);
+            
+            // Scroll to the tenant setup form
+            const setupForm = document.querySelector('.tenant-setup');
+            if (setupForm) {
+                setupForm.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+                
+                // Add a subtle highlight to the form
+                setupForm.style.transition = 'box-shadow 0.3s ease';
+                setupForm.style.boxShadow = '0 0 20px rgba(62, 138, 180, 0.3)';
+                setTimeout(() => {
+                    setupForm.style.boxShadow = '';
+                }, 3000);
+                
+                // Focus on the domain input for better UX
+                const domainInput = document.getElementById('tenantDomain');
+                if (domainInput) {
+                    setTimeout(() => {
+                        domainInput.focus();
+                    }, 500);
+                }
+            }
+        }
     }
 
     showReportModal(report) {
@@ -469,24 +553,87 @@ class ICBAgent {
         this.updateConnectionStatus('disconnected');
     }
 
-    updateConnectionStatus(status) {
+    updateConnectionStatus(status, tenantDomain = null) {
         const indicator = document.querySelector('.status-indicator');
-        const text = document.querySelector('.status-text');
+        const text = document.querySelector('#statusText');
+        const connectionStatus = document.querySelector('#connectionStatus');
+        const disconnectBtn = document.querySelector('#disconnectBtn');
         
-        indicator.className = `status-indicator ${status}`;
+        if (indicator) {
+            indicator.className = `status-indicator ${status}`;
+        }
         
-        switch (status) {
-            case 'connected':
-                text.textContent = 'Connected';
-                this.isConnected = true;
-                break;
-            case 'connecting':
-                text.textContent = 'Connecting...';
-                this.isConnected = false;
-                break;
-            default:
-                text.textContent = 'Disconnected';
-                this.isConnected = false;
+        if (text && connectionStatus) {
+            switch (status) {
+                case 'connected':
+                    const displayTenant = tenantDomain || this.currentTenant || 'Unknown Tenant';
+                    text.innerHTML = `Connected to <strong>${displayTenant}</strong>`;
+                    text.className = 'status-text';
+                    connectionStatus.className = 'connection-status clickable';
+                    connectionStatus.style.cursor = 'pointer';
+                    connectionStatus.onclick = () => this.scrollToChatSection();
+                    connectionStatus.title = 'Click to go to chat interface';
+                    // Show disconnect button when connected
+                    if (disconnectBtn) {
+                        disconnectBtn.style.display = 'flex';
+                    }
+                    this.isConnected = true;
+                    break;
+                case 'connecting':
+                    const connectingTenant = tenantDomain || this.currentTenant || '';
+                    text.innerHTML = connectingTenant ? 
+                        `Connecting to <strong>${connectingTenant}</strong>...` : 
+                        'Connecting...';
+                    text.className = 'status-text';
+                    connectionStatus.className = 'connection-status';
+                    connectionStatus.style.cursor = 'default';
+                    connectionStatus.onclick = null;
+                    connectionStatus.title = '';
+                    // Hide disconnect button when connecting
+                    if (disconnectBtn) {
+                        disconnectBtn.style.display = 'none';
+                    }
+                    this.isConnected = false;
+                    break;
+                default:
+                    text.textContent = 'Disconnected';
+                    text.className = 'status-text';
+                    connectionStatus.className = 'connection-status';
+                    connectionStatus.style.cursor = 'default';
+                    connectionStatus.onclick = null;
+                    connectionStatus.title = '';
+                    // Hide disconnect button when disconnected
+                    if (disconnectBtn) {
+                        disconnectBtn.style.display = 'none';
+                    }
+                    this.isConnected = false;
+            }
+        }
+    }
+
+    scrollToChatSection() {
+        const chatSection = document.getElementById('chatSection');
+        const welcomeSection = document.getElementById('welcomeSection');
+        
+        if (chatSection) {
+            // If chat section is hidden (we're on welcome page), show it first
+            if (chatSection.style.display === 'none') {
+                this.showChatInterface();
+                // Add a welcome back message
+                this.showSuccess(`💬 Welcome back to the chat interface! You can continue your conversation with ${this.currentTenant}.`);
+            } else {
+                // If chat section is already visible, just scroll to it
+                chatSection.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start' 
+                });
+                // Add a subtle highlight effect
+                chatSection.style.transition = 'box-shadow 0.3s ease';
+                chatSection.style.boxShadow = '0 0 20px rgba(16, 185, 129, 0.3)';
+                setTimeout(() => {
+                    chatSection.style.boxShadow = '';
+                }, 2000);
+            }
         }
     }
 
@@ -494,7 +641,7 @@ class ICBAgent {
         console.log('MCP Status:', data);
         
         if (data.status === 'ready') {
-            this.updateConnectionStatus('connected');
+            this.updateConnectionStatus('connected', this.currentTenant);
         } else if (data.status === 'error') {
             this.showError('Failed to connect to Microsoft 365 tenant');
             this.updateConnectionStatus('disconnected');
@@ -506,7 +653,7 @@ class ICBAgent {
         
         switch (data.status) {
             case 'authenticated':
-                this.updateConnectionStatus('connected');
+                this.updateConnectionStatus('connected', data.tenantDomain);
                 this.showSuccess(`🎉 Authentication successful for ${data.tenantDomain}! You can now query your Microsoft 365 environment.`);
                 
                 // Show a system message in chat if chat interface is visible
@@ -516,7 +663,7 @@ class ICBAgent {
                 break;
                 
             case 'needs_authentication':
-                this.updateConnectionStatus('connecting');
+                this.updateConnectionStatus('connecting', data.tenantDomain || this.currentTenant);
                 this.showAuthenticationNotice(data);
                 break;
                 
@@ -665,6 +812,10 @@ Once you complete the permission process, your query will be automatically proce
 
     showSuccess(message) {
         this.showNotification(message, 'success');
+    }
+
+    showInfo(message) {
+        this.showNotification(message, 'info');
     }
 
     showNotification(message, type, duration = 5000) {
