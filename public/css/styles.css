@@ -702,6 +702,33 @@ body::before {
   background-clip: text;
 }
 
+/* Zero Trust Assessment Link Feature Card */
+.feature-card.zero-trust-link {
+  position: relative;
+  cursor: pointer;
+  border: 2px solid rgba(16, 185, 129, 0.2);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,0.7) 100%);
+  text-decoration: none;
+  color: inherit;
+}
+
+.feature-card.zero-trust-link:hover {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: var(--shadow-xl), 0 0 40px rgba(16, 185, 129, 0.2);
+  transform: translateY(-10px) scale(1.03);
+}
+
+.feature-card.zero-trust-link .feature-icon {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.feature-card.zero-trust-link h3 {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .feature-link-indicator {
   position: absolute;
   top: var(--spacing-4);
@@ -718,7 +745,8 @@ body::before {
   opacity: 0.7;
 }
 
-.feature-card.ai-chat-link:hover .feature-link-indicator {
+.feature-card.ai-chat-link:hover .feature-link-indicator,
+.feature-card.zero-trust-link:hover .feature-link-indicator {
   opacity: 1;
   transform: scale(1.1);
   background: rgba(16, 185, 129, 0.2);
