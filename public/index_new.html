@@ -105,7 +105,7 @@
                 </div>
 
                 <!-- Enhanced Tenant Setup -->
-                <div class="tenant-setup">
+                <div class="tenant-setup" id="tenantSetup">
                     <div class="setup-form">
                         <h3>Begin Your Journey</h3>
                         <p>Connect to your Microsoft 365 tenant and unlock the future of IT management.</p>
@@ -131,6 +131,34 @@
                                 </svg>
                             </span>
                         </button>
+                    </div>
+                </div>
+
+                <!-- Current Connection Card (shown when connected) -->
+                <div class="tenant-setup" id="currentConnection" style="display: none;">
+                    <div class="setup-form connected-card">
+                        <div class="connection-icon">
+                            <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            </svg>
+                        </div>
+                        <h3>Currently Connected</h3>
+                        <p class="connected-tenant" id="connectedTenantDisplay">Connected to your Microsoft 365 tenant</p>
+                        
+                        <div class="connection-actions">
+                            <button class="chat-btn" id="openChatBtn">
+                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4l4 4 4-4h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                                </svg>
+                                <span>Open Chat Interface</span>
+                            </button>
+                            <button class="disconnect-card-btn" id="disconnectCardBtn">
+                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                                </svg>
+                                <span>Disconnect</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>

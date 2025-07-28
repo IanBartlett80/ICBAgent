@@ -191,6 +191,21 @@ class ICBAgent {
             this.disconnect();
         });
 
+        // Connected card buttons
+        const openChatBtn = document.getElementById('openChatBtn');
+        if (openChatBtn) {
+            openChatBtn.addEventListener('click', () => {
+                this.scrollToChatSection();
+            });
+        }
+
+        const disconnectCardBtn = document.getElementById('disconnectCardBtn');
+        if (disconnectCardBtn) {
+            disconnectCardBtn.addEventListener('click', () => {
+                this.disconnect();
+            });
+        }
+
         // Modal controls
         const closeReportModal = document.getElementById('closeReportModal');
         closeReportModal.addEventListener('click', () => {
@@ -558,6 +573,9 @@ class ICBAgent {
         const text = document.querySelector('#statusText');
         const connectionStatus = document.querySelector('#connectionStatus');
         const disconnectBtn = document.querySelector('#disconnectBtn');
+        const tenantSetup = document.getElementById('tenantSetup');
+        const currentConnection = document.getElementById('currentConnection');
+        const connectedTenantDisplay = document.getElementById('connectedTenantDisplay');
         
         if (indicator) {
             indicator.className = `status-indicator ${status}`;
@@ -577,6 +595,16 @@ class ICBAgent {
                     if (disconnectBtn) {
                         disconnectBtn.style.display = 'flex';
                     }
+                    // Show current connection card and hide tenant setup
+                    if (tenantSetup) {
+                        tenantSetup.style.display = 'none';
+                    }
+                    if (currentConnection) {
+                        currentConnection.style.display = 'block';
+                    }
+                    if (connectedTenantDisplay) {
+                        connectedTenantDisplay.textContent = `Connected to ${displayTenant}`;
+                    }
                     this.isConnected = true;
                     break;
                 case 'connecting':
@@ -593,6 +621,13 @@ class ICBAgent {
                     if (disconnectBtn) {
                         disconnectBtn.style.display = 'none';
                     }
+                    // Show tenant setup and hide current connection card
+                    if (tenantSetup) {
+                        tenantSetup.style.display = 'block';
+                    }
+                    if (currentConnection) {
+                        currentConnection.style.display = 'none';
+                    }
                     this.isConnected = false;
                     break;
                 default:
@@ -605,6 +640,13 @@ class ICBAgent {
                     // Hide disconnect button when disconnected
                     if (disconnectBtn) {
                         disconnectBtn.style.display = 'none';
+                    }
+                    // Show tenant setup and hide current connection card
+                    if (tenantSetup) {
+                        tenantSetup.style.display = 'block';
+                    }
+                    if (currentConnection) {
+                        currentConnection.style.display = 'none';
                     }
                     this.isConnected = false;
             }

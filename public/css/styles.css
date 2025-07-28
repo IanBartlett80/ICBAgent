@@ -907,6 +907,137 @@ body::before {
   animation: spin 1s linear infinite;
 }
 
+/* Connected Card Styling */
+.setup-form.connected-card {
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,0.7) 100%);
+  border: 2px solid rgba(16, 185, 129, 0.3);
+  text-align: center;
+}
+
+.connection-icon {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--spacing-3);
+  position: relative;
+  transition: all var(--animation-medium);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+}
+
+.connection-icon::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 50%;
+  z-index: -1;
+  opacity: 0.7;
+  animation: rippleGreen 2s infinite;
+}
+
+.connected-tenant {
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: var(--spacing-4);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.connection-actions {
+  display: flex;
+  gap: var(--spacing-3);
+  flex-direction: column;
+}
+
+.chat-btn, .disconnect-card-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--animation-medium);
+  border: 2px solid;
+  min-height: 44px;
+  position: relative;
+  overflow: hidden;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-btn {
+  background: var(--gradient-primary);
+  color: white;
+  border-color: transparent;
+}
+
+.chat-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.6s;
+}
+
+.chat-btn:hover::before {
+  left: 100%;
+}
+
+.chat-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+.disconnect-card-btn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.disconnect-card-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
+  transition: left 0.6s;
+}
+
+.disconnect-card-btn:hover::before {
+  left: 100%;
+}
+
+.disconnect-card-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #dc2626;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.disconnect-card-btn:active, .chat-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
 /* Enhanced Chat Section with Modern Design */
 .chat-section {
   height: calc(100vh - 200px);
@@ -1824,6 +1955,22 @@ body::before {
     padding: var(--spacing-2) var(--spacing-3);
     min-height: 40px;
     font-size: var(--font-size-xs);
+  }
+
+  .connection-actions {
+    gap: var(--spacing-2);
+  }
+
+  .chat-btn, .disconnect-card-btn {
+    padding: var(--spacing-2) var(--spacing-3);
+    min-height: 40px;
+    font-size: var(--font-size-xs);
+  }
+
+  .connection-icon {
+    width: 48px;
+    height: 48px;
+    margin-bottom: var(--spacing-2);
   }
 
   .tenant-info {
