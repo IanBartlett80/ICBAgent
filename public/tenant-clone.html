@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICB Agent - Tenant Clone | Microsoft 365 Policy Migration</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔄</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css?v=1722191000">
+    <link rel="stylesheet" href="/css/tenant-clone.css?v=1722191001">
+    <meta name="description" content="Tenant Clone - Migrate Microsoft 365 Intune policies between tenants with drag-and-drop simplicity">
+    <meta name="theme-color" content="#022541">
+</head>
+<body class="tenant-clone-body">
+    <!-- Floating Particles Background -->
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
+    <div class="tenant-clone-container">
+        <!-- Enhanced Header for Tenant Clone -->
+        <header class="header tenant-clone-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo">
+                        <img src="/images/icblogo.jpg" alt="ICB Solutions Logo" class="logo-image">
+                    </div>
+                    <div class="brand-text">
+                        <h1>ICB Agent - Tenant Clone</h1>
+                        <p>Microsoft 365 Policy Migration Platform</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="home-btn" id="backToMainBtn" title="Back to Main Dashboard">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                        </svg>
+                        <span>Back to Main</span>
+                    </button>
+                    <div class="clone-status-wrapper">
+                        <div class="clone-status" id="cloneStatus">
+                            <div class="status-indicator disconnected" id="cloneStatusIndicator"></div>
+                            <span id="cloneStatusText">Ready to Clone</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tenant Setup Section -->
+        <section class="dual-tenant-setup" id="dualTenantSetup">
+            <div class="setup-container">
+                <div class="setup-header">
+                    <h2>🔄 Tenant Clone Setup</h2>
+                    <p>Connect to two Microsoft 365 tenants to begin policy migration</p>
+                </div>
+
+                <div class="tenant-inputs">
+                    <!-- Source Tenant -->
+                    <div class="tenant-input-group">
+                        <div class="tenant-label">
+                            <div class="tenant-icon source">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M9 3L5 6.99h3V14h2V6.99h3L9 3zM16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3>Source Tenant</h3>
+                                <p>The tenant containing policies to migrate</p>
+                            </div>
+                        </div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="text" 
+                                id="sourceTenantDomain" 
+                                placeholder="source.onmicrosoft.com"
+                                class="tenant-domain-input"
+                                autocomplete="organization"
+                            >
+                            <div class="tenant-status" id="sourceStatus">
+                                <span class="status-dot disconnected"></span>
+                                <span class="status-text">Not Connected</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Target Tenant -->
+                    <div class="tenant-input-group">
+                        <div class="tenant-label">
+                            <div class="tenant-icon target">
+                                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M9 3L5 6.99h3V14h2V6.99h3L9 3zM16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3>Target Tenant</h3>
+                                <p>The destination tenant for policy migration</p>
+                            </div>
+                        </div>
+                        <div class="input-wrapper">
+                            <input 
+                                type="text" 
+                                id="targetTenantDomain" 
+                                placeholder="target.onmicrosoft.com"
+                                class="tenant-domain-input"
+                                autocomplete="organization"
+                            >
+                            <div class="tenant-status" id="targetStatus">
+                                <span class="status-dot disconnected"></span>
+                                <span class="status-text">Not Connected</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setup-actions">
+                    <button class="connect-tenants-btn" id="connectTenantsBtn">
+                        <span class="btn-text">Connect Both Tenants</span>
+                        <span class="btn-loader" style="display: none;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Authentication Progress Section -->
+        <section class="auth-progress-section" id="authProgressSection" style="display: none;">
+            <div class="auth-progress-container">
+                <h3>🔐 Authentication in Progress</h3>
+                <p>Please complete authentication for both tenants in the browser windows that have opened.</p>
+                
+                <div class="auth-checklist">
+                    <div class="auth-item" id="sourceAuthItem">
+                        <div class="auth-status pending">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="12" cy="12" r="10" opacity="0.3"/>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div class="auth-details">
+                            <strong>Source Tenant Authentication</strong>
+                            <span id="sourceAuthText">Waiting for authentication...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="auth-item" id="targetAuthItem">
+                        <div class="auth-status pending">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="12" cy="12" r="10" opacity="0.3"/>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div class="auth-details">
+                            <strong>Target Tenant Authentication</strong>
+                            <span id="targetAuthText">Waiting for authentication...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dual-Pane Policy Migration Interface -->
+        <section class="migration-interface" id="migrationInterface" style="display: none;">
+            <div class="migration-header">
+                <div class="connected-tenants">
+                    <div class="tenant-card source">
+                        <div class="tenant-info">
+                            <div class="tenant-icon">
+                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M9 3L5 6.99h3V14h2V6.99h3L9 3z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <strong>Source</strong>
+                                <span id="connectedSourceTenant">-</span>
+                            </div>
+                        </div>
+                        <div class="policy-count">
+                            <span id="sourcePolicyCount">0</span> policies
+                        </div>
+                    </div>
+                    
+                    <div class="migration-arrow">
+                        <svg width="32" height="32" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                    </div>
+                    
+                    <div class="tenant-card target">
+                        <div class="tenant-info">
+                            <div class="tenant-icon">
+                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M15 21l4-3.99h-3V10h-2v7.01h-3L15 21z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <strong>Target</strong>
+                                <span id="connectedTargetTenant">-</span>
+                            </div>
+                        </div>
+                        <div class="migration-stats">
+                            <span id="migrationCount">0</span> migrated
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="migration-controls">
+                    <button class="load-policies-btn" id="loadPoliciesBtn">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 7h-8l-2-2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/>
+                        </svg>
+                        <span>Load Source Policies</span>
+                    </button>
+                    
+                    <button class="bulk-migrate-btn" id="bulkMigrateBtn" style="display: none;">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                        <span>Migrate Selected</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Policy Lists -->
+            <div class="migration-content">
+                <!-- Source Policies Panel -->
+                <div class="policies-panel source-panel">
+                    <div class="panel-header">
+                        <h3>Source Tenant Policies</h3>
+                        <div class="panel-controls">
+                            <div class="search-box">
+                                <input type="text" id="sourcePolicySearch" placeholder="Search policies...">
+                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                                </svg>
+                            </div>
+                            <div class="filter-dropdown">
+                                <select id="policyTypeFilter">
+                                    <option value="all">All Policy Types</option>
+                                    <option value="deviceConfigurations">Device Configurations</option>
+                                    <option value="deviceCompliancePolicies">Device Compliance</option>
+                                    <option value="mobileAppManagementPolicies">App Management</option>
+                                    <option value="appProtectionPolicies">App Protection</option>
+                                    <option value="deviceEnrollmentConfigurations">Device Enrollment</option>
+                                    <option value="windowsInformationProtectionPolicies">Windows Information Protection</option>
+                                    <option value="managedAppPolicies">Managed App Policies</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="policies-list" id="sourcePoliciesList">
+                        <div class="empty-state">
+                            <svg width="64" height="64" fill="currentColor" viewBox="0 0 24 24" opacity="0.3">
+                                <path d="M19 7h-8l-2-2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/>
+                            </svg>
+                            <h4>No Policies Loaded</h4>
+                            <p>Click "Load Source Policies" to retrieve policies from your source tenant.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Migration Status Panel -->
+                <div class="migration-status-panel">
+                    <div class="migration-progress" id="migrationProgress" style="display: none;">
+                        <div class="progress-header">
+                            <h4>Migration in Progress</h4>
+                            <button class="minimize-btn" id="minimizeProgressBtn">
+                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M6 19h12v2H6z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="progress-list" id="progressList">
+                        </div>
+                    </div>
+                    
+                    <div class="migration-log" id="migrationLog">
+                        <div class="log-header">
+                            <h4>Migration Log</h4>
+                            <button class="clear-log-btn" id="clearLogBtn">Clear</button>
+                        </div>
+                        <div class="log-content" id="logContent">
+                            <div class="log-entry system">
+                                <span class="timestamp">${new Date().toLocaleTimeString()}</span>
+                                <span class="message">Tenant Clone interface initialized</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Policy Clone Modal -->
+        <div class="modal-overlay" id="cloneModalOverlay" style="display: none;">
+            <div class="clone-modal">
+                <div class="modal-header">
+                    <h3>Clone Policy Settings</h3>
+                    <button class="modal-close-btn" id="closeCloneModalBtn">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="modal-content">
+                    <div class="policy-preview">
+                        <h4>Source Policy</h4>
+                        <div class="policy-details" id="sourcePolicyDetails">
+                            <div class="detail-row">
+                                <strong>Name:</strong>
+                                <span id="sourcePolicyName">-</span>
+                            </div>
+                            <div class="detail-row">
+                                <strong>Type:</strong>
+                                <span id="sourcePolicyType">-</span>
+                            </div>
+                            <div class="detail-row">
+                                <strong>Description:</strong>
+                                <span id="sourcePolicyDescription">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="customization-options">
+                        <h4>Customization Options</h4>
+                        
+                        <div class="form-group">
+                            <label for="targetPolicyName">Policy Name</label>
+                            <input type="text" id="targetPolicyName" placeholder="Enter new policy name">
+                            <small>Leave empty to use default naming: "Original Name (Cloned)"</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="targetPolicyDescription">Description</label>
+                            <textarea id="targetPolicyDescription" placeholder="Enter custom description" rows="3"></textarea>
+                            <small>Leave empty to keep original description</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button class="cancel-btn" id="cancelCloneBtn">Cancel</button>
+                    <button class="clone-btn" id="confirmCloneBtn">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                        </svg>
+                        <span>Clone Policy</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/tenant-clone.js?v=1722191001"></script>
+</body>
+</html>
