@@ -417,13 +417,16 @@ class ICBAgent {
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
         
-        // Enhanced message rendering with insights and recommendations
+        // Enhanced message rendering - use full markdown for both user and assistant messages
         if (type === 'assistant') {
             console.log('🤖 Assistant message detected, using enhanced rendering');
             messageContent.innerHTML = this.renderEnhancedResponse(content);
-        } else {
-            console.log('👤 User message detected, using basic formatting');
+        } else if (type === 'user') {
+            console.log('👤 User message detected, using full markdown rendering');
             messageContent.innerHTML = this.formatMessage(content);
+        } else {
+            console.log('🔧 System message detected, using enhanced rendering');
+            messageContent.innerHTML = this.renderEnhancedResponse(content);
         }
 
         messageDiv.appendChild(messageContent);
@@ -434,12 +437,13 @@ class ICBAgent {
     }
 
     formatMessage(content) {
-        // Basic markdown-like formatting
-        return content
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            .replace(/\n/g, '<br>');
+        // Enhanced markdown formatting for user messages
+        console.log('👤 Formatting user message with full markdown support');
+        
+        // First apply the same markdown parsing as assistant messages
+        let html = this.parseMarkdown(content);
+        
+        return html;
     }
 
     renderEnhancedResponse(content) {

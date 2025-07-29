@@ -1260,7 +1260,14 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
           return this.formatContactsResponse(items);
         }
         
-        console.log('⚠️ No specific formatter found, using default');
+        console.log('⚠️ No specific formatter found, using default array conversion');
+        return this.convertArrayToMarkdown(items, toolName);
+      }
+
+      // Handle single objects - convert to markdown
+      if (typeof data === 'object' && data !== null) {
+        console.log('📄 Converting single object to markdown');
+        return this.convertObjectToMarkdown(data, toolName);
       }
 
       // Default formatting for unknown responses
@@ -1270,6 +1277,105 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
       console.error(`Error formatting response from ${toolName}:`, error);
       return `**Error formatting response from ${toolName}:** ${error.message}`;
     }
+  }
+
+  // New method to convert arrays to markdown format
+  convertArrayToMarkdown(items, toolName) {
+    if (!items || items.length === 0) {
+      return `**No data found from ${toolName}**`;
+    }
+
+    // Take first few items to avoid overwhelming the user
+    const displayItems = items.slice(0, 15);
+    let markdown = `**Data from ${toolName}** (${items.length} total${items.length > 15 ? ', showing first 15' : ''})\n\n`;
+
+    displayItems.forEach((item, index) => {
+      markdown += `### Item ${index + 1}\n\n`;
+      markdown += this.convertObjectToMarkdown(item, '', false);
+      markdown += '\n\n---\n\n';
+    });
+
+    if (items.length > 15) {
+      markdown += `*...and ${items.length - 15} more items*`;
+    }
+
+    return markdown.trim();
+  }
+
+  // New method to convert objects to markdown format
+  convertObjectToMarkdown(obj, toolName = '', includeTitle = true) {
+    if (!obj || typeof obj !== 'object') {
+      return `**${toolName}:** ${obj}`;
+    }
+
+    let markdown = '';
+    
+    if (includeTitle && toolName) {
+      markdown += `**Data from ${toolName}:**\n\n`;
+    }
+
+    // Convert object properties to markdown list
+    const entries = Object.entries(obj);
+    
+    entries.forEach(([key, value]) => {
+      // Skip null, undefined, or empty values
+      if (value === null || value === undefined || value === '') {
+        return;
+      }
+
+      // Format the key nicely
+      const formattedKey = key
+        .replace(/([A-Z])/g, ' $1') // Add space before capitals
+        .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+        .replace(/Id$/, 'ID') // Fix ID capitalization
+        .replace(/Url$/, 'URL') // Fix URL capitalization
+        .replace(/Api$/, 'API'); // Fix API capitalization
+
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          markdown += `• **${formattedKey}:** None\n`;
+        } else if (value.length <= 5) {
+          // For small arrays, show all items
+          const arrayItems = value.map(item => 
+            typeof item === 'object' ? JSON.stringify(item) : String(item)
+          ).join(', ');
+          markdown += `• **${formattedKey}:** ${arrayItems}\n`;
+        } else {
+          // For large arrays, show count and first few items
+          const preview = value.slice(0, 3).map(item => 
+            typeof item === 'object' ? JSON.stringify(item) : String(item)
+          ).join(', ');
+          markdown += `• **${formattedKey}:** ${preview}... (${value.length} total)\n`;
+        }
+      } else if (typeof value === 'object') {
+        // For nested objects, show key properties
+        const nestedEntries = Object.entries(value).slice(0, 3);
+        const nestedText = nestedEntries.map(([k, v]) => `${k}: ${v}`).join(', ');
+        markdown += `• **${formattedKey}:** ${nestedText}${Object.keys(value).length > 3 ? '...' : ''}\n`;
+      } else if (typeof value === 'boolean') {
+        markdown += `• **${formattedKey}:** ${value ? '✅ Yes' : '❌ No'}\n`;
+      } else if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+        // Format dates nicely
+        try {
+          const date = new Date(value);
+          if (!isNaN(date.getTime())) {
+            markdown += `• **${formattedKey}:** ${date.toLocaleString()}\n`;
+          } else {
+            markdown += `• **${formattedKey}:** ${value}\n`;
+          }
+        } catch {
+          markdown += `• **${formattedKey}:** ${value}\n`;
+        }
+      } else if (key.toLowerCase().includes('url') || key.toLowerCase().includes('link')) {
+        // Format URLs as clickable links
+        markdown += `• **${formattedKey}:** [${value}](${value})\n`;
+      } else {
+        // Regular value
+        markdown += `• **${formattedKey}:** ${value}\n`;
+      }
+    });
+
+    return markdown;
   }
 
   formatUsersResponse(users) {
