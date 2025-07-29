@@ -709,7 +709,7 @@ class TenantCloneManager {
         
         if (data.status === 'authenticated') {
             this.authStatus[tenantType] = 'authenticated';
-            this.updateAuthStatus(tenantType, 'success');
+            this.updateAuthStatus(tenantType, 'authenticated'); // Changed from 'success' to 'authenticated'
             this.updateTenantAuthStatus(tenantType, 'authenticated');
             this.logMessage('success', `${tenantType} tenant (${data.tenantDomain}) authenticated successfully`);
         } else if (data.status === 'needs_authentication') {
@@ -828,7 +828,7 @@ class TenantCloneManager {
 
     updateTenantStatus(tenantType, status) {
         // Don't override a successful authentication status
-        if ((this.authStatus[tenantType] === 'authenticated' || this.authStatus[tenantType] === 'success') && status === 'connecting') {
+        if (this.authStatus[tenantType] === 'authenticated' && status === 'connecting') {
             console.log(`Not overriding successful auth status for ${tenantType} tenant`);
             return;
         }
@@ -858,6 +858,7 @@ class TenantCloneManager {
         
         if (authText) {
             switch (status) {
+                case 'authenticated':
                 case 'success':
                     authText.textContent = 'Authentication successful';
                     break;
