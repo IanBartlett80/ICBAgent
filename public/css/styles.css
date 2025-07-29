@@ -696,7 +696,8 @@ body::before {
 }
 
 .feature-card.ai-chat-link h3 {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: var(--gray-900);
+  background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -723,7 +724,8 @@ body::before {
 }
 
 .feature-card.zero-trust-link h3 {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: var(--gray-900);
+  background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -750,7 +752,8 @@ body::before {
 }
 
 .feature-card.tenant-clone-link h3 {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: var(--gray-900);
+  background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
