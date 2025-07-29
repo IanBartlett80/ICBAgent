@@ -484,7 +484,10 @@ class DualTenantManager {
     // Remove source-specific properties and read-only fields
     const transformed = { ...sourcePolicy };
     
-    // Remove all Microsoft Graph metadata and read-only properties
+    // Preserve the @odata.type as it's required for concrete policy type identification
+    const originalODataType = sourcePolicy['@odata.type'];
+    
+    // Remove all Microsoft Graph metadata EXCEPT @odata.type for policy creation
     delete transformed.id;
     delete transformed.createdDateTime;
     delete transformed.lastModifiedDateTime;
@@ -510,28 +513,18 @@ class DualTenantManager {
     delete transformed.advancedThreatProtectionOfficeRealtimeProtectionType;
     delete transformed.advancedThreatProtectionOfficeSignatureUpdateIntervalInHours;
     
-    // Remove OData specific properties
-    delete transformed['@odata.type'];
+    // Remove other OData specific properties but preserve @odata.type
     delete transformed['@odata.context'];
     delete transformed['@odata.id'];
     delete transformed['@odata.etag'];
     delete transformed['@odata.editLink'];
     delete transformed['@odata.nextLink'];
     
-    // Handle specific policy type transformations
-    if (sourcePolicy['@odata.type']) {
-      const odataType = sourcePolicy['@odata.type'];
-      
-      // For device compliance policies, ensure the correct OData type
-      if (odataType.includes('deviceCompliancePolicy')) {
-        // Don't include @odata.type for creation - let Graph API determine it
-        // based on the policy content and endpoint
-      }
-      
-      // For device configuration policies
-      if (odataType.includes('deviceConfiguration')) {
-        // Similar handling for device configurations
-      }
+    // For device compliance and configuration policies, preserve the @odata.type
+    // as it's required to specify the concrete implementation
+    if (originalODataType) {
+      transformed['@odata.type'] = originalODataType;
+      console.log(`✅ Preserving @odata.type: ${originalODataType}`);
     }
     
     // Apply customizations
@@ -560,8 +553,9 @@ class DualTenantManager {
     // Log the cleaned policy for debugging
     console.log(`🧹 Cleaned policy for creation:`, {
       displayName: transformed.displayName,
+      odataType: transformed['@odata.type'],
       keys: Object.keys(transformed),
-      removedODataType: !!sourcePolicy['@odata.type']
+      preservedODataType: !!originalODataType
     });
 
     return transformed;
