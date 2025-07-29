@@ -13,6 +13,7 @@ class TenantCloneManager {
             target: 'pending'
         };
         this.migrationLog = [];
+        this.currentClonePolicy = null; // Track current policy being cloned for retry
         
         this.init();
     }
@@ -60,6 +61,18 @@ class TenantCloneManager {
 
         this.socket.on('policy_clone_failed', (data) => {
             this.handlePolicyCloneFailed(data);
+        });
+
+        this.socket.on('policy_clone_permission_required', (data) => {
+            this.handlePolicyClonePermissionRequired(data);
+        });
+
+        this.socket.on('permissions_requested', (data) => {
+            this.handlePermissionsRequested(data);
+        });
+
+        this.socket.on('permission_request_failed', (data) => {
+            this.handlePermissionRequestFailed(data);
         });
 
         this.socket.on('auth_status_changed', (data) => {
@@ -217,6 +230,9 @@ class TenantCloneManager {
             return;
         }
 
+        // Store current clone policy for potential retry after permission request
+        this.currentClonePolicy = { policyId, policyType, customizations };
+
         this.logMessage('system', `Starting clone of policy: ${policyId}`);
 
         try {
@@ -233,6 +249,7 @@ class TenantCloneManager {
         } catch (error) {
             console.error('Error cloning policy:', error);
             this.showError('Failed to clone policy: ' + error.message);
+            this.currentClonePolicy = null; // Clear on error
         }
     }
 
@@ -318,12 +335,43 @@ class TenantCloneManager {
         this.logMessage('success', `Successfully cloned: ${data.policyName}`);
         this.updateMigrationProgress(data.migrationId, 'success', data.policyName);
         this.incrementMigrationCount();
+        
+        // Clear current clone policy on success
+        this.currentClonePolicy = null;
     }
 
     handlePolicyCloneFailed(data) {
         console.error('Policy clone failed:', data);
         this.logMessage('error', `Failed to clone policy ${data.policyId}: ${data.error}`);
         this.updateMigrationProgress(data.migrationId, 'error', data.error);
+        
+        // Clear current clone policy on failure (non-permission related)
+        this.currentClonePolicy = null;
+    }
+
+    handlePolicyClonePermissionRequired(data) {
+        console.warn('Policy clone requires additional permissions:', data);
+        this.logMessage('warning', `Policy clone requires additional permissions: ${data.message}`);
+        this.updateMigrationProgress(data.migrationId, 'permission_required', data.error);
+        
+        // Show permission request dialog
+        this.showPermissionDialog(data.tenantDomain, data.error);
+    }
+
+    handlePermissionsRequested(data) {
+        console.log('Additional permissions requested:', data);
+        this.logMessage('system', `Additional permissions requested for ${data.tenantRole} tenant (${data.tenantDomain})`);
+        this.logMessage('system', `Required scopes: ${data.requiredScopes.join(', ')}`);
+        this.logMessage('system', data.message);
+        
+        // Show authentication prompt
+        this.showAuthenticationPrompt(data);
+    }
+
+    handlePermissionRequestFailed(data) {
+        console.error('Permission request failed:', data);
+        this.logMessage('error', `Failed to request additional permissions for ${data.tenantRole} tenant: ${data.error}`);
+        this.logMessage('error', data.message);
     }
 
     handleAuthStatusChanged(data) {
@@ -627,8 +675,26 @@ class TenantCloneManager {
             const statusElement = progressItem.querySelector('.progress-status');
             const messageElement = progressItem.querySelector('span');
 
-            statusElement.className = `progress-status ${status}`;
-            statusElement.textContent = status === 'success' ? '✅' : '❌';
+            // Remove existing status classes
+            progressItem.className = progressItem.className.replace(/\b(success|error|permission-required)\b/g, '');
+            
+            // Add new status class and set content
+            progressItem.classList.add('migration-progress');
+            if (status === 'success') {
+                statusElement.className = `progress-status ${status}`;
+                statusElement.textContent = '✅';
+            } else if (status === 'error') {
+                statusElement.className = `progress-status ${status}`;
+                statusElement.textContent = '❌';
+            } else if (status === 'permission_required') {
+                progressItem.classList.add('permission-required');
+                statusElement.className = `progress-status ${status}`;
+                statusElement.textContent = '🔐';
+            } else {
+                statusElement.className = `progress-status ${status}`;
+                statusElement.textContent = '⏳';
+            }
+            
             messageElement.textContent = message;
         }
     }
@@ -808,6 +874,99 @@ class TenantCloneManager {
                 <span class="message">Log cleared</span>
             </div>
         `;
+    }
+
+    showPermissionDialog(tenantDomain, error) {
+        // Create permission dialog
+        const dialogHtml = `
+            <div class="permission-dialog-overlay" id="permissionDialog">
+                <div class="permission-dialog">
+                    <div class="permission-dialog-header">
+                        <h3>🔐 Additional Permissions Required</h3>
+                    </div>
+                    <div class="permission-dialog-content">
+                        <p>The target tenant <strong>${tenantDomain}</strong> requires additional permissions to create policies:</p>
+                        <div class="permission-error">
+                            <code>${error}</code>
+                        </div>
+                        <p>The following permissions will be requested:</p>
+                        <ul class="permissions-list">
+                            <li>DeviceManagementConfiguration.ReadWrite.All</li>
+                            <li>DeviceManagementApps.ReadWrite.All</li>
+                            <li>DeviceManagementServiceConfig.ReadWrite.All</li>
+                            <li>Policy.ReadWrite.ConditionalAccess</li>
+                        </ul>
+                        <p><strong>Note:</strong> You may need to sign in with an administrator account to grant these permissions.</p>
+                    </div>
+                    <div class="permission-dialog-actions">
+                        <button class="btn-secondary" onclick="window.tenantCloneManager.closePermissionDialog()">Cancel</button>
+                        <button class="btn-primary" onclick="window.tenantCloneManager.retryAfterPermissions()">Request Permissions & Retry</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add to page
+        document.body.insertAdjacentHTML('beforeend', dialogHtml);
+    }
+
+    showAuthenticationPrompt(data) {
+        // Create authentication prompt
+        const promptHtml = `
+            <div class="auth-prompt-overlay" id="authPrompt">
+                <div class="auth-prompt">
+                    <div class="auth-prompt-header">
+                        <h3>🔐 Authentication Required</h3>
+                    </div>
+                    <div class="auth-prompt-content">
+                        <p>Additional permissions have been requested for the <strong>${data.tenantRole}</strong> tenant:</p>
+                        <p><strong>${data.tenantDomain}</strong></p>
+                        <p>${data.message}</p>
+                        <div class="auth-instructions">
+                            <ol>
+                                <li>A browser window should have opened automatically</li>
+                                <li>Sign in with administrator credentials</li>
+                                <li>Grant the requested permissions</li>
+                                <li>Return to this page once authentication is complete</li>
+                            </ol>
+                        </div>
+                        <p><em>If the browser window didn't open, click the button below:</em></p>
+                    </div>
+                    <div class="auth-prompt-actions">
+                        <button class="btn-secondary" onclick="window.tenantCloneManager.closeAuthPrompt()">Close</button>
+                        <button class="btn-primary" onclick="window.open('${data.authUrl}', '_blank')">Open Authentication</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add to page
+        document.body.insertAdjacentHTML('beforeend', promptHtml);
+    }
+
+    closePermissionDialog() {
+        const dialog = document.getElementById('permissionDialog');
+        if (dialog) {
+            dialog.remove();
+        }
+    }
+
+    closeAuthPrompt() {
+        const prompt = document.getElementById('authPrompt');
+        if (prompt) {
+            prompt.remove();
+        }
+    }
+
+    retryAfterPermissions() {
+        this.closePermissionDialog();
+        this.logMessage('system', 'Retrying policy cloning after permission request...');
+        
+        // If we have a current clone operation, retry it
+        if (this.currentClonePolicy) {
+            const { policyId, policyType, customizations } = this.currentClonePolicy;
+            this.clonePolicy(policyId, policyType, customizations);
+        }
     }
 
     initializeDragAndDrop() {

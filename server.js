@@ -283,16 +283,27 @@ class DualTenantManager {
       // Step 3: Create policy in target tenant
       console.log(`🔄 Creating policy in target tenant...`);
       
-      const targetResponse = await this.targetTenant.sendMCPRequest('tools/call', {
-        name: 'Lokka-Microsoft',
-        arguments: {
-          apiType: 'graph',
-          graphApiVersion: 'beta',
-          method: 'post',
-          path: `/deviceManagement/${policyType}`,
-          body: transformedPolicy
+      let targetResponse;
+      try {
+        targetResponse = await this.targetTenant.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: {
+            apiType: 'graph',
+            graphApiVersion: 'beta',
+            method: 'post',
+            path: `/deviceManagement/${policyType}`,
+            body: transformedPolicy
+          }
+        });
+      } catch (error) {
+        // Check if this is a permission error
+        if (this.isPermissionError(error.message)) {
+          console.log('🔐 Permission error detected, requesting additional permissions...');
+          await this.requestAdditionalPermissions();
+          throw new Error(`PERMISSION_REQUIRED: ${error.message}`);
         }
-      });
+        throw error;
+      }
 
       if (!targetResponse || !targetResponse.content || !targetResponse.content[0]) {
         throw new Error('Failed to create policy in target tenant');
@@ -301,6 +312,13 @@ class DualTenantManager {
       // Parse the target response text with the same logic
       let targetResponseText = targetResponse.content[0].text;
       console.log(`📝 Raw target response text (first 200 chars):`, targetResponseText.substring(0, 200));
+      
+      // Check if the response contains a permission error even in successful response
+      if (this.isPermissionError(targetResponseText)) {
+        console.log('🔐 Permission error detected in response, requesting additional permissions...');
+        await this.requestAdditionalPermissions();
+        throw new Error(`PERMISSION_REQUIRED: ${targetResponseText}`);
+      }
       
       let createdPolicy = null;
       
@@ -341,12 +359,24 @@ class DualTenantManager {
       this.migrations.get(migrationId).error = error.message;
       this.migrations.get(migrationId).endTime = new Date();
 
-      this.io.to(this.sessionId).emit('policy_clone_failed', {
-        migrationId,
-        policyId,
-        policyType,
-        error: error.message
-      });
+      // Check if this is a permission error
+      if (error.message.startsWith('PERMISSION_REQUIRED:')) {
+        this.io.to(this.sessionId).emit('policy_clone_permission_required', {
+          migrationId,
+          policyId,
+          policyType,
+          error: error.message.replace('PERMISSION_REQUIRED: ', ''),
+          message: 'Additional permissions required. Please complete the authentication flow to grant the necessary permissions.',
+          tenantDomain: this.targetTenant.tenantDomain
+        });
+      } else {
+        this.io.to(this.sessionId).emit('policy_clone_failed', {
+          migrationId,
+          policyId,
+          policyType,
+          error: error.message
+        });
+      }
 
       throw error;
     }
@@ -378,6 +408,75 @@ class DualTenantManager {
     }
 
     return transformed;
+  }
+
+  // Helper method to detect permission errors
+  isPermissionError(errorMessage) {
+    if (!errorMessage) return false;
+    
+    const permissionIndicators = [
+      'Application is not authorized to perform this operation',
+      'DeviceManagementConfiguration.ReadWrite',
+      'DeviceManagementApps.ReadWrite',
+      'Insufficient privileges',
+      'Access denied',
+      'Permission denied',
+      'Authorization_RequestDenied',
+      'Forbidden'
+    ];
+
+    const errorText = errorMessage.toLowerCase();
+    return permissionIndicators.some(indicator => 
+      errorText.includes(indicator.toLowerCase())
+    );
+  }
+
+  // Method to request additional permissions
+  async requestAdditionalPermissions() {
+    console.log('🔐 Requesting additional permissions for policy management...');
+    
+    const requiredScopes = [
+      'DeviceManagementConfiguration.ReadWrite.All',
+      'DeviceManagementApps.ReadWrite.All',
+      'DeviceManagementServiceConfig.ReadWrite.All',
+      'Policy.ReadWrite.ConditionalAccess'
+    ];
+
+    try {
+      // Use the target tenant to request additional permissions
+      const permissionResponse = await this.targetTenant.sendMCPRequest('tools/call', {
+        name: 'add-graph-permission',
+        arguments: {
+          scopes: requiredScopes
+        }
+      });
+
+      console.log('✅ Additional permissions requested successfully:', permissionResponse);
+
+      // Emit event to frontend to inform user about permission request
+      this.io.to(this.sessionId).emit('permissions_requested', {
+        tenantRole: 'target',
+        tenantDomain: this.targetTenant.tenantDomain,
+        requiredScopes,
+        message: 'Additional permissions required for policy creation. Please complete the authentication flow in your browser.',
+        authUrl: 'http://localhost:3200'
+      });
+
+      return permissionResponse;
+      
+    } catch (error) {
+      console.error('❌ Failed to request additional permissions:', error);
+      
+      // Emit event to frontend about permission request failure
+      this.io.to(this.sessionId).emit('permission_request_failed', {
+        tenantRole: 'target',
+        tenantDomain: this.targetTenant.tenantDomain,
+        error: error.message,
+        message: 'Failed to request additional permissions. Please try authenticating again with administrator privileges.'
+      });
+      
+      throw error;
+    }
   }
 
   convertPoliciesToClientFormat(policies) {
