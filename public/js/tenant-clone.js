@@ -14,6 +14,7 @@ class TenantCloneManager {
         };
         this.migrationLog = [];
         this.currentClonePolicy = null; // Track current policy being cloned for retry
+        this.currentPage = 'connectionPage'; // Track current page
         
         this.init();
     }
@@ -23,6 +24,57 @@ class TenantCloneManager {
         this.bindEvents();
         this.initializeDragAndDrop();
         this.logMessage('system', 'Tenant Clone interface initialized');
+        this.showPage('connectionPage'); // Start with connection page
+    }
+
+    // Page Navigation System
+    showPage(pageId) {
+        // Hide all pages
+        const pages = document.querySelectorAll('.app-page');
+        pages.forEach(page => {
+            page.classList.remove('active');
+        });
+
+        // Show target page
+        const targetPage = document.getElementById(pageId);
+        if (targetPage) {
+            targetPage.classList.add('active');
+            this.currentPage = pageId;
+            this.updateBreadcrumb(pageId);
+        }
+    }
+
+    updateBreadcrumb(pageId) {
+        // Update breadcrumb navigation
+        const breadcrumbItems = document.querySelectorAll('.breadcrumb-item');
+        breadcrumbItems.forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.page === pageId) {
+                item.classList.add('active');
+            }
+        });
+    }
+
+    navigateToPage(pageId) {
+        // Navigation with validation
+        if (pageId === 'authenticationPage' && !this.validateConnectionInput()) {
+            this.showError('Please enter both source and target tenant domains before proceeding.');
+            return;
+        }
+
+        if (pageId === 'migrationPage' && (this.authStatus.source !== 'authenticated' || this.authStatus.target !== 'authenticated')) {
+            this.showError('Both tenants must be authenticated before accessing the migration dashboard.');
+            return;
+        }
+
+        this.showPage(pageId);
+
+        // Trigger specific page initialization
+        if (pageId === 'authenticationPage') {
+            this.startAuthentication();
+        } else if (pageId === 'migrationPage') {
+            this.initializeMigrationDashboard();
+        }
     }
 
     initializeSocket() {
@@ -89,7 +141,33 @@ class TenantCloneManager {
             });
         }
 
-        // Connect tenants button
+        // Page navigation buttons
+        const startSetupBtn = document.getElementById('startSetupBtn');
+        if (startSetupBtn) {
+            startSetupBtn.addEventListener('click', () => {
+                this.navigateToPage('authenticationPage');
+            });
+        }
+
+        const proceedToDashboardBtn = document.getElementById('proceedToDashboardBtn');
+        if (proceedToDashboardBtn) {
+            proceedToDashboardBtn.addEventListener('click', () => {
+                this.navigateToPage('migrationPage');
+            });
+        }
+
+        // Breadcrumb navigation
+        const breadcrumbItems = document.querySelectorAll('.breadcrumb-item[data-page]');
+        breadcrumbItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const pageId = item.dataset.page;
+                if (pageId) {
+                    this.navigateToPage(pageId);
+                }
+            });
+        });
+
+        // Connect tenants button (legacy - now handled in authentication page)
         const connectBtn = document.getElementById('connectTenantsBtn');
         if (connectBtn) {
             connectBtn.addEventListener('click', () => {
@@ -275,6 +353,157 @@ class TenantCloneManager {
         }
     }
 
+    // New page-specific methods
+    validateConnectionInput() {
+        const sourceInput = document.getElementById('sourceTenantDomain');
+        const targetInput = document.getElementById('targetTenantDomain');
+        
+        if (!sourceInput || !targetInput) return false;
+        
+        const sourceDomain = sourceInput.value.trim();
+        const targetDomain = targetInput.value.trim();
+        
+        return sourceDomain && targetDomain && 
+               sourceDomain !== targetDomain && 
+               this.isValidDomain(sourceDomain) && 
+               this.isValidDomain(targetDomain);
+    }
+
+    startAuthentication() {
+        // Get the tenant domains from the connection page
+        const sourceInput = document.getElementById('sourceTenantDomain');
+        const targetInput = document.getElementById('targetTenantDomain');
+        
+        if (!sourceInput || !targetInput) return;
+        
+        this.sourceTenant = sourceInput.value.trim();
+        this.targetTenant = targetInput.value.trim();
+        
+        // Update the authentication page with tenant info
+        this.updateAuthenticationPage();
+        
+        // Start the connection process
+        this.connectTenants();
+    }
+
+    updateAuthenticationPage() {
+        // Update source tenant info
+        const sourceTitle = document.querySelector('.tenant-status-card.source .tenant-status-title');
+        const sourceDomain = document.querySelector('.tenant-status-card.source .tenant-status-domain');
+        if (sourceTitle) sourceTitle.textContent = 'Source Tenant';
+        if (sourceDomain) sourceDomain.textContent = this.sourceTenant;
+
+        // Update target tenant info
+        const targetTitle = document.querySelector('.tenant-status-card.target .tenant-status-title');
+        const targetDomainEl = document.querySelector('.tenant-status-card.target .tenant-status-domain');
+        if (targetTitle) targetTitle.textContent = 'Target Tenant';
+        if (targetDomainEl) targetDomainEl.textContent = this.targetTenant;
+
+        // Set initial status
+        this.updateTenantAuthStatus('source', 'authenticating');
+        this.updateTenantAuthStatus('target', 'authenticating');
+    }
+
+    updateTenantAuthStatus(tenant, status) {
+        const card = document.querySelector(`.tenant-status-card.${tenant}`);
+        if (!card) return;
+
+        const icon = card.querySelector('.tenant-status-icon');
+        const message = card.querySelector('.tenant-status-message');
+
+        // Remove existing status classes
+        card.classList.remove('authenticated', 'authenticating', 'pending');
+        icon.classList.remove('authenticating');
+        message.classList.remove('authenticated', 'authenticating', 'pending');
+
+        // Add new status classes
+        card.classList.add(status);
+        message.classList.add(status);
+
+        // Update message text and icon
+        switch (status) {
+            case 'authenticated':
+                message.textContent = '✓ Successfully Authenticated';
+                icon.innerHTML = '<i class="fas fa-check"></i>';
+                break;
+            case 'authenticating':
+                message.textContent = 'Authenticating...';
+                icon.innerHTML = '<i class="fas fa-spinner"></i>';
+                icon.classList.add('authenticating');
+                break;
+            case 'pending':
+                message.textContent = 'Waiting to authenticate';
+                icon.innerHTML = '<i class="fas fa-clock"></i>';
+                break;
+            case 'error':
+                message.textContent = 'Authentication failed';
+                icon.innerHTML = '<i class="fas fa-times"></i>';
+                card.classList.add('error');
+                message.classList.add('error');
+                break;
+        }
+    }
+
+    initializeMigrationDashboard() {
+        // Update dashboard with tenant information
+        const sourcePanelDomain = document.querySelector('.tenant-panel.source .panel-domain');
+        const targetPanelDomain = document.querySelector('.tenant-panel.target .panel-domain');
+        
+        if (sourcePanelDomain) sourcePanelDomain.textContent = this.sourceTenant;
+        if (targetPanelDomain) targetPanelDomain.textContent = this.targetTenant;
+
+        // Load policies if not already loaded
+        if (this.policies.size === 0) {
+            this.loadSourcePolicies();
+        } else {
+            this.renderPolicyPanels();
+        }
+    }
+
+    renderPolicyPanels() {
+        const sourcePolicyList = document.querySelector('.tenant-panel.source .policy-list');
+        const sourceStatsValue = document.querySelector('.tenant-panel.source .stat-value');
+        
+        if (!sourcePolicyList) return;
+
+        // Clear existing policies
+        sourcePolicyList.innerHTML = '';
+
+        // Update stats
+        if (sourceStatsValue) {
+            sourceStatsValue.textContent = this.policies.size;
+        }
+
+        // Render policy items
+        this.policies.forEach((policy, policyId) => {
+            const policyItem = this.createPolicyListItem(policy, policyId);
+            sourcePolicyList.appendChild(policyItem);
+        });
+    }
+
+    createPolicyListItem(policy, policyId) {
+        const item = document.createElement('div');
+        item.className = 'policy-item';
+        item.dataset.policyId = policyId;
+
+        item.innerHTML = `
+            <div class="policy-info">
+                <div class="policy-name">${policy.displayName || policy.name || 'Unnamed Policy'}</div>
+                <div class="policy-type">${this.getPolicyTypeLabel(policy['@odata.type'])}</div>
+            </div>
+            <div class="policy-actions">
+                <button class="action-btn view" onclick="tenantClone.showPolicyDetails('${policyId}')" title="View Details">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button class="action-btn clone" onclick="tenantClone.showCloneModal('${policyId}')" title="Clone Policy">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+        `;
+
+        return item;
+    }
+
     async loadSourcePolicies() {
         console.log('🔍 loadSourcePolicies called');
         console.log('🔍 isConnected:', this.isConnected);
@@ -362,6 +591,11 @@ class TenantCloneManager {
     handleDualTenantInitialized(data) {
         console.log('Dual tenant initialized:', data);
         this.updateConnectionStatus(data.status);
+        
+        // If both tenants are already authenticated locally, ensure UI is updated
+        if (this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated') {
+            this.checkBothTenantsAuthenticated();
+        }
     }
 
     handleDualTenantStatus(data) {
@@ -401,6 +635,9 @@ class TenantCloneManager {
         this.updatePolicyCount(data.count);
         this.setButtonLoading(document.getElementById('loadPoliciesBtn'), false);
         this.logMessage('success', `Loaded ${data.count} policies from source tenant`);
+        
+        // Update the new dashboard panels
+        this.renderPolicyPanels();
     }
 
     handleSourcePoliciesError(data) {
@@ -468,13 +705,19 @@ class TenantCloneManager {
         }
         
         if (data.status === 'authenticated') {
+            this.authStatus[tenantType] = 'authenticated';
             this.updateAuthStatus(tenantType, 'success');
+            this.updateTenantAuthStatus(tenantType, 'authenticated');
             this.logMessage('success', `${tenantType} tenant (${data.tenantDomain}) authenticated successfully`);
         } else if (data.status === 'needs_authentication') {
+            this.authStatus[tenantType] = 'pending';
             this.updateAuthStatus(tenantType, 'pending');
+            this.updateTenantAuthStatus(tenantType, 'pending');
             this.logMessage('system', `${tenantType} tenant requires authentication`);
         } else if (data.status === 'authentication_error') {
+            this.authStatus[tenantType] = 'error';
             this.updateAuthStatus(tenantType, 'error');
+            this.updateTenantAuthStatus(tenantType, 'error');
             this.logMessage('error', `${tenantType} tenant authentication failed`);
         }
         
@@ -487,7 +730,11 @@ class TenantCloneManager {
         const statusIndicator = document.querySelector('.status-indicator');
         const statusText = document.querySelector('.connection-status span');
 
-        if (status.isActive && status.sourceTenant?.authenticated && status.targetTenant?.authenticated) {
+        // Check if both tenants are authenticated either via server status or local auth status
+        const bothAuthenticated = (status.isActive && status.sourceTenant?.authenticated && status.targetTenant?.authenticated) ||
+                                 (this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated');
+
+        if (bothAuthenticated) {
             statusIndicator.className = 'status-indicator connected';
             if (statusText) statusText.textContent = 'Both Tenants Connected';
             this.isConnected = true;
@@ -566,7 +813,7 @@ class TenantCloneManager {
 
     updateTenantStatus(tenantType, status) {
         // Don't override a successful authentication status
-        if (this.authStatus[tenantType] === 'success' && status === 'connecting') {
+        if ((this.authStatus[tenantType] === 'authenticated' || this.authStatus[tenantType] === 'success') && status === 'connecting') {
             console.log(`Not overriding successful auth status for ${tenantType} tenant`);
             return;
         }
@@ -609,12 +856,46 @@ class TenantCloneManager {
     }
 
     checkBothTenantsAuthenticated() {
-        if (this.authStatus.source === 'success' && this.authStatus.target === 'success') {
+        if (this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated') {
             this.isConnected = true;
+            this.logMessage('success', 'Both tenants authenticated successfully');
+            
+            // Update authentication page to show success and enable navigation
+            const proceedBtn = document.getElementById('proceedToDashboardBtn');
+            if (proceedBtn) {
+                proceedBtn.style.display = 'block';
+                proceedBtn.disabled = false;
+            }
+
+            // Update progress message
+            const progressMessage = document.querySelector('.auth-progress-message');
+            if (progressMessage) {
+                progressMessage.textContent = 'Both tenants have been successfully authenticated. You can now proceed to the migration dashboard.';
+            }
+
+            // Update progress icon
+            const progressIcon = document.querySelector('.auth-progress-icon');
+            if (progressIcon) {
+                progressIcon.innerHTML = '<i class="fas fa-check"></i>';
+                progressIcon.style.animation = 'none';
+                progressIcon.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            }
+
+            // Update connection status UI
+            const statusIndicator = document.querySelector('.status-indicator');
+            const statusText = document.querySelector('.connection-status span');
+            if (statusIndicator) {
+                statusIndicator.className = 'status-indicator connected';
+            }
+            if (statusText) {
+                statusText.textContent = 'Both Tenants Connected';
+            }
+
+            // Legacy support for old interface
             this.hideAuthProgress();
             this.showMigrationInterface();
             this.updateTenantConnectionDisplay();
-            this.logMessage('success', 'Both tenants authenticated successfully');
+            this.updateTenantCards();
         }
     }
 
@@ -1054,6 +1335,29 @@ class TenantCloneManager {
     }
 
     // Utility Methods
+    getPolicyTypeLabel(odataType) {
+        if (!odataType) return 'Unknown';
+        
+        const typeMap = {
+            '#microsoft.graph.deviceConfiguration': 'Device Configuration',
+            '#microsoft.graph.deviceCompliancePolicy': 'Device Compliance',
+            '#microsoft.graph.mobileAppManagementPolicy': 'App Management',
+            '#microsoft.graph.appProtectionPolicy': 'App Protection',
+            '#microsoft.graph.deviceEnrollmentConfiguration': 'Device Enrollment',
+            '#microsoft.graph.windowsInformationProtectionPolicy': 'WIP Policy',
+            '#microsoft.graph.managedAppPolicy': 'Managed App Policy',
+            'deviceConfigurations': 'Device Config',
+            'deviceCompliancePolicies': 'Device Compliance',
+            'mobileAppManagementPolicies': 'App Management',
+            'appProtectionPolicies': 'App Protection',
+            'deviceEnrollmentConfigurations': 'Device Enrollment',
+            'windowsInformationProtectionPolicies': 'WIP',
+            'managedAppPolicies': 'Managed Apps'
+        };
+        
+        return typeMap[odataType] || odataType.replace(/^#microsoft\.graph\./, '').replace(/([A-Z])/g, ' $1').trim();
+    }
+
     formatPolicyType(policyType) {
         const typeMap = {
             'deviceConfigurations': 'Device Config',
@@ -1345,6 +1649,7 @@ class TenantCloneManager {
 // Initialize Tenant Clone Manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.tenantCloneManager = new TenantCloneManager();
+    window.tenantClone = window.tenantCloneManager; // Shorter alias for HTML handlers
 });
 
 // Global error handler

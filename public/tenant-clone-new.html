@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICB Agent - Tenant Clone | Microsoft 365 Policy Migration</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔄</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/styles.css?v=1722191000">
+    <link rel="stylesheet" href="/css/tenant-clone.css?v=1722191002">
+    <meta name="description" content="Tenant Clone - Migrate Microsoft 365 Intune policies between tenants with drag-and-drop simplicity">
+    <meta name="theme-color" content="#022541">
+</head>
+<body class="tenant-clone-body">
+    <!-- Animated Background -->
+    <div class="animated-background">
+        <div class="bg-element"></div>
+        <div class="bg-element"></div>
+        <div class="bg-element"></div>
+        <div class="bg-element"></div>
+        <div class="bg-element"></div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="tenant-clone-app">
+        <!-- Modern Header -->
+        <header class="modern-header">
+            <div class="header-container">
+                <div class="brand-area">
+                    <img src="/images/icblogo.jpg" alt="ICB Solutions" class="brand-logo">
+                    <div class="brand-info">
+                        <h1 class="brand-title">ICB Agent</h1>
+                        <p class="brand-subtitle">Tenant Clone Manager</p>
+                    </div>
+                </div>
+                
+                <nav class="header-nav">
+                    <button class="nav-btn" id="backToMainBtn" title="Back to Dashboard">
+                        <i class="fas fa-arrow-left"></i>
+                        <span>Dashboard</span>
+                    </button>
+                    
+                    <!-- Navigation Breadcrumbs -->
+                    <div class="nav-breadcrumbs" id="navBreadcrumbs" style="display: none;">
+                        <span class="breadcrumb-item active" id="breadcrumbConnection">Connection</span>
+                        <i class="fas fa-chevron-right breadcrumb-separator"></i>
+                        <span class="breadcrumb-item" id="breadcrumbMigration">Policy Migration</span>
+                    </div>
+                    
+                    <div class="connection-status" id="connectionStatus">
+                        <div class="status-indicator" id="statusIndicator"></div>
+                        <span class="status-text" id="statusText">Ready to Connect</span>
+                    </div>
+                </nav>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Step 1: Connection Setup Page -->
+            <section class="page-section active" id="connectionPage">
+                <div class="section-container">
+                    <div class="page-header">
+                        <div class="page-icon">
+                            <i class="fas fa-plug"></i>
+                        </div>
+                        <div class="page-title">
+                            <h2>Connect Tenants</h2>
+                            <p>Enter your source and target tenant domains to begin policy migration</p>
+                        </div>
+                    </div>
+
+                    <div class="connection-setup">
+                        <div class="tenant-connection-cards">
+                            <div class="tenant-card source-card">
+                                <div class="card-header">
+                                    <div class="card-icon source-icon">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <div class="card-title">
+                                        <h3>Source Tenant</h3>
+                                        <p>Policies will be copied from here</p>
+                                    </div>
+                                    <div class="connection-badge" id="sourceConnectionBadge">
+                                        <i class="fas fa-circle"></i>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="input-group">
+                                        <label for="sourceTenantDomain">Tenant Domain</label>
+                                        <input 
+                                            type="text" 
+                                            id="sourceTenantDomain" 
+                                            placeholder="source.onmicrosoft.com"
+                                            class="modern-input"
+                                        >
+                                    </div>
+                                    <div class="connection-info" id="sourceConnectionInfo">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span>Not connected</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="connection-arrow">
+                                <div class="arrow-line"></div>
+                                <div class="arrow-head">
+                                    <i class="fas fa-arrow-right"></i>
+                                </div>
+                            </div>
+
+                            <div class="tenant-card target-card">
+                                <div class="card-header">
+                                    <div class="card-icon target-icon">
+                                        <i class="fas fa-cloud-download-alt"></i>
+                                    </div>
+                                    <div class="card-title">
+                                        <h3>Target Tenant</h3>
+                                        <p>Policies will be created here</p>
+                                    </div>
+                                    <div class="connection-badge" id="targetConnectionBadge">
+                                        <i class="fas fa-circle"></i>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="input-group">
+                                        <label for="targetTenantDomain">Tenant Domain</label>
+                                        <input 
+                                            type="text" 
+                                            id="targetTenantDomain" 
+                                            placeholder="target.onmicrosoft.com"
+                                            class="modern-input"
+                                        >
+                                    </div>
+                                    <div class="connection-info" id="targetConnectionInfo">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span>Not connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-center">
+                            <button class="primary-btn large-btn" id="connectTenantsBtn">
+                                <div class="btn-content">
+                                    <i class="fas fa-plug" id="connectBtnIcon"></i>
+                                    <span id="connectBtnText">Connect Both Tenants</span>
+                                    <div class="btn-spinner" id="connectBtnSpinner" style="display: none;">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: Authentication Progress Page -->
+            <section class="page-section" id="authenticationPage" style="display: none;">
+                <div class="section-container">
+                    <div class="page-header">
+                        <div class="page-icon">
+                            <i class="fas fa-key"></i>
+                        </div>
+                        <div class="page-title">
+                            <h2>Authenticating Tenants</h2>
+                            <p>Please complete authentication for both tenants</p>
+                        </div>
+                    </div>
+
+                    <div class="auth-progress">
+                        <div class="auth-step" id="sourceAuthStep">
+                            <div class="auth-step-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <div class="auth-step-content">
+                                <h3>Source Tenant</h3>
+                                <p class="tenant-domain" id="sourceAuthDomain">-</p>
+                                <div class="auth-status-indicator">
+                                    <div class="status-dot" id="sourceStatusDot"></div>
+                                    <span class="status-text" id="sourceStatusText">Waiting for authentication...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="auth-step" id="targetAuthStep">
+                            <div class="auth-step-icon">
+                                <i class="fas fa-cloud-download-alt"></i>
+                            </div>
+                            <div class="auth-step-content">
+                                <h3>Target Tenant</h3>
+                                <p class="tenant-domain" id="targetAuthDomain">-</p>
+                                <div class="auth-status-indicator">
+                                    <div class="status-dot" id="targetStatusDot"></div>
+                                    <span class="status-text" id="targetStatusText">Waiting for authentication...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="auth-instructions">
+                        <div class="instruction-card">
+                            <div class="instruction-icon">
+                                <i class="fas fa-info-circle"></i>
+                            </div>
+                            <div class="instruction-content">
+                                <h4>Authentication Instructions</h4>
+                                <ol>
+                                    <li>Browser windows will open automatically for each tenant</li>
+                                    <li>Sign in with administrator credentials</li>
+                                    <li>Grant the requested permissions</li>
+                                    <li>Return to this page once authentication is complete</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: Policy Migration Dashboard -->
+            <section class="page-section" id="migrationPage" style="display: none;">
+                <div class="section-container full-width">
+                    <div class="migration-header">
+                        <div class="page-icon">
+                            <i class="fas fa-exchange-alt"></i>
+                        </div>
+                        <div class="page-title">
+                            <h2>Policy Migration Dashboard</h2>
+                            <p>Manage and migrate policies between your connected tenants</p>
+                        </div>
+                        <div class="migration-actions">
+                            <button class="secondary-btn" id="refreshConnectionBtn">
+                                <i class="fas fa-sync-alt"></i>
+                                <span>Refresh Connection</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="migration-dashboard">
+                        <!-- Left Panel: Source Tenant -->
+                        <div class="tenant-panel source-panel">
+                            <div class="panel-header">
+                                <div class="panel-icon source-icon">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                </div>
+                                <div class="panel-title">
+                                    <h3>Source Tenant</h3>
+                                    <p class="tenant-domain" id="connectedSourceTenant">-</p>
+                                </div>
+                                <div class="panel-status">
+                                    <div class="status-indicator connected" id="sourceConnectionStatus">
+                                        <i class="fas fa-check"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="panel-stats">
+                                <div class="stat-item">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-file-alt"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-number" id="sourcePolicyCount">0</span>
+                                        <span class="stat-label">Policies</span>
+                                    </div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-clock"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-number" id="lastLoadTime">Never</span>
+                                        <span class="stat-label">Last Loaded</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="panel-actions">
+                                <button class="primary-btn" id="loadPoliciesBtn" style="width: 100%;">
+                                    <i class="fas fa-download"></i>
+                                    <span class="btn-text">Load Policies</span>
+                                    <div class="btn-loader" style="display: none;">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- Policy Search and Filters -->
+                            <div class="panel-filters" id="sourcePolicyFilters" style="display: none;">
+                                <div class="filter-group">
+                                    <div class="search-box">
+                                        <i class="fas fa-search"></i>
+                                        <input type="text" id="sourcePolicySearch" placeholder="Search policies...">
+                                    </div>
+                                    <select id="policyTypeFilter" class="filter-select">
+                                        <option value="all">All Policy Types</option>
+                                        <option value="deviceConfiguration">Device Configuration</option>
+                                        <option value="deviceCompliance">Device Compliance</option>
+                                        <option value="appProtection">App Protection</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Source Policies List -->
+                            <div class="policies-container" id="sourcePoliciesContainer" style="display: none;">
+                                <div class="policies-header">
+                                    <h4>Available Policies</h4>
+                                    <div class="bulk-actions">
+                                        <button class="secondary-btn small-btn" id="selectAllPoliciesBtn">
+                                            <i class="fas fa-check-square"></i>
+                                            <span>Select All</span>
+                                        </button>
+                                        <button class="primary-btn small-btn" id="bulkMigrateBtn" style="display: none;">
+                                            <i class="fas fa-arrow-right"></i>
+                                            <span>Migrate Selected</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="policies-list" id="sourcePoliciesList">
+                                    <!-- Policies will be dynamically loaded here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Target Tenant -->
+                        <div class="tenant-panel target-panel">
+                            <div class="panel-header">
+                                <div class="panel-icon target-icon">
+                                    <i class="fas fa-cloud-download-alt"></i>
+                                </div>
+                                <div class="panel-title">
+                                    <h3>Target Tenant</h3>
+                                    <p class="tenant-domain" id="connectedTargetTenant">-</p>
+                                </div>
+                                <div class="panel-status">
+                                    <div class="status-indicator connected" id="targetConnectionStatus">
+                                        <i class="fas fa-check"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="panel-stats">
+                                <div class="stat-item">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-plus-circle"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-number" id="migratedPolicyCount">0</span>
+                                        <span class="stat-label">Migrated</span>
+                                    </div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-number" id="failedMigrationCount">0</span>
+                                        <span class="stat-label">Failed</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Migration Progress -->
+                            <div class="migration-progress" id="migrationProgress" style="display: none;">
+                                <div class="progress-header">
+                                    <h4>Migration Progress</h4>
+                                    <button class="btn-link" id="clearProgressBtn">
+                                        <i class="fas fa-times"></i>
+                                        <span>Clear</span>
+                                    </button>
+                                </div>
+                                <div class="progress-list" id="migrationProgressList">
+                                    <!-- Migration progress items will be added here -->
+                                </div>
+                            </div>
+
+                            <!-- Success Message Area -->
+                            <div class="success-area" id="migrationSuccessArea" style="display: none;">
+                                <div class="success-message">
+                                    <i class="fas fa-check-circle"></i>
+                                    <p>All selected policies have been successfully migrated!</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Policy Details Modal -->
+    <div class="modal-overlay" id="policyDetailsModal" style="display: none;">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="modalPolicyTitle">Policy Details</h3>
+                <button class="modal-close" id="closeModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="policy-info-tabs">
+                    <button class="tab-btn active" data-tab="overview">Overview</button>
+                    <button class="tab-btn" data-tab="settings">Settings</button>
+                    <button class="tab-btn" data-tab="assignments">Assignments</button>
+                </div>
+                
+                <div class="tab-content active" id="policyOverviewContent">
+                    <!-- Overview content will be populated here -->
+                </div>
+                
+                <div class="tab-content" id="policySettingsContent">
+                    <!-- Settings content will be populated here -->
+                </div>
+                
+                <div class="tab-content" id="policyAssignmentsContent">
+                    <p>Assignment information not available in this version.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="secondary-btn" id="cancelPolicyModalBtn">Close</button>
+                <button class="primary-btn" id="migratePolicyFromModalBtn">
+                    <i class="fas fa-arrow-right"></i>
+                    <span>Migrate Policy</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            <h3 id="loadingTitle">Loading...</h3>
+            <p id="loadingMessage">Please wait while we process your request</p>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/tenant-clone.js?v=1722191002"></script>
+</body>
+</html>
