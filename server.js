@@ -156,7 +156,9 @@ class DualTenantManager {
     for (const policyType of policyTypes) {
       try {
         console.log(`🔍 Fetching ${policyType}...`);
-        const response = await this.sourceTenant.sendMCPRequest('tools/call', {
+        
+        // First get the list of policies (basic info)
+        const listResponse = await this.sourceTenant.sendMCPRequest('tools/call', {
           name: 'Lokka-Microsoft',
           arguments: {
             apiType: 'graph',
@@ -169,12 +171,12 @@ class DualTenantManager {
           }
         });
 
-        console.log(`📊 Response for ${policyType}:`, response ? 'Got response' : 'No response');
+        console.log(`📊 List response for ${policyType}:`, listResponse ? 'Got response' : 'No response');
         
-        if (response && response.content && response.content[0]) {
+        if (listResponse && listResponse.content && listResponse.content[0]) {
           try {
-            let responseText = response.content[0].text;
-            console.log(`📝 Raw response text for ${policyType} (first 200 chars):`, responseText.substring(0, 200));
+            let responseText = listResponse.content[0].text;
+            console.log(`📝 Raw list response for ${policyType} (first 200 chars):`, responseText.substring(0, 200));
             
             // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
             let jsonData = null;
@@ -190,17 +192,77 @@ class DualTenantManager {
               continue;
             }
             
-            if (jsonData && jsonData.value) {
-              policies.set(policyType, jsonData.value);
-              totalPoliciesFound += jsonData.value.length;
-              console.log(`✅ Found ${jsonData.value.length} ${policyType}`);
+            if (jsonData && jsonData.value && jsonData.value.length > 0) {
+              console.log(`✅ Found ${jsonData.value.length} ${policyType}, fetching full configurations...`);
+              
+              // Now fetch full configuration for each policy
+              const fullPolicies = [];
+              for (const basicPolicy of jsonData.value) {
+                try {
+                  console.log(`🔄 Fetching full config for policy: ${basicPolicy.displayName} (${basicPolicy.id})`);
+                  
+                  const fullPolicyResponse = await this.sourceTenant.sendMCPRequest('tools/call', {
+                    name: 'Lokka-Microsoft',
+                    arguments: {
+                      apiType: 'graph',
+                      graphApiVersion: 'beta',
+                      method: 'get',
+                      path: `/deviceManagement/${policyType}/${basicPolicy.id}`
+                    }
+                  });
+
+                  if (fullPolicyResponse && fullPolicyResponse.content && fullPolicyResponse.content[0]) {
+                    let fullResponseText = fullPolicyResponse.content[0].text;
+                    
+                    // Extract JSON from the full policy response
+                    const fullJsonMatch = fullResponseText.match(/\{[\s\S]*\}/);
+                    if (fullJsonMatch) {
+                      const fullPolicyData = JSON.parse(fullJsonMatch[0]);
+                      fullPolicies.push({
+                        ...fullPolicyData,
+                        policyType: policyType // Add policy type for easier handling
+                      });
+                      console.log(`✅ Full config loaded for: ${fullPolicyData.displayName}`);
+                    } else {
+                      console.log(`⚠️ Could not extract JSON from full policy response for ${basicPolicy.id}`);
+                      // Fallback to basic policy info
+                      fullPolicies.push({
+                        ...basicPolicy,
+                        policyType: policyType,
+                        configurationIncomplete: true
+                      });
+                    }
+                  } else {
+                    console.log(`⚠️ No response for full policy ${basicPolicy.id}`);
+                    // Fallback to basic policy info
+                    fullPolicies.push({
+                      ...basicPolicy,
+                      policyType: policyType,
+                      configurationIncomplete: true
+                    });
+                  }
+                } catch (fullPolicyError) {
+                  console.error(`❌ Error fetching full policy ${basicPolicy.id}:`, fullPolicyError.message);
+                  // Fallback to basic policy info
+                  fullPolicies.push({
+                    ...basicPolicy,
+                    policyType: policyType,
+                    configurationIncomplete: true
+                  });
+                }
+              }
+              
+              policies.set(policyType, fullPolicies);
+              totalPoliciesFound += fullPolicies.length;
+              console.log(`🎯 Completed loading ${fullPolicies.length} ${policyType} with full configurations`);
+              
             } else {
               console.log(`⚠️ No value array found in ${policyType} response`);
               console.log(`📋 Response structure:`, Object.keys(jsonData || {}));
             }
           } catch (parseError) {
             console.error(`❌ JSON parsing error for ${policyType}:`, parseError.message);
-            console.log(`📝 Problematic response text:`, response.content[0].text.substring(0, 300));
+            console.log(`📝 Problematic response text:`, listResponse.content[0].text.substring(0, 300));
           }
         } else {
           console.log(`⚠️ No content found in ${policyType} response`);
@@ -527,12 +589,10 @@ class DualTenantManager {
     
     for (const [policyType, policyList] of policies) {
       formatted[policyType] = policyList.map(policy => ({
-        id: policy.id,
-        displayName: policy.displayName,
-        description: policy.description,
-        createdDateTime: policy.createdDateTime,
-        lastModifiedDateTime: policy.lastModifiedDateTime,
-        policyType: policyType
+        // Include all policy data for full JSON editing capabilities
+        ...policy,
+        // Ensure consistent policyType field
+        policyType: policy.policyType || policyType
       }));
     }
 
