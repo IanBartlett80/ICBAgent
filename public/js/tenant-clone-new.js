@@ -1090,7 +1090,18 @@ class PolicyMigrationDashboard {
     }
 
     isValidDomain(domain) {
-        const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]\.([a-zA-Z]{2,}|onmicrosoft\.com)$/;
+        // Accept any valid domain format including:
+        // - standard domains like contoso.com, fabrikam.net
+        // - onmicrosoft.com domains like tenant.onmicrosoft.com
+        // - subdomains like subdomain.contoso.com
+        const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+        
+        // Basic checks
+        if (!domain || typeof domain !== 'string') return false;
+        if (domain.length > 253) return false;
+        if (domain.startsWith('.') || domain.endsWith('.')) return false;
+        if (domain.includes('..')) return false;
+        
         return domainRegex.test(domain);
     }
 
