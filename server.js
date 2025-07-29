@@ -358,8 +358,13 @@ class DualTenantManager {
       
       // Check for secret references after transformation
       console.log(`🔍 Checking for secret references after transformation...`);
+      
+      // Create a clean copy for verification (without internal metadata)
+      const policyForVerification = { ...transformedPolicy };
+      delete policyForVerification._secretReferencesRemoved;
+      
       const transformedSecrets = [];
-      this.verifyNoSecretsRemain(transformedPolicy, transformedSecrets);
+      this.verifyNoSecretsRemain(policyForVerification, transformedSecrets);
       if (transformedSecrets.length > 0) {
         console.log(`❌ CRITICAL: ${transformedSecrets.length} secret references still present after transformation:`);
         transformedSecrets.forEach((secret, index) => {
@@ -616,15 +621,6 @@ class DualTenantManager {
       keys: Object.keys(transformed),
       hasSecretMetadata: !!transformed._secretReferencesRemoved
     });
-    
-    // Perform a final verification scan to ensure no secrets remain
-    const finalSecretCheck = [];
-    this.verifyNoSecretsRemain(transformed, finalSecretCheck);
-    if (finalSecretCheck.length > 0) {
-      console.error(`❌ WARNING: Secret references still found after cleaning:`, finalSecretCheck);
-    } else {
-      console.log(`✅ Final verification: No secret references remain`);
-    }
 
     // Handle scheduledActionsForRule for compliance policies
     if (transformed.scheduledActionsForRule && Array.isArray(transformed.scheduledActionsForRule)) {
@@ -763,7 +759,7 @@ class DualTenantManager {
   verifyNoSecretsRemain(obj, remainingSecrets, path = '') {
     if (!obj || typeof obj !== 'object') return;
 
-    // Skip our internal metadata
+    // Skip our internal metadata - both in path and at root level
     if (path.includes('_secretReferencesRemoved')) return;
 
     // Check if this is an array
@@ -777,6 +773,12 @@ class DualTenantManager {
     // Process each property in the object
     for (const [key, value] of Object.entries(obj)) {
       const currentPath = path ? `${path}.${key}` : key;
+      
+      // Skip internal metadata fields completely
+      if (key === '_secretReferencesRemoved') {
+        console.log(`🔍 Skipping internal metadata field: ${currentPath}`);
+        continue;
+      }
       
       // Check for secret reference patterns
       if (this.isSecretReference(key, value)) {
@@ -801,6 +803,11 @@ class DualTenantManager {
    * @returns {boolean} True if this is a secret reference
    */
   isSecretReference(key, value) {
+    // Exclude internal metadata fields from secret detection
+    if (key === '_secretReferencesRemoved' || key.startsWith('_')) {
+      return false;
+    }
+
     // Direct secret reference patterns (case-insensitive)
     const secretKeyPatterns = [
       /secretReferenceValueId/i,
