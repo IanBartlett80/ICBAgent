@@ -1383,21 +1383,55 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
       return `👥 **No users found in ${this.tenantDomain}**`;
     }
 
-    const userList = users.slice(0, 15).map(user => {
+    // For users, a table format is much more readable than a list
+    const displayUsers = users.slice(0, 20); // Show more in table format
+    
+    let tableHtml = `<div class="data-table-container">
+<h3><span class="status-emoji">👥</span> <strong>Users in ${this.tenantDomain}</strong> (${users.length} total, showing first ${displayUsers.length})</h3>
+
+<table class="data-table">
+<thead>
+<tr>
+<th>Display Name</th>
+<th>User Principal Name</th>
+<th>Last Sign-in</th>
+<th>Licenses</th>
+<th>Enabled</th>
+</tr>
+</thead>
+<tbody>`;
+
+    displayUsers.forEach(user => {
       const lastSignIn = user.lastSignInDateTime 
         ? new Date(user.lastSignInDateTime).toLocaleDateString()
         : 'Never';
       
       const licenseCount = user.assignedLicenses ? user.assignedLicenses.length : 0;
+      const isEnabled = user.accountEnabled ? '✅' : '❌';
+      const displayName = user.displayName || 'N/A';
+      const userPrincipalName = user.userPrincipalName || 'N/A';
       
-      return `• **${user.displayName}** (${user.userPrincipalName})\n  └ Last sign-in: ${lastSignIn} | Licenses: ${licenseCount}`;
-    }).join('\n');
+      tableHtml += `
+<tr>
+<td><strong>${displayName}</strong></td>
+<td><code>${userPrincipalName}</code></td>
+<td>${lastSignIn === 'Never' ? '<em>Never</em>' : lastSignIn}</td>
+<td><span class="license-count">${licenseCount}</span></td>
+<td>${isEnabled}</td>
+</tr>`;
+    });
 
-    return `👥 **Users in ${this.tenantDomain}** (${users.length} total, showing first 15)
+    tableHtml += `
+</tbody>
+</table>`;
 
-${userList}
-
-${users.length > 15 ? `\n*...and ${users.length - 15} more users*` : ''}`;
+    if (users.length > 20) {
+      tableHtml += `<p class="table-footer"><em>...and ${users.length - 20} more users</em></p>`;
+    }
+    
+    tableHtml += `</div>`;
+    
+    return tableHtml;
   }
 
   formatLicenseResponse(licenses) {
@@ -1528,7 +1562,25 @@ ${groupList}`;
       }
     }
 
-    const deviceList = devices.slice(0, 20).map(device => {
+    // For devices, table format is much more readable
+    const displayDevices = devices.slice(0, 15); // Show fewer in table due to more columns
+    
+    let tableHtml = `<div class="data-table-container">
+<h3><span class="status-emoji">${titlePrefix}</span> <strong>${titleText} in ${this.tenantDomain}</strong> (${devices.length} total, showing first ${displayDevices.length})</h3>
+
+<table class="data-table devices-table">
+<thead>
+<tr>
+<th>Device Name</th>
+<th>OS / Version</th>
+<th>Compliance</th>
+<th>Last Sync</th>
+<th>Enrolled</th>
+</tr>
+</thead>
+<tbody>`;
+
+    displayDevices.forEach(device => {
       const lastSync = device.lastSyncDateTime 
         ? new Date(device.lastSyncDateTime).toLocaleDateString()
         : 'Never';
@@ -1538,51 +1590,50 @@ ${groupList}`;
       const compliance = device.complianceState || 'Unknown';
       const os = device.operatingSystem || 'Unknown';
       const version = device.osVersion || 'Unknown';
-      
-      // Add device-specific information for iOS devices
-      let deviceDetails = '';
-      if (os === 'iOS') {
-        const carrier = device.subscriberCarrier || 'Unknown carrier';
-        const phoneNumber = device.phoneNumber || 'No phone number';
-        const model = device.model || 'Unknown model';
-        const serialNumber = device.serialNumber || 'Unknown S/N';
-        
-        deviceDetails = `\n    📞 ${phoneNumber} | 📶 ${carrier} | 🔢 ${serialNumber.slice(-4)} | 📦 ${model}`;
-      } else if (os === 'Android') {
-        const model = device.model || 'Unknown model';
-        const manufacturer = device.manufacturer || 'Unknown manufacturer';
-        const serialNumber = device.serialNumber || 'Unknown S/N';
-        
-        deviceDetails = `\n    🏭 ${manufacturer} | 📦 ${model} | 🔢 ${serialNumber.slice(-4)}`;
-      } else if (os === 'Windows' || os === 'macOS') {
-        const serialNumber = device.serialNumber || 'Unknown S/N';
-        deviceDetails = `\n    🔢 S/N: ${serialNumber.slice(-4)}`;
-      }
+      const deviceName = device.deviceName || 'Unknown Device';
       
       // Handle grace period expiration date
       let graceInfo = '';
-      if (device.complianceGracePeriodExpirationDateTime) {
+      if (device.complianceGracePeriodExpirationDateTime && compliance === 'inGracePeriod') {
         const graceExpiry = new Date(device.complianceGracePeriodExpirationDateTime);
         const now = new Date();
         const daysLeft = Math.ceil((graceExpiry - now) / (1000 * 60 * 60 * 24));
-        
-        if (compliance === 'inGracePeriod') {
-          graceInfo = ` | Grace expires in ${daysLeft} days`;
-        }
+        graceInfo = ` (${daysLeft}d left)`;
       }
       
-      // Add compliance status emoji
-      let complianceEmoji = '';
+      // Add compliance status emoji and styling
+      let complianceCell = '';
       switch (compliance) {
-        case 'compliant': complianceEmoji = '✅'; break;
-        case 'noncompliant': complianceEmoji = '❌'; break;
-        case 'inGracePeriod': complianceEmoji = '⏳'; break;
-        case 'conflict': complianceEmoji = '⚠️'; break;
-        default: complianceEmoji = '❓'; break;
+        case 'compliant': 
+          complianceCell = `<span class="compliance-status compliant">✅ Compliant</span>`;
+          break;
+        case 'noncompliant': 
+          complianceCell = `<span class="compliance-status noncompliant">❌ Non-compliant</span>`;
+          break;
+        case 'inGracePeriod': 
+          complianceCell = `<span class="compliance-status grace-period">⏳ Grace Period${graceInfo}</span>`;
+          break;
+        case 'conflict': 
+          complianceCell = `<span class="compliance-status conflict">⚠️ Conflict</span>`;
+          break;
+        default: 
+          complianceCell = `<span class="compliance-status unknown">❓ Unknown</span>`;
+          break;
       }
       
-      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ ${complianceEmoji} Compliance: ${compliance}${graceInfo} | Last Sync: ${lastSync} | Enrolled: ${enrolled}${deviceDetails}`;
-    }).join('\n');
+      tableHtml += `
+<tr>
+<td><strong>${deviceName}</strong></td>
+<td><code>${os} ${version}</code></td>
+<td>${complianceCell}</td>
+<td>${lastSync === 'Never' ? '<em>Never</em>' : lastSync}</td>
+<td>${enrolled === 'Unknown' ? '<em>Unknown</em>' : enrolled}</td>
+</tr>`;
+    });
+
+    tableHtml += `
+</tbody>
+</table>`;
 
     // Add summary statistics
     const complianceStats = devices.reduce((stats, device) => {
@@ -1598,26 +1649,27 @@ ${groupList}`;
       return stats;
     }, {});
 
-    let statsText = '';
     if (Object.keys(complianceStats).length > 1) {
       const statsList = Object.entries(complianceStats)
         .map(([state, count]) => `${state}: ${count}`)
         .join(', ');
-      statsText = `\n\n**Compliance Summary:** ${statsList}`;
+      tableHtml += `<div class="table-summary"><strong>Compliance Summary:</strong> ${statsList}</div>`;
     }
     
     if (Object.keys(osStats).length > 1) {
       const osList = Object.entries(osStats)
         .map(([os, count]) => `${os}: ${count}`)
         .join(', ');
-      statsText += `\n**OS Breakdown:** ${osList}`;
+      tableHtml += `<div class="table-summary"><strong>OS Breakdown:</strong> ${osList}</div>`;
     }
 
-    return `${titlePrefix} **${titleText} in ${this.tenantDomain}** (${devices.length} total, showing first 20)
-
-${deviceList}
-
-${devices.length > 20 ? `\n*...and ${devices.length - 20} more devices*` : ''}${statsText}`;
+    if (devices.length > 15) {
+      tableHtml += `<p class="table-footer"><em>...and ${devices.length - 15} more devices</em></p>`;
+    }
+    
+    tableHtml += `</div>`;
+    
+    return tableHtml;
   }
 
   formatApplicationsResponse(apps) {
