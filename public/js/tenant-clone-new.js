@@ -77,6 +77,14 @@ class PolicyMigrationDashboard {
         this.socket.on('auth_status_changed', (data) => {
             this.handleAuthStatusChanged(data);
         });
+
+        this.socket.on('policy_warning', (data) => {
+            this.handlePolicyWarning(data);
+        });
+
+        this.socket.on('policy_secret_error', (data) => {
+            this.handlePolicySecretError(data);
+        });
     }
 
     bindEvents() {
@@ -224,6 +232,20 @@ class PolicyMigrationDashboard {
             });
         }
 
+        const cleanSecretsBtn = document.getElementById('cleanSecretsBtn');
+        if (cleanSecretsBtn) {
+            cleanSecretsBtn.addEventListener('click', () => {
+                this.cleanSecretReferences();
+            });
+        }
+
+        const verifyCleanBtn = document.getElementById('verifyCleanBtn');
+        if (verifyCleanBtn) {
+            verifyCleanBtn.addEventListener('click', () => {
+                this.verifyPolicyClean();
+            });
+        }
+
         // Error panel
         const closeErrorPanelBtn = document.getElementById('closeErrorPanelBtn');
         if (closeErrorPanelBtn) {
@@ -294,6 +316,28 @@ class PolicyMigrationDashboard {
             // Error dismiss button
             if (e.target.closest('.error-dismiss-btn')) {
                 const btn = e.target.closest('.error-dismiss-btn');
+                const errorId = btn.dataset.errorId;
+                if (errorId) {
+                    this.removeError(errorId);
+                }
+            }
+
+            // Custom error action button
+            if (e.target.closest('.error-action-btn')) {
+                const btn = e.target.closest('.error-action-btn');
+                const errorId = btn.dataset.errorId;
+                const actionType = btn.dataset.action;
+                if (errorId && actionType === 'custom') {
+                    const error = this.errors.get(errorId);
+                    if (error && error.actionButton && error.actionButton.action) {
+                        error.actionButton.action();
+                    }
+                }
+            }
+
+            // Task dismiss button
+            if (e.target.closest('.task-dismiss-btn')) {
+                const btn = e.target.closest('.task-dismiss-btn');
                 const errorId = btn.dataset.errorId;
                 if (errorId) {
                     this.removeError(errorId);
@@ -847,6 +891,287 @@ class PolicyMigrationDashboard {
         }
     }
 
+    cleanSecretReferences() {
+        const jsonEditor = document.getElementById('jsonEditor');
+        if (!jsonEditor) return;
+
+        try {
+            const policy = JSON.parse(jsonEditor.value);
+            const secretReferencesRemoved = [];
+            
+            this.cleanSecretReferencesFromObject(policy, secretReferencesRemoved);
+            
+            // Update the JSON editor with cleaned policy
+            jsonEditor.value = JSON.stringify(policy, null, 2);
+            
+            // Show notification about what was cleaned
+            if (secretReferencesRemoved.length > 0) {
+                this.showSecretCleaningResults(secretReferencesRemoved);
+            } else {
+                this.showInfo('No secret references found in this policy.');
+            }
+            
+        } catch (error) {
+            this.showError('Invalid JSON format: ' + error.message);
+        }
+    }
+
+    cleanSecretReferencesFromObject(obj, secretReferencesRemoved, path = '') {
+        if (!obj || typeof obj !== 'object') return;
+
+        // Check if this is an array
+        if (Array.isArray(obj)) {
+            obj.forEach((item, index) => {
+                this.cleanSecretReferencesFromObject(item, secretReferencesRemoved, `${path}[${index}]`);
+            });
+            return;
+        }
+
+        // Process each property in the object
+        const keysToDelete = [];
+        for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            
+            // Check for secret reference patterns
+            if (this.isSecretReference(key, value)) {
+                keysToDelete.push(key);
+                secretReferencesRemoved.push({
+                    path: currentPath,
+                    key: key,
+                    type: this.getSecretReferenceType(key, value),
+                    description: this.getSecretReferenceDescription(key, value)
+                });
+                continue;
+            }
+
+            // Recursively process nested objects
+            if (value && typeof value === 'object') {
+                this.cleanSecretReferencesFromObject(value, secretReferencesRemoved, currentPath);
+            }
+        }
+
+        // Remove secret reference keys
+        keysToDelete.forEach(key => {
+            delete obj[key];
+        });
+    }
+
+    isSecretReference(key, value) {
+        // Direct secret reference patterns (case-insensitive)
+        const secretKeyPatterns = [
+            /secretReferenceValueId/i,
+            /secretReference/i,
+            /secretValue/i,
+            /certificateId/i,
+            /trustedRootCertificate/i,
+            /rootCertificateId/i,
+            /encryptedPassword/i,
+            /hashedPassword/i,
+            /passwordHash/i,
+            /sharedSecret/i,
+            /privateKey/i,
+            /keyContainer/i,
+            /pfxBlobHash/i,
+            /thumbprint/i,
+            /fingerprint/i,
+            /subjectNameFormat/i,
+            /subjectAlternativeNameType/i,
+            /certificateStore/i,
+            /keyUsage/i,
+            /extendedKeyUsages/i,
+            /customSubjectAlternativeNames/i,
+            /scepServerUrl/i,
+            /certificateValidityPeriodValue/i,
+            /certificateValidityPeriodScale/i,
+            /subjectNameFormatString/i,
+            /keyStorageProvider/i,
+            /customKeyStorageProvider/i,
+            /smartCardReaderName/i,
+            /certificateAccessType/i
+        ];
+
+        // Check if key matches secret patterns
+        if (secretKeyPatterns.some(pattern => pattern.test(key))) {
+            return true;
+        }
+
+        // Additional checks for nested certificate/security objects
+        if (typeof value === 'object' && value !== null) {
+            // Check if this object has properties that indicate it's a certificate/secret object
+            const objectKeys = Object.keys(value);
+            const hasCertificateProperties = objectKeys.some(k => 
+                /certificate|secret|password|key|thumbprint|pfx|p12|der|pem/i.test(k)
+            );
+            
+            if (hasCertificateProperties && (
+                key.toLowerCase().includes('certificate') ||
+                key.toLowerCase().includes('credential') ||
+                key.toLowerCase().includes('auth') ||
+                key.toLowerCase().includes('security')
+            )) {
+                return true;
+            }
+        }
+
+        // Check for GUID-like values that might be secret references
+        if (typeof value === 'string' && key.toLowerCase().includes('id')) {
+            const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (guidPattern.test(value) && (
+                key.toLowerCase().includes('certificate') ||
+                key.toLowerCase().includes('secret') ||
+                key.toLowerCase().includes('key') ||
+                key.toLowerCase().includes('credential') ||
+                key.toLowerCase().includes('thumbprint') ||
+                key.toLowerCase().includes('reference')
+            )) {
+                return true;
+            }
+        }
+
+        // Check for certificate/key data patterns
+        if (typeof value === 'string') {
+            const secretValuePatterns = [
+                /^[A-Za-z0-9+/]{100,}={0,2}$/, // Base64 encoded data (likely certificates/keys)
+                /BEGIN (CERTIFICATE|PRIVATE KEY|PUBLIC KEY|RSA PRIVATE KEY|ENCRYPTED PRIVATE KEY)/i,
+                /END (CERTIFICATE|PRIVATE KEY|PUBLIC KEY|RSA PRIVATE KEY|ENCRYPTED PRIVATE KEY)/i,
+                /^[A-Fa-f0-9]{40,}$/, // Long hex strings (thumbprints, hashes)
+                /^MIIE[A-Za-z0-9+/]/, // Common certificate prefix
+                /^MII[A-Za-z0-9+/]{100,}/ // Generic certificate/key pattern
+            ];
+            
+            if (secretValuePatterns.some(pattern => pattern.test(value))) {
+                return true;
+            }
+        }
+
+        // Check for URL patterns that might contain secrets
+        if (typeof value === 'string' && value.startsWith('http') && (
+            key.toLowerCase().includes('secret') ||
+            key.toLowerCase().includes('key') ||
+            key.toLowerCase().includes('certificate') ||
+            key.toLowerCase().includes('scep') ||
+            key.toLowerCase().includes('ca')
+        )) {
+            return true;
+        }
+
+        return false;
+    }
+
+    getSecretReferenceType(key, value) {
+        if (key.toLowerCase().includes('certificate')) return 'certificate';
+        if (key.toLowerCase().includes('password')) return 'password';
+        if (key.toLowerCase().includes('secret')) return 'shared_secret';
+        if (key.toLowerCase().includes('key')) return 'encryption_key';
+        if (key.toLowerCase().includes('credential')) return 'credential';
+        return 'unknown_secret';
+    }
+
+    getSecretReferenceDescription(key, value) {
+        const type = this.getSecretReferenceType(key, value);
+        
+        switch (type) {
+            case 'certificate':
+                return 'Certificate reference - upload certificate in target tenant';
+            case 'password':
+                return 'Password/credential - configure authentication in target tenant';
+            case 'shared_secret':
+                return 'Shared secret - configure secret value in target tenant';
+            case 'encryption_key':
+                return 'Encryption key - configure key settings in target tenant';
+            case 'credential':
+                return 'Authentication credential - configure authentication in target tenant';
+            default:
+                return 'Secret reference - manual configuration required in target tenant';
+        }
+    }
+
+    showSecretCleaningResults(secretReferencesRemoved) {
+        const count = secretReferencesRemoved.length;
+        let message = `🔐 Removed ${count} secret reference${count === 1 ? '' : 's'} from policy JSON:\n\n`;
+        
+        secretReferencesRemoved.forEach((ref, index) => {
+            message += `${index + 1}. ${ref.key} (${ref.type})\n   📝 ${ref.description}\n\n`;
+        });
+
+        message += `✅ Policy is now ready for migration. You'll need to manually configure these secrets in the target tenant after migration.`;
+        
+        // Show in a more user-friendly way
+        this.showInfo(message);
+    }
+
+    verifyPolicyClean() {
+        const jsonEditor = document.getElementById('jsonEditor');
+        if (!jsonEditor) return;
+
+        try {
+            const policy = JSON.parse(jsonEditor.value);
+            const remainingSecrets = [];
+            
+            this.verifyNoSecretsRemain(policy, remainingSecrets);
+            
+            if (remainingSecrets.length > 0) {
+                let message = `⚠️ Found ${remainingSecrets.length} potential secret reference${remainingSecrets.length === 1 ? '' : 's'} still in the policy:\n\n`;
+                
+                remainingSecrets.forEach((ref, index) => {
+                    message += `${index + 1}. ${ref.path} = ${ref.key}\n`;
+                    if (ref.value) {
+                        message += `   Value: ${ref.value}\n`;
+                    }
+                    message += '\n';
+                });
+                
+                message += `❌ This policy may still fail migration. Consider running "Clean Secrets" or manually removing these references.`;
+                this.showInfo(message);
+            } else {
+                this.showInfo(`✅ No secret references detected in this policy. It should migrate successfully!`);
+            }
+            
+        } catch (error) {
+            this.showError('Invalid JSON format: ' + error.message);
+        }
+    }
+
+    verifyNoSecretsRemain(obj, remainingSecrets, path = '') {
+        if (!obj || typeof obj !== 'object') return;
+
+        // Check if this is an array
+        if (Array.isArray(obj)) {
+            obj.forEach((item, index) => {
+                this.verifyNoSecretsRemain(item, remainingSecrets, `${path}[${index}]`);
+            });
+            return;
+        }
+
+        // Process each property in the object
+        for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            
+            // Check for secret reference patterns
+            if (this.isSecretReference(key, value)) {
+                remainingSecrets.push({
+                    path: currentPath,
+                    key: key,
+                    value: typeof value === 'string' && value.length > 100 ? `${value.substring(0, 50)}...` : value
+                });
+            }
+
+            // Recursively process nested objects
+            if (value && typeof value === 'object') {
+                this.verifyNoSecretsRemain(value, remainingSecrets, currentPath);
+            }
+        }
+    }
+
+    showInfo(message) {
+        // Create a temporary notification or use existing error system with info styling
+        console.log('INFO:', message);
+        
+        // You could implement a toast notification system here
+        // For now, we'll use a simple alert
+        alert(message);
+    }
+
     // ===== ERROR MANAGEMENT =====
     showErrorPanel() {
         const errorPanel = document.getElementById('errorPanel');
@@ -886,23 +1211,70 @@ class PolicyMigrationDashboard {
         
         this.errors.forEach((error, errorId) => {
             const errorItem = document.createElement('div');
-            errorItem.className = 'error-item';
-            errorItem.innerHTML = `
-                <div class="error-summary">
-                    <strong>${error.title}</strong>
-                    <span class="error-time">${new Date(error.timestamp).toLocaleTimeString()}</span>
-                </div>
-                <div class="error-details">${error.message}</div>
-                <div class="error-technical">${error.technical || ''}</div>
-                <div class="error-actions">
-                    <button class="error-retry-btn" data-error-id="${errorId}">
-                        <i class="fas fa-redo"></i> Retry
-                    </button>
+            
+            // Apply different styling for post-migration tasks vs actual errors
+            if (error.isTask) {
+                errorItem.className = 'error-item task-item';
+                errorItem.innerHTML = `
+                    <div class="task-summary">
+                        <i class="fas fa-clipboard-check task-icon"></i>
+                        <strong>${error.title}</strong>
+                        <span class="task-time">${new Date(error.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="task-details">${error.message.replace(/\n/g, '<br>')}</div>
+                    <div class="task-actions">
+                        <button class="task-dismiss-btn" data-error-id="${errorId}">
+                            <i class="fas fa-check"></i> Mark as Complete
+                        </button>
+                    </div>
+                `;
+            } else {
+                errorItem.className = 'error-item';
+                
+                // Determine error type styling
+                const errorTypeClass = error.type === 'warning' ? 'warning-item' : '';
+                if (errorTypeClass) {
+                    errorItem.className += ` ${errorTypeClass}`;
+                }
+                
+                // Build error HTML
+                let actionsHTML = '';
+                
+                if (error.actionButton) {
+                    actionsHTML += `
+                        <button class="error-action-btn" data-error-id="${errorId}" data-action="custom">
+                            <i class="fas fa-tools"></i> ${error.actionButton.text}
+                        </button>
+                    `;
+                }
+                
+                if (error.retryAction) {
+                    actionsHTML += `
+                        <button class="error-retry-btn" data-error-id="${errorId}">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                    `;
+                }
+                
+                actionsHTML += `
                     <button class="error-dismiss-btn" data-error-id="${errorId}">
                         <i class="fas fa-times"></i> Dismiss
                     </button>
-                </div>
-            `;
+                `;
+                
+                errorItem.innerHTML = `
+                    <div class="error-summary">
+                        <strong>${error.title}</strong>
+                        <span class="error-time">${new Date(error.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="error-details">${error.message}</div>
+                    <div class="error-technical">${error.technical || ''}</div>
+                    ${error.solution ? `<div class="error-solution"><strong>Solution:</strong> ${error.solution}</div>` : ''}
+                    <div class="error-actions">
+                        ${actionsHTML}
+                    </div>
+                `;
+            }
             errorContent.appendChild(errorItem);
         });
 
@@ -1038,9 +1410,59 @@ class PolicyMigrationDashboard {
 
     handlePolicyCloned(data) {
         console.log('Policy cloned successfully:', data);
+        
+        // Basic success handling
         this.logMessage('success', `Successfully cloned: ${data.policyName}`);
-        this.updatePolicyStatus(data.policyId, 'success');
+        this.updatePolicyStatus(data.sourcePolicyId, 'success');
+        
+        // Handle secret references if any were removed
+        if (data.secretReferencesRemoved && data.secretReferencesRemoved.length > 0) {
+            this.handleSecretReferencesRemoved(data);
+        }
+        
         this.updatePolicyStats();
+    }
+
+    handleSecretReferencesRemoved(data) {
+        const count = data.secretReferencesRemoved.length;
+        const policyName = data.policyName;
+        
+        // Log informational message about secret references
+        this.logMessage('warning', `⚠️ ${policyName}: ${count} secret reference${count === 1 ? '' : 's'} removed - manual configuration required`);
+        
+        // Create detailed guidance message
+        let guidanceMessage = `🔐 Policy "${policyName}" was migrated successfully, but ${count} secret reference${count === 1 ? ' was' : 's were'} automatically removed:\n\n`;
+        
+        data.secretReferencesRemoved.forEach((ref, index) => {
+            guidanceMessage += `${index + 1}. ${ref.key} (${ref.type})\n   📝 ${ref.description}\n\n`;
+        });
+        
+        guidanceMessage += `✅ Next Steps:\n`;
+        guidanceMessage += `1. Go to your target tenant's Intune portal\n`;
+        guidanceMessage += `2. Find the migrated policy: "${policyName}"\n`;
+        guidanceMessage += `3. Configure the secret values listed above\n`;
+        guidanceMessage += `4. Save and assign the policy as needed`;
+        
+        // Add to a special section for post-migration tasks
+        this.addPostMigrationTask(data.sourcePolicyId, {
+            title: `Configure Secrets for "${policyName}"`,
+            message: guidanceMessage,
+            policyId: data.targetPolicyId,
+            secretReferences: data.secretReferencesRemoved,
+            timestamp: Date.now()
+        });
+        
+        console.log('Secret references removed:', data.secretReferencesRemoved);
+    }
+
+    addPostMigrationTask(policyId, task) {
+        // For now, we'll add it to the error panel but with a different styling
+        // In a full implementation, you might want a separate "Post-Migration Tasks" panel
+        this.addError(policyId, {
+            ...task,
+            type: 'post-migration-task',
+            isTask: true
+        });
     }
 
     handlePolicyCloneFailed(data) {
@@ -1058,6 +1480,49 @@ class PolicyMigrationDashboard {
                 const policy = this.policies.get(data.policyId);
                 if (policy) {
                     this.clonePolicy(data.policyId, policy.policyType);
+                }
+            }
+        });
+    }
+
+    handlePolicyWarning(data) {
+        console.warn('Policy warning:', data);
+        this.logMessage('warning', `Policy warning: ${data.message}`);
+        
+        // Show warning in error panel
+        this.addError('policy-warning', {
+            title: 'Policy Contains Secret References',
+            message: data.message,
+            technical: `Found ${data.details?.length || 0} secret references that need to be cleaned.`,
+            timestamp: Date.now(),
+            type: 'warning'
+        });
+    }
+
+    handlePolicySecretError(data) {
+        console.error('Policy secret reference error:', data);
+        this.logMessage('error', `Secret reference error: ${data.message}`);
+        
+        // Show detailed secret error in error panel
+        this.addError('secret-reference-error', {
+            title: 'Secret Reference Error',
+            message: data.message,
+            technical: `Graph API Error: ${data.error}`,
+            solution: data.solution,
+            timestamp: Date.now(),
+            type: 'error',
+            actionButton: {
+                text: 'Clean Secrets',
+                action: () => {
+                    const cleanBtn = document.getElementById('cleanSecretsBtn');
+                    if (cleanBtn) {
+                        cleanBtn.click();
+                        // Scroll to JSON editor
+                        const jsonContainer = document.getElementById('jsonContainer');
+                        if (jsonContainer) {
+                            jsonContainer.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    }
                 }
             }
         });

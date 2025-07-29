@@ -946,6 +946,18 @@ body::after {
   transform: translateY(-1px);
 }
 
+.tool-btn.warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(254, 243, 199, 0.8);
+  color: var(--warning);
+}
+
+.tool-btn.warning:hover {
+  border-color: var(--warning);
+  background: rgba(254, 243, 199, 1);
+  color: #d97706;
+}
+
 .panel-footer {
   padding: var(--spacing-4) var(--spacing-6);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -1222,4 +1234,175 @@ body::after {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* Error Panel Content Styles */
+.error-item, .task-item {
+  padding: var(--spacing-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-3);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+}
+
+.error-item {
+  border-left: 4px solid var(--error);
+}
+
+.task-item {
+  border-left: 4px solid var(--warning);
+  background: rgba(254, 243, 199, 0.3);
+}
+
+.error-summary, .task-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-2);
+  font-weight: 600;
+}
+
+.task-summary {
+  color: var(--warning);
+}
+
+.task-icon {
+  margin-right: var(--spacing-2);
+  color: var(--warning);
+}
+
+.error-time, .task-time {
+  font-size: var(--font-size-sm);
+  color: var(--gray-500);
+  font-weight: 400;
+}
+
+.error-details, .task-details {
+  margin-bottom: var(--spacing-3);
+  line-height: 1.5;
+  color: var(--gray-700);
+  white-space: pre-line;
+}
+
+.error-technical {
+  margin-bottom: var(--spacing-3);
+  font-family: monospace;
+  font-size: var(--font-size-sm);
+  background: rgba(0, 0, 0, 0.05);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-sm);
+  color: var(--gray-600);
+}
+
+.error-actions, .task-actions {
+  display: flex;
+  gap: var(--spacing-2);
+  justify-content: flex-end;
+}
+
+.error-retry-btn, .error-dismiss-btn, .task-dismiss-btn {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--gray-600);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--animation-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.error-retry-btn:hover {
+  background: var(--primary-50);
+  color: var(--primary-600);
+  border-color: var(--primary-200);
+}
+
+.error-dismiss-btn:hover {
+  background: var(--gray-50);
+  color: var(--gray-700);
+  border-color: var(--gray-200);
+}
+
+.task-dismiss-btn:hover {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.task-dismiss-btn:active,
+.error-retry-btn:active,
+.error-dismiss-btn:active {
+  transform: translateY(1px);
+}
+
+/* Warning Error Items */
+.error-item.warning-item {
+  border-left: 4px solid var(--warning);
+  background: rgba(254, 243, 199, 0.3);
+}
+
+.warning-item .error-summary {
+  color: var(--warning);
+}
+
+/* Error Solution Section */
+.error-solution {
+  margin-bottom: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--gray-700);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.error-solution strong {
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* Custom Action Button */
+.error-action-btn {
+  padding: var(--spacing-2) var(--spacing-4);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-md);
+  background: var(--success);
+  color: white;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--animation-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.error-action-btn:hover {
+  background: rgba(16, 185, 129, 0.9);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.error-action-btn:active {
+  transform: translateY(0);
+}
+
+/* Enhanced Error Retry Button */
+.error-retry-btn {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--gray-600);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--animation-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
 }

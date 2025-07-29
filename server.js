@@ -338,7 +338,47 @@ class DualTenantManager {
       this.migrations.get(migrationId).status = 'transforming';
       
       // Step 2: Transform policy for target tenant
+      console.log(`🔧 Starting policy transformation...`);
+      console.log(`🔍 Original policy keys: ${Object.keys(policyData).join(', ')}`);
+      
+      // Check for secret references before transformation
+      console.log(`🔍 Checking for secret references in original policy...`);
+      const originalSecrets = [];
+      this.verifyNoSecretsRemain(policyData, originalSecrets);
+      if (originalSecrets.length > 0) {
+        console.log(`⚠️  Found ${originalSecrets.length} secret references in original policy:`);
+        originalSecrets.forEach((secret, index) => {
+          console.log(`   ${index + 1}. ${secret.path}: ${secret.key} = ${typeof secret.value === 'string' ? secret.value.substring(0, 50) + '...' : secret.value}`);
+        });
+      } else {
+        console.log(`✅ No secret references found in original policy`);
+      }
+      
       const transformedPolicy = this.transformPolicyForTarget(policyData, customizations);
+      
+      // Check for secret references after transformation
+      console.log(`🔍 Checking for secret references after transformation...`);
+      const transformedSecrets = [];
+      this.verifyNoSecretsRemain(transformedPolicy, transformedSecrets);
+      if (transformedSecrets.length > 0) {
+        console.log(`❌ CRITICAL: ${transformedSecrets.length} secret references still present after transformation:`);
+        transformedSecrets.forEach((secret, index) => {
+          console.log(`   ${index + 1}. ${secret.path}: ${secret.key} = ${typeof secret.value === 'string' ? secret.value.substring(0, 50) + '...' : secret.value}`);
+        });
+        
+        // Emit warning to client
+        this.io.to(this.sessionId).emit('policy_warning', {
+          message: `Policy contains ${transformedSecrets.length} secret references that must be cleaned before migration.`,
+          details: transformedSecrets
+        });
+        
+        throw new Error(`Policy contains secret references. Please use "Clean Secrets" button first.`);
+      } else {
+        console.log(`✅ No secret references found after transformation - ready for migration`);
+      }
+      
+      console.log(`🔍 Transformed policy keys: ${Object.keys(transformedPolicy).join(', ')}`);
+      console.log(`✅ Policy transformation completed successfully`);
       
       this.migrations.get(migrationId).status = 'creating';
       
@@ -361,6 +401,23 @@ class DualTenantManager {
         });
       } catch (error) {
         console.error(`❌ Request error during policy creation:`, error.message);
+        
+        // Enhanced secret reference error detection
+        if (error.message && error.message.toLowerCase().includes('secretreferencevalueid')) {
+          console.error(`🔐 SECRETREFERENCEVALUEID ERROR DETECTED!`);
+          console.error(`The policy still contains secret references that Microsoft Graph rejected.`);
+          console.error(`This typically means the cleaning process missed some secret references.`);
+          
+          // Emit specific secret error to client
+          this.io.to(this.sessionId).emit('policy_secret_error', {
+            message: 'Policy contains secret references that were not properly cleaned',
+            error: error.message,
+            solution: 'Use the "Clean Secrets" button and verify the policy is clean before migration'
+          });
+          
+          throw new Error(`SECRET_REFERENCE_ERROR: Policy contains secret references. Please clean the policy first using the "Clean Secrets" button.`);
+        }
+        
         // Check if this is a permission error
         if (this.isPermissionError(error.message)) {
           console.log('🔐 Permission error detected, requesting additional permissions...');
@@ -439,15 +496,29 @@ class DualTenantManager {
         sourcePolicyId: policyId,
         targetPolicyId: createdPolicy.id,
         policyType,
-        policyName: createdPolicy.displayName
+        policyName: createdPolicy.displayName,
+        secretReferencesRemoved: transformedPolicy._secretReferencesRemoved || []
       });
 
-      return {
+      // Prepare success response
+      const successResponse = {
         success: true,
         migrationId,
         targetPolicyId: createdPolicy.id,
         message: `Successfully cloned policy "${createdPolicy.displayName}" to target tenant`
       };
+
+      // Add secret references information if any were removed
+      if (transformedPolicy._secretReferencesRemoved && transformedPolicy._secretReferencesRemoved.length > 0) {
+        successResponse.secretReferencesRemoved = transformedPolicy._secretReferencesRemoved;
+        successResponse.requiresManualConfiguration = true;
+        successResponse.message += ` (${transformedPolicy._secretReferencesRemoved.length} secret reference${transformedPolicy._secretReferencesRemoved.length === 1 ? '' : 's'} removed - manual configuration required)`;
+      }
+
+      // Clean up the metadata before returning
+      delete transformedPolicy._secretReferencesRemoved;
+
+      return successResponse;
 
     } catch (error) {
       console.error(`Error cloning policy ${policyId}:`, error);
@@ -518,7 +589,43 @@ class DualTenantManager {
     delete transformed['@odata.etag'];
     delete transformed['@odata.editLink'];
     delete transformed['@odata.nextLink'];
+
+    // Track secret references for IT pro guidance
+    const secretReferencesRemoved = [];
     
+    // Log the original policy structure for debugging
+    console.log(`🔍 Original policy keys:`, Object.keys(transformed));
+    console.log(`🔍 Policy displayName:`, transformed.displayName);
+    
+    // Clean secret references recursively
+    this.cleanSecretReferences(transformed, secretReferencesRemoved);
+    
+    // Log secret references that were removed for IT pro guidance
+    if (secretReferencesRemoved.length > 0) {
+      console.log(`🔐 Secret references removed from policy (will need manual configuration):`, secretReferencesRemoved);
+      
+      // Store in metadata for client notification
+      transformed._secretReferencesRemoved = secretReferencesRemoved;
+    } else {
+      console.log(`✅ No secret references found in policy`);
+    }
+    
+    // After cleaning, log the policy again to verify
+    console.log(`🧹 Policy after secret cleaning:`, {
+      displayName: transformed.displayName,
+      keys: Object.keys(transformed),
+      hasSecretMetadata: !!transformed._secretReferencesRemoved
+    });
+    
+    // Perform a final verification scan to ensure no secrets remain
+    const finalSecretCheck = [];
+    this.verifyNoSecretsRemain(transformed, finalSecretCheck);
+    if (finalSecretCheck.length > 0) {
+      console.error(`❌ WARNING: Secret references still found after cleaning:`, finalSecretCheck);
+    } else {
+      console.log(`✅ Final verification: No secret references remain`);
+    }
+
     // Handle scheduledActionsForRule for compliance policies
     if (transformed.scheduledActionsForRule && Array.isArray(transformed.scheduledActionsForRule)) {
       // Clean up scheduled actions by removing read-only properties but preserving structure
@@ -597,6 +704,242 @@ class DualTenantManager {
     });
 
     return transformed;
+  }
+
+  /**
+   * Recursively clean secret references from policy objects
+   * @param {Object} obj - The object to clean
+   * @param {Array} secretReferencesRemoved - Array to track removed secret references
+   * @param {string} path - Current path in the object (for logging)
+   */
+  cleanSecretReferences(obj, secretReferencesRemoved, path = '') {
+    if (!obj || typeof obj !== 'object') return;
+
+    // Check if this is an array
+    if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        this.cleanSecretReferences(item, secretReferencesRemoved, `${path}[${index}]`);
+      });
+      return;
+    }
+
+    // Process each property in the object
+    const keysToDelete = [];
+    for (const [key, value] of Object.entries(obj)) {
+      const currentPath = path ? `${path}.${key}` : key;
+      
+      // Check for secret reference patterns
+      if (this.isSecretReference(key, value)) {
+        keysToDelete.push(key);
+        secretReferencesRemoved.push({
+          path: currentPath,
+          key: key,
+          type: this.getSecretReferenceType(key, value),
+          description: this.getSecretReferenceDescription(key, value),
+          originalValue: typeof value === 'string' && value.length > 100 ? `${value.substring(0, 50)}...` : value
+        });
+        console.log(`🔐 Removing secret reference: ${currentPath} = ${key}`);
+        continue;
+      }
+
+      // Recursively process nested objects
+      if (value && typeof value === 'object') {
+        this.cleanSecretReferences(value, secretReferencesRemoved, currentPath);
+      }
+    }
+
+    // Remove secret reference keys
+    keysToDelete.forEach(key => {
+      delete obj[key];
+    });
+  }
+
+  /**
+   * Verify that no secret references remain in the policy (final check)
+   * @param {Object} obj - The object to verify
+   * @param {Array} remainingSecrets - Array to track any remaining secrets
+   * @param {string} path - Current path in the object
+   */
+  verifyNoSecretsRemain(obj, remainingSecrets, path = '') {
+    if (!obj || typeof obj !== 'object') return;
+
+    // Skip our internal metadata
+    if (path.includes('_secretReferencesRemoved')) return;
+
+    // Check if this is an array
+    if (Array.isArray(obj)) {
+      obj.forEach((item, index) => {
+        this.verifyNoSecretsRemain(item, remainingSecrets, `${path}[${index}]`);
+      });
+      return;
+    }
+
+    // Process each property in the object
+    for (const [key, value] of Object.entries(obj)) {
+      const currentPath = path ? `${path}.${key}` : key;
+      
+      // Check for secret reference patterns
+      if (this.isSecretReference(key, value)) {
+        remainingSecrets.push({
+          path: currentPath,
+          key: key,
+          value: typeof value === 'string' && value.length > 100 ? `${value.substring(0, 50)}...` : value
+        });
+      }
+
+      // Recursively process nested objects
+      if (value && typeof value === 'object') {
+        this.verifyNoSecretsRemain(value, remainingSecrets, currentPath);
+      }
+    }
+  }
+
+  /**
+   * Check if a key-value pair represents a secret reference
+   * @param {string} key - The property key
+   * @param {*} value - The property value
+   * @returns {boolean} True if this is a secret reference
+   */
+  isSecretReference(key, value) {
+    // Direct secret reference patterns (case-insensitive)
+    const secretKeyPatterns = [
+      /secretReferenceValueId/i,
+      /secretReference/i,
+      /secretValue/i,
+      /certificateId/i,
+      /trustedRootCertificate/i,
+      /rootCertificateId/i,
+      /encryptedPassword/i,
+      /hashedPassword/i,
+      /passwordHash/i,
+      /sharedSecret/i,
+      /privateKey/i,
+      /keyContainer/i,
+      /pfxBlobHash/i,
+      /thumbprint/i,
+      /fingerprint/i,
+      /subjectNameFormat/i,
+      /subjectAlternativeNameType/i,
+      /certificateStore/i,
+      /keyUsage/i,
+      /extendedKeyUsages/i,
+      /customSubjectAlternativeNames/i,
+      /scepServerUrl/i,
+      /certificateValidityPeriodValue/i,
+      /certificateValidityPeriodScale/i,
+      /subjectNameFormatString/i,
+      /keyStorageProvider/i,
+      /customKeyStorageProvider/i,
+      /smartCardReaderName/i,
+      /certificateAccessType/i
+    ];
+
+    // Check if key matches secret patterns
+    if (secretKeyPatterns.some(pattern => pattern.test(key))) {
+      return true;
+    }
+
+    // Additional checks for nested certificate/security objects
+    if (typeof value === 'object' && value !== null) {
+      // Check if this object has properties that indicate it's a certificate/secret object
+      const objectKeys = Object.keys(value);
+      const hasCertificateProperties = objectKeys.some(k => 
+        /certificate|secret|password|key|thumbprint|pfx|p12|der|pem/i.test(k)
+      );
+      
+      if (hasCertificateProperties && (
+        key.toLowerCase().includes('certificate') ||
+        key.toLowerCase().includes('credential') ||
+        key.toLowerCase().includes('auth') ||
+        key.toLowerCase().includes('security')
+      )) {
+        return true;
+      }
+    }
+
+    // Check for GUID-like values that might be secret references
+    if (typeof value === 'string' && key.toLowerCase().includes('id')) {
+      const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (guidPattern.test(value) && (
+        key.toLowerCase().includes('certificate') ||
+        key.toLowerCase().includes('secret') ||
+        key.toLowerCase().includes('key') ||
+        key.toLowerCase().includes('credential') ||
+        key.toLowerCase().includes('thumbprint') ||
+        key.toLowerCase().includes('reference')
+      )) {
+        return true;
+      }
+    }
+
+    // Check for certificate/key data patterns
+    if (typeof value === 'string') {
+      const secretValuePatterns = [
+        /^[A-Za-z0-9+/]{100,}={0,2}$/, // Base64 encoded data (likely certificates/keys)
+        /BEGIN (CERTIFICATE|PRIVATE KEY|PUBLIC KEY|RSA PRIVATE KEY|ENCRYPTED PRIVATE KEY)/i,
+        /END (CERTIFICATE|PRIVATE KEY|PUBLIC KEY|RSA PRIVATE KEY|ENCRYPTED PRIVATE KEY)/i,
+        /^[A-Fa-f0-9]{40,}$/, // Long hex strings (thumbprints, hashes)
+        /^MIIE[A-Za-z0-9+/]/, // Common certificate prefix
+        /^MII[A-Za-z0-9+/]{100,}/ // Generic certificate/key pattern
+      ];
+      
+      if (secretValuePatterns.some(pattern => pattern.test(value))) {
+        return true;
+      }
+    }
+
+    // Check for URL patterns that might contain secrets
+    if (typeof value === 'string' && value.startsWith('http') && (
+      key.toLowerCase().includes('secret') ||
+      key.toLowerCase().includes('key') ||
+      key.toLowerCase().includes('certificate') ||
+      key.toLowerCase().includes('scep') ||
+      key.toLowerCase().includes('ca')
+    )) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Get the type of secret reference for categorization
+   * @param {string} key - The property key
+   * @param {*} value - The property value
+   * @returns {string} The secret reference type
+   */
+  getSecretReferenceType(key, value) {
+    if (key.toLowerCase().includes('certificate')) return 'certificate';
+    if (key.toLowerCase().includes('password')) return 'password';
+    if (key.toLowerCase().includes('secret')) return 'shared_secret';
+    if (key.toLowerCase().includes('key')) return 'encryption_key';
+    if (key.toLowerCase().includes('credential')) return 'credential';
+    return 'unknown_secret';
+  }
+
+  /**
+   * Get a human-readable description for the secret reference
+   * @param {string} key - The property key
+   * @param {*} value - The property value
+   * @returns {string} Human-readable description
+   */
+  getSecretReferenceDescription(key, value) {
+    const type = this.getSecretReferenceType(key, value);
+    
+    switch (type) {
+      case 'certificate':
+        return 'Certificate reference - upload certificate in target tenant';
+      case 'password':
+        return 'Password/credential - configure authentication in target tenant';
+      case 'shared_secret':
+        return 'Shared secret - configure secret value in target tenant';
+      case 'encryption_key':
+        return 'Encryption key - configure key settings in target tenant';
+      case 'credential':
+        return 'Authentication credential - configure authentication in target tenant';
+      default:
+        return 'Secret reference - manual configuration required in target tenant';
+    }
   }
 
   // Helper method to detect permission errors
