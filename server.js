@@ -770,8 +770,9 @@ Once connected and authenticated, I'll be able to help you with:
 
     const toolName = lokkaTool.name;
 
-    // Map user intent to Lokka MCP tool calls - ALL USING v1.0 endpoints
-    if (lowerMessage.includes('users') || lowerMessage.includes('list users')) {
+    // Enhanced user query analysis with specific filtering
+    if (lowerMessage.includes('users') || lowerMessage.includes('list users') || lowerMessage.includes('user')) {
+      const userQueryParams = this.buildUserQueryParams(message, lowerMessage);
       toolCalls.push({
         name: toolName,
         arguments: {
@@ -779,9 +780,7 @@ Once connected and authenticated, I'll be able to help you with:
           graphApiVersion: 'v1.0',
           method: 'get',
           path: '/users',
-          queryParams: {
-            '$select': 'displayName,userPrincipalName,assignedLicenses,createdDateTime,signInActivity'
-          }
+          queryParams: userQueryParams
         }
       });
     }
@@ -871,44 +870,14 @@ Once connected and authenticated, I'll be able to help you with:
       });
     }
 
-    // Enhanced device queries with essential fields only
+    // Enhanced device queries with specific device name filtering and "show all" support
     if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices') || 
         lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad') ||
         lowerMessage.includes('android') || lowerMessage.includes('windows') || lowerMessage.includes('macos')) {
-      let queryParams = {
-        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,userDisplayName,emailAddress,model,manufacturer,serialNumber'
-      };
-
-      let filterConditions = [];
-
-      // Check for specific OS-related queries  
-      if (lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad')) {
-        filterConditions.push("operatingSystem eq 'iOS'");
-      } else if (lowerMessage.includes('android')) {
-        filterConditions.push("operatingSystem eq 'Android'");  
-      } else if (lowerMessage.includes('windows')) {
-        filterConditions.push("operatingSystem eq 'Windows'");
-      } else if (lowerMessage.includes('macos')) {
-        filterConditions.push("operatingSystem eq 'macOS'");
-      }
-
-      // Check for specific compliance-related queries
-      if (lowerMessage.includes('grace period') || lowerMessage.includes('compliance grace')) {
-        // Filter for devices in grace period (complianceState = 'inGracePeriod')
-        filterConditions.push("complianceState eq 'inGracePeriod'");
-      } else if (lowerMessage.includes('non-compliant') || lowerMessage.includes('noncompliant')) {
-        // Filter for non-compliant devices
-        filterConditions.push("complianceState eq 'noncompliant'");
-      } else if (lowerMessage.includes('compliant') && !lowerMessage.includes('non-compliant')) {
-        // Filter for compliant devices only
-        filterConditions.push("complianceState eq 'compliant'");
-      }
-
-      // Combine filter conditions with 'and'
-      if (filterConditions.length > 0) {
-        queryParams['$filter'] = filterConditions.join(' and ');
-      }
-
+      
+      const deviceQueryParams = this.buildDeviceQueryParams(message, lowerMessage);
+      console.log('🔍 Built device query params:', deviceQueryParams);
+      
       toolCalls.push({
         name: toolName,
         arguments: {
@@ -916,7 +885,7 @@ Once connected and authenticated, I'll be able to help you with:
           graphApiVersion: 'v1.0',
           method: 'get',
           path: '/deviceManagement/managedDevices',
-          queryParams: queryParams
+          queryParams: deviceQueryParams
         }
       });
     }
@@ -952,6 +921,159 @@ Once connected and authenticated, I'll be able to help you with:
     }
 
     return toolCalls;
+  }
+
+  // Helper method to build enhanced user query parameters
+  buildUserQueryParams(originalMessage, lowerMessage) {
+    let queryParams = {
+      '$select': 'displayName,userPrincipalName,assignedLicenses,accountEnabled,lastSignInDateTime,createdDateTime,userType,jobTitle,department'
+    };
+
+    let filterConditions = [];
+
+    // Check for specific user name or email in the query
+    const specificUserMatch = this.extractSpecificIdentifier(originalMessage, ['user', 'person', 'employee']);
+    if (specificUserMatch) {
+      // Search for users by display name or user principal name
+      filterConditions.push(`startswith(displayName,'${specificUserMatch}') or startswith(userPrincipalName,'${specificUserMatch}')`);
+      console.log('🎯 Searching for specific user:', specificUserMatch);
+    }
+
+    // Check for external/guest user queries
+    if (lowerMessage.includes('external') || lowerMessage.includes('guest')) {
+      filterConditions.push("userType eq 'Guest'");
+    }
+
+    // Check for enabled/disabled status
+    if (lowerMessage.includes('disabled') || lowerMessage.includes('inactive')) {
+      filterConditions.push("accountEnabled eq false");
+    } else if (lowerMessage.includes('enabled') || lowerMessage.includes('active')) {
+      filterConditions.push("accountEnabled eq true");
+    }
+
+    // Handle "show all" requests by increasing the limit
+    if (lowerMessage.includes('show all') || lowerMessage.includes('list all') || lowerMessage.includes('all users')) {
+      queryParams['$top'] = '999'; // GraphAPI max is usually 999
+      console.log('📊 User requested ALL users - setting $top to 999');
+    } else {
+      queryParams['$top'] = '50'; // Default reasonable limit
+    }
+
+    // Combine filter conditions
+    if (filterConditions.length > 0) {
+      queryParams['$filter'] = filterConditions.join(' and ');
+    }
+
+    return queryParams;
+  }
+
+  // Helper method to build enhanced device query parameters
+  buildDeviceQueryParams(originalMessage, lowerMessage) {
+    let queryParams = {
+      '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,userDisplayName,emailAddress,model,manufacturer,serialNumber,id'
+    };
+
+    let filterConditions = [];
+
+    // Check for specific device name in the query
+    const specificDeviceName = this.extractSpecificIdentifier(originalMessage, ['device', 'computer', 'phone', 'tablet', 'laptop']);
+    if (specificDeviceName) {
+      // Search for devices by device name
+      filterConditions.push(`startswith(deviceName,'${specificDeviceName}') or contains(deviceName,'${specificDeviceName}')`);
+      console.log('🎯 Searching for specific device:', specificDeviceName);
+    }
+
+    // Check for specific OS-related queries  
+    if (lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad')) {
+      filterConditions.push("operatingSystem eq 'iOS'");
+    } else if (lowerMessage.includes('android')) {
+      filterConditions.push("operatingSystem eq 'Android'");  
+    } else if (lowerMessage.includes('windows')) {
+      filterConditions.push("operatingSystem eq 'Windows'");
+    } else if (lowerMessage.includes('macos')) {
+      filterConditions.push("operatingSystem eq 'macOS'");
+    }
+
+    // Check for specific compliance-related queries
+    if (lowerMessage.includes('grace period') || lowerMessage.includes('compliance grace')) {
+      filterConditions.push("complianceState eq 'inGracePeriod'");
+    } else if (lowerMessage.includes('non-compliant') || lowerMessage.includes('noncompliant')) {
+      filterConditions.push("complianceState eq 'noncompliant'");
+    } else if (lowerMessage.includes('compliant') && !lowerMessage.includes('non-compliant')) {
+      filterConditions.push("complianceState eq 'compliant'");
+    }
+
+    // Check for specific user ownership
+    const userOwnerMatch = this.extractUserFromDeviceQuery(originalMessage);
+    if (userOwnerMatch) {
+      filterConditions.push(`contains(userDisplayName,'${userOwnerMatch}') or contains(emailAddress,'${userOwnerMatch}')`);
+      console.log('🎯 Filtering devices by user:', userOwnerMatch);
+    }
+
+    // Handle "show all" requests by removing the limit or setting it very high
+    if (lowerMessage.includes('show all') || lowerMessage.includes('list all') || lowerMessage.includes('all devices')) {
+      queryParams['$top'] = '999'; // GraphAPI max
+      console.log('📊 User requested ALL devices - setting $top to 999');
+    } else if (specificDeviceName) {
+      queryParams['$top'] = '50'; // More results when searching for specific device
+    } else {
+      queryParams['$top'] = '25'; // Default reasonable limit
+    }
+
+    // Combine filter conditions
+    if (filterConditions.length > 0) {
+      queryParams['$filter'] = filterConditions.join(' and ');
+    }
+
+    return queryParams;
+  }
+
+  // Helper method to extract specific identifiers from user queries
+  extractSpecificIdentifier(message, entityTypes) {
+    // Look for patterns like "show me device ABC123" or "find user John Smith"
+    const patterns = [
+      // Pattern: "show me device XYZ", "find device XYZ", "search for device XYZ"
+      new RegExp(`(?:show me|find|search for|get|locate)\\s+(?:${entityTypes.join('|')})\\s+([\\w\\-\\.@\\s]+?)(?:\\s|$|\\?|,)`, 'i'),
+      // Pattern: "device XYZ", "user XYZ" (when not at start of sentence)
+      new RegExp(`\\b(?:${entityTypes.join('|')})\\s+([\\w\\-\\.@\\s]+?)(?:\\s(?:is|has|was|does|can|should|will)|$|\\?|\\.|,)`, 'i'),
+      // Pattern: quoted strings like "device 'ABC123'" or 'user "John Smith"'
+      new RegExp(`(?:${entityTypes.join('|')})\\s+['"]([^'"]+)['"]`, 'i')
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        const identifier = match[1].trim();
+        // Filter out common words that aren't identifiers
+        const commonWords = ['all', 'any', 'some', 'the', 'a', 'an', 'that', 'this', 'with', 'in', 'on', 'for', 'by', 'named', 'called'];
+        if (!commonWords.includes(identifier.toLowerCase()) && identifier.length > 1) {
+          return identifier;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Helper method to extract user information from device queries
+  extractUserFromDeviceQuery(message) {
+    const patterns = [
+      // Pattern: "devices for user John", "devices owned by Jane"
+      /(?:devices?|computers?|phones?|tablets?).*(?:for|owned by|belonging to|assigned to)\s+(?:user\s+)?([a-zA-Z][a-zA-Z0-9\.\-_@\s]+?)(?:\s|$|\?|,)/i,
+      // Pattern: "John's devices", "Jane's computers"
+      /([a-zA-Z][a-zA-Z0-9\.\-_@]+)'s\s+(?:devices?|computers?|phones?|tablets?)/i,
+      // Pattern: "show me devices user:john.doe"
+      /user:([a-zA-Z0-9\.\-_@]+)/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+
+    return null;
   }
 
   analyzeGeneralQuery(lowerMessage) {
@@ -1383,11 +1505,24 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
       return `👥 **No users found in ${this.tenantDomain}**`;
     }
 
+    // Determine display limit based on total results and user intent
+    let displayLimit = 20; // Default limit
+    let showAllRequested = false;
+    
+    // Check if this is a "show all" request by looking at the total count
+    if (users.length > 50 || users.length === 999) { // 999 indicates a "show all" request
+      displayLimit = users.length; // Show all results
+      showAllRequested = true;
+      console.log('📊 Showing ALL users as requested:', users.length);
+    } else if (users.length <= 5) {
+      displayLimit = users.length; // Show all for small result sets
+    }
+
     // For users, a table format is much more readable than a list
-    const displayUsers = users.slice(0, 20); // Show more in table format
+    const displayUsers = users.slice(0, displayLimit);
     
     let tableHtml = `<div class="data-table-container">
-<h3><span class="status-emoji">👥</span> <strong>Users in ${this.tenantDomain}</strong> (${users.length} total, showing first ${displayUsers.length})</h3>
+<h3><span class="status-emoji">👥</span> <strong>Users in ${this.tenantDomain}</strong> (${users.length} total${showAllRequested ? ', showing all' : `, showing first ${displayUsers.length}`})</h3>
 
 <table class="data-table">
 <thead>
@@ -1425,8 +1560,8 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
 </tbody>
 </table>`;
 
-    if (users.length > 20) {
-      tableHtml += `<p class="table-footer"><em>...and ${users.length - 20} more users</em></p>`;
+    if (!showAllRequested && users.length > displayLimit) {
+      tableHtml += `<p class="table-footer"><em>...and ${users.length - displayLimit} more users. <strong>Say "show me all users" to see the complete list.</strong></em></p>`;
     }
     
     tableHtml += `</div>`;
@@ -1562,11 +1697,26 @@ ${groupList}`;
       }
     }
 
+    // Determine display limit based on total results and user intent
+    let displayLimit = 15; // Default limit for devices (fewer due to more columns)
+    let showAllRequested = false;
+    
+    // Check if this is a "show all" request or specific device search
+    if (devices.length > 25 || devices.length === 999) { // 999 indicates a "show all" request
+      displayLimit = devices.length; // Show all results
+      showAllRequested = true;
+      console.log('📊 Showing ALL devices as requested:', devices.length);
+    } else if (devices.length <= 10) {
+      displayLimit = devices.length; // Show all for small result sets (likely specific searches)
+    } else if (devices.length <= 25) {
+      displayLimit = devices.length; // Show all for medium result sets
+    }
+
     // For devices, table format is much more readable
-    const displayDevices = devices.slice(0, 15); // Show fewer in table due to more columns
+    const displayDevices = devices.slice(0, displayLimit);
     
     let tableHtml = `<div class="data-table-container">
-<h3><span class="status-emoji">${titlePrefix}</span> <strong>${titleText} in ${this.tenantDomain}</strong> (${devices.length} total, showing first ${displayDevices.length})</h3>
+<h3><span class="status-emoji">${titlePrefix}</span> <strong>${titleText} in ${this.tenantDomain}</strong> (${devices.length} total${showAllRequested ? ', showing all' : `, showing first ${displayDevices.length}`})</h3>
 
 <table class="data-table devices-table">
 <thead>
@@ -1574,6 +1724,7 @@ ${groupList}`;
 <th>Device Name</th>
 <th>OS / Version</th>
 <th>Compliance</th>
+<th>Owner</th>
 <th>Last Sync</th>
 <th>Enrolled</th>
 </tr>
@@ -1591,6 +1742,7 @@ ${groupList}`;
       const os = device.operatingSystem || 'Unknown';
       const version = device.osVersion || 'Unknown';
       const deviceName = device.deviceName || 'Unknown Device';
+      const owner = device.userDisplayName || device.emailAddress || 'Unknown';
       
       // Handle grace period expiration date
       let graceInfo = '';
@@ -1626,6 +1778,7 @@ ${groupList}`;
 <td><strong>${deviceName}</strong></td>
 <td><code>${os} ${version}</code></td>
 <td>${complianceCell}</td>
+<td><em>${owner}</em></td>
 <td>${lastSync === 'Never' ? '<em>Never</em>' : lastSync}</td>
 <td>${enrolled === 'Unknown' ? '<em>Unknown</em>' : enrolled}</td>
 </tr>`;
@@ -1663,8 +1816,8 @@ ${groupList}`;
       tableHtml += `<div class="table-summary"><strong>OS Breakdown:</strong> ${osList}</div>`;
     }
 
-    if (devices.length > 15) {
-      tableHtml += `<p class="table-footer"><em>...and ${devices.length - 15} more devices</em></p>`;
+    if (!showAllRequested && devices.length > displayLimit) {
+      tableHtml += `<p class="table-footer"><em>...and ${devices.length - displayLimit} more devices. <strong>Say "show me all devices" to see the complete list.</strong></em></p>`;
     }
     
     tableHtml += `</div>`;
