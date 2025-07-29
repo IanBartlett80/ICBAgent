@@ -980,6 +980,11 @@ class TenantCloneManager {
     renderSourcePolicies() {
         const policiesGrid = document.getElementById('policiesGrid');
         
+        if (!policiesGrid) {
+            console.warn('policiesGrid element not found - skipping policy rendering');
+            return;
+        }
+        
         if (this.policies.size === 0) {
             policiesGrid.innerHTML = `
                 <div class="empty-state">
@@ -1467,9 +1472,17 @@ class TenantCloneManager {
         }
         
         if (!btnText || !btnLoader) {
-            console.error('setButtonLoading: missing text or loader elements in button:', button.id);
-            // Fallback: just disable/enable the button
-            button.disabled = loading;
+            console.log(`setButtonLoading: missing text or loader elements in button: ${button.id} - using fallback`);
+            // Fallback: modify button text and disable/enable the button
+            if (loading) {
+                button.disabled = true;
+                button.dataset.originalText = button.textContent;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            } else {
+                button.disabled = false;
+                const originalText = button.dataset.originalText || 'Load Policies';
+                button.innerHTML = originalText;
+            }
             return;
         }
         
