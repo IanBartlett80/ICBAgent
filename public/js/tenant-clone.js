@@ -82,68 +82,148 @@ class TenantCloneManager {
 
     bindEvents() {
         // Back to main button
-        document.getElementById('backToMainBtn').addEventListener('click', () => {
-            window.location.href = '/';
-        });
+        const backBtn = document.getElementById('backToMainBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                window.location.href = '/';
+            });
+        }
 
         // Connect tenants button
-        document.getElementById('connectTenantsBtn').addEventListener('click', () => {
-            this.connectTenants();
-        });
+        const connectBtn = document.getElementById('connectTenantsBtn');
+        if (connectBtn) {
+            connectBtn.addEventListener('click', () => {
+                this.connectTenants();
+            });
+        }
 
         // Load policies button
-        document.getElementById('loadPoliciesBtn').addEventListener('click', () => {
-            this.loadSourcePolicies();
-        });
+        const loadBtn = document.getElementById('loadPoliciesBtn');
+        if (loadBtn) {
+            loadBtn.addEventListener('click', () => {
+                this.loadSourcePolicies();
+            });
+        }
 
         // Bulk migrate button
-        document.getElementById('bulkMigrateBtn').addEventListener('click', () => {
-            this.bulkMigratePolicies();
-        });
+        const bulkBtn = document.getElementById('bulkMigrateBtn');
+        if (bulkBtn) {
+            bulkBtn.addEventListener('click', () => {
+                this.bulkMigratePolicies();
+            });
+        }
 
         // Search functionality
-        document.getElementById('sourcePolicySearch').addEventListener('input', (e) => {
-            this.filterPolicies(e.target.value);
-        });
+        const searchInput = document.getElementById('sourcePolicySearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.filterPolicies(e.target.value);
+            });
+        }
 
         // Policy type filter
-        document.getElementById('policyTypeFilter').addEventListener('change', (e) => {
-            this.filterPoliciesByType(e.target.value);
-        });
+        const typeFilter = document.getElementById('policyTypeFilter');
+        if (typeFilter) {
+            typeFilter.addEventListener('change', (e) => {
+                this.filterPoliciesByType(e.target.value);
+            });
+        }
 
         // Clear log button
-        document.getElementById('clearLogBtn').addEventListener('click', () => {
-            this.clearLog();
-        });
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        if (clearLogBtn) {
+            clearLogBtn.addEventListener('click', () => {
+                this.clearLog();
+            });
+        }
 
         // Modal events
-        document.getElementById('closeCloneModalBtn').addEventListener('click', () => {
-            this.closeCloneModal();
-        });
+        const closeModalBtn = document.getElementById('closeCloneModalBtn');
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener('click', () => {
+                this.closeCloneModal();
+            });
+        }
 
-        document.getElementById('cancelCloneBtn').addEventListener('click', () => {
-            this.closeCloneModal();
-        });
+        const cancelBtn = document.getElementById('cancelCloneBtn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                this.closeCloneModal();
+            });
+        }
 
-        document.getElementById('confirmCloneBtn').addEventListener('click', () => {
-            this.confirmPolicyClone();
-        });
+        const confirmBtn = document.getElementById('confirmCloneBtn');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', () => {
+                this.confirmPolicyClone();
+            });
+        }
+
+        // Policy details modal events
+        const policyModal = document.getElementById('policyDetailsModal');
+        if (policyModal) {
+            const closePolicyModalBtn = policyModal.querySelector('.modal-close');
+            if (closePolicyModalBtn) {
+                closePolicyModalBtn.addEventListener('click', () => {
+                    this.closePolicyDetailsModal();
+                });
+            }
+
+            // Tab navigation
+            const tabBtns = policyModal.querySelectorAll('.tab-btn');
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    this.switchPolicyTab(e.target.dataset.tab);
+                });
+            });
+
+            // Clone from modal
+            const cloneFromModalBtn = policyModal.querySelector('#clonePolicyFromModal');
+            if (cloneFromModalBtn) {
+                cloneFromModalBtn.addEventListener('click', () => {
+                    const policyId = policyModal.dataset.policyId;
+                    this.closePolicyDetailsModal();
+                    this.showCloneModal(policyId);
+                });
+            }
+        }
 
         // Close modal on overlay click
-        document.getElementById('cloneModalOverlay').addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) {
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                if (e.target.id === 'cloneModalOverlay') {
+                    this.closeCloneModal();
+                } else if (e.target.id === 'policyDetailsModal') {
+                    this.closePolicyDetailsModal();
+                }
+            }
+        });
+
+        // Escape key to close modals
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
                 this.closeCloneModal();
+                this.closePolicyDetailsModal();
             }
         });
 
         // Input validation
-        document.getElementById('sourceTenantDomain').addEventListener('input', (e) => {
-            this.validateTenantDomain(e.target, 'source');
-        });
+        const sourceDomainInput = document.getElementById('sourceTenantDomain');
+        if (sourceDomainInput) {
+            sourceDomainInput.addEventListener('input', (e) => {
+                this.validateTenantDomain(e.target, 'source');
+            });
+        }
 
-        document.getElementById('targetTenantDomain').addEventListener('input', (e) => {
-            this.validateTenantDomain(e.target, 'target');
-        });
+        const targetDomainInput = document.getElementById('targetTenantDomain');
+        if (targetDomainInput) {
+            targetDomainInput.addEventListener('input', (e) => {
+                this.validateTenantDomain(e.target, 'target');
+            });
+        }
+
+        // Policy card click handlers (will be bound dynamically when policies are loaded)
+        this.bindPolicyCardEvents();
     }
 
     generateSessionId() {
@@ -404,40 +484,89 @@ class TenantCloneManager {
 
     // UI Update Methods
     updateConnectionStatus(status) {
-        const statusIndicator = document.getElementById('cloneStatusIndicator');
-        const statusText = document.getElementById('cloneStatusText');
+        const statusIndicator = document.querySelector('.status-indicator');
+        const statusText = document.querySelector('.connection-status span');
 
         if (status.isActive && status.sourceTenant?.authenticated && status.targetTenant?.authenticated) {
             statusIndicator.className = 'status-indicator connected';
-            statusText.textContent = 'Connected';
+            if (statusText) statusText.textContent = 'Both Tenants Connected';
             this.isConnected = true;
             this.showMigrationInterface();
-        } else {
+            this.updateTenantCards();
+        } else if (status.isActive) {
             statusIndicator.className = 'status-indicator connecting';
-            statusText.textContent = 'Connecting';
+            if (statusText) statusText.textContent = 'Connecting Tenants';
+        } else {
+            statusIndicator.className = 'status-indicator';
+            if (statusText) statusText.textContent = 'Not Connected';
+        }
+    }
+
+    updateTenantCards() {
+        // Update source tenant card
+        const sourceCard = document.querySelector('.tenant-card[data-tenant="source"]');
+        if (sourceCard) {
+            const badge = sourceCard.querySelector('.connection-badge');
+            const info = sourceCard.querySelector('.connection-info');
+            
+            if (this.authStatus.source === 'authenticated') {
+                badge.className = 'connection-badge connected';
+                badge.innerHTML = '<i class="fas fa-check"></i>';
+                if (info) {
+                    info.className = 'connection-info connected';
+                    info.innerHTML = '<i class="fas fa-check-circle"></i> Connected';
+                }
+            } else if (this.authStatus.source === 'connecting') {
+                badge.className = 'connection-badge connecting';
+                badge.innerHTML = '<i class="fas fa-spinner"></i>';
+                if (info) {
+                    info.className = 'connection-info';
+                    info.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+                }
+            } else if (this.authStatus.source === 'error') {
+                badge.className = 'connection-badge error';
+                badge.innerHTML = '<i class="fas fa-times"></i>';
+                if (info) {
+                    info.className = 'connection-info error';
+                    info.innerHTML = '<i class="fas fa-exclamation-circle"></i> Connection Failed';
+                }
+            }
+        }
+
+        // Update target tenant card
+        const targetCard = document.querySelector('.tenant-card[data-tenant="target"]');
+        if (targetCard) {
+            const badge = targetCard.querySelector('.connection-badge');
+            const info = targetCard.querySelector('.connection-info');
+            
+            if (this.authStatus.target === 'authenticated') {
+                badge.className = 'connection-badge connected';
+                badge.innerHTML = '<i class="fas fa-check"></i>';
+                if (info) {
+                    info.className = 'connection-info connected';
+                    info.innerHTML = '<i class="fas fa-check-circle"></i> Connected';
+                }
+            } else if (this.authStatus.target === 'connecting') {
+                badge.className = 'connection-badge connecting';
+                badge.innerHTML = '<i class="fas fa-spinner"></i>';
+                if (info) {
+                    info.className = 'connection-info';
+                    info.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+                }
+            } else if (this.authStatus.target === 'error') {
+                badge.className = 'connection-badge error';
+                badge.innerHTML = '<i class="fas fa-times"></i>';
+                if (info) {
+                    info.className = 'connection-info error';
+                    info.innerHTML = '<i class="fas fa-exclamation-circle"></i> Connection Failed';
+                }
+            }
         }
     }
 
     updateTenantStatus(tenantType, status) {
-        const statusElement = document.getElementById(`${tenantType}Status`);
-        const statusDot = statusElement.querySelector('.status-dot');
-        const statusText = statusElement.querySelector('.status-text');
-
-        statusDot.className = `status-dot ${status}`;
-        
-        switch (status) {
-            case 'connecting':
-                statusText.textContent = 'Connecting...';
-                break;
-            case 'connected':
-                statusText.textContent = 'Connected';
-                break;
-            case 'error':
-                statusText.textContent = 'Connection Failed';
-                break;
-            default:
-                statusText.textContent = 'Not Connected';
-        }
+        this.authStatus[tenantType] = status;
+        this.updateTenantCards();
     }
 
     updateAuthStatus(tenantType, status) {
@@ -490,95 +619,233 @@ class TenantCloneManager {
     }
 
     renderSourcePolicies() {
-        const policiesList = document.getElementById('sourcePoliciesList');
+        const policiesGrid = document.getElementById('policiesGrid');
         
         if (this.policies.size === 0) {
-            policiesList.innerHTML = `
+            policiesGrid.innerHTML = `
                 <div class="empty-state">
-                    <svg width="64" height="64" fill="currentColor" viewBox="0 0 24 24" opacity="0.3">
-                        <path d="M19 7h-8l-2-2H5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/>
-                    </svg>
-                    <h4>No Policies Found</h4>
-                    <p>No policies were found in the source tenant.</p>
+                    <div class="empty-icon">
+                        <i class="fas fa-folder-open"></i>
+                    </div>
+                    <h3>No Policies Found</h3>
+                    <p>No policies were found in the source tenant. Make sure you have the necessary permissions to read policies.</p>
                 </div>
             `;
             return;
         }
 
         const policiesArray = Array.from(this.policies.values());
-        const policiesHTML = policiesArray.map(policy => this.createPolicyHTML(policy)).join('');
+        const policiesHTML = policiesArray.map(policy => this.createPolicyCardHTML(policy)).join('');
         
-        policiesList.innerHTML = policiesHTML;
+        policiesGrid.innerHTML = policiesHTML;
         
-        // Bind events to policy items
-        this.bindPolicyEvents();
+        // Bind events to policy cards
+        this.bindPolicyCardEvents();
     }
 
-    createPolicyHTML(policy) {
+    createPolicyCardHTML(policy) {
         const isSelected = this.selectedPolicies.has(policy.id);
         const formattedDate = policy.lastModifiedDateTime 
             ? new Date(policy.lastModifiedDateTime).toLocaleDateString()
             : 'Unknown';
 
+        const policyTypeClass = this.getPolicyTypeClass(policy.policyType);
+        const policyIcon = this.getPolicyTypeIcon(policy.policyType);
+
         return `
-            <div class="policy-item ${isSelected ? 'selected' : ''}" 
+            <div class="policy-card ${isSelected ? 'selected' : ''}" 
                  data-policy-id="${policy.id}" 
-                 data-policy-type="${policy.policyType}"
-                 draggable="true">
+                 data-policy-type="${policy.policyType}">
+                
                 <div class="policy-header">
-                    <h4 class="policy-name">${policy.displayName || 'Unnamed Policy'}</h4>
-                    <span class="policy-type-badge">${this.formatPolicyType(policy.policyType)}</span>
-                </div>
-                
-                ${policy.description ? `<p class="policy-description">${policy.description}</p>` : ''}
-                
-                <div class="policy-meta">
-                    <span>Modified: ${formattedDate}</span>
-                    <div class="policy-actions">
-                        <button class="clone-policy-btn" data-policy-id="${policy.id}" data-policy-type="${policy.policyType}">
-                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-                            </svg>
-                            Clone
-                        </button>
+                    <div class="policy-type-badge ${policyTypeClass}">
+                        <i class="${policyIcon}"></i>
+                        ${this.formatPolicyType(policy.policyType)}
                     </div>
+                    <div class="connection-badge ${isSelected ? 'connected' : ''}">
+                        <i class="fas ${isSelected ? 'fa-check' : 'fa-circle'}"></i>
+                    </div>
+                </div>
+
+                <div class="policy-title">
+                    ${policy.displayName || 'Unnamed Policy'}
+                </div>
+
+                <div class="policy-description">
+                    ${policy.description || 'No description available'}
+                </div>
+
+                <div class="policy-actions">
+                    <button class="action-btn view-policy-btn" data-policy-id="${policy.id}">
+                        <i class="fas fa-eye"></i>
+                        <span>View Details</span>
+                    </button>
+                    <button class="action-btn primary clone-policy-btn" data-policy-id="${policy.id}">
+                        <i class="fas fa-clone"></i>
+                        <span>Clone</span>
+                    </button>
                 </div>
             </div>
         `;
     }
 
-    bindPolicyEvents() {
+    getPolicyTypeClass(policyType) {
+        switch (policyType) {
+            case 'deviceConfiguration':
+                return 'device-configuration';
+            case 'deviceCompliance':
+                return 'device-compliance';
+            case 'appProtection':
+                return 'app-protection';
+            default:
+                return 'device-configuration';
+        }
+    }
+
+    getPolicyTypeIcon(policyType) {
+        switch (policyType) {
+            case 'deviceConfiguration':
+                return 'fas fa-cog';
+            case 'deviceCompliance':
+                return 'fas fa-shield-alt';
+            case 'appProtection':
+                return 'fas fa-mobile-alt';
+            default:
+                return 'fas fa-file-alt';
+        }
+    }
+
+    bindPolicyCardEvents() {
+        // View policy details buttons
+        document.querySelectorAll('.view-policy-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const policyId = btn.dataset.policyId;
+                this.showPolicyDetailsModal(policyId);
+            });
+        });
+
         // Clone buttons
         document.querySelectorAll('.clone-policy-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const policyId = btn.dataset.policyId;
-                const policyType = btn.dataset.policyType;
-                this.showCloneModal(policyId, policyType);
+                this.showCloneModal(policyId);
             });
         });
 
-        // Policy selection
-        document.querySelectorAll('.policy-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                if (e.target.closest('.clone-policy-btn')) return;
+        // Policy card selection
+        document.querySelectorAll('.policy-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.action-btn')) return;
                 
-                const policyId = item.dataset.policyId;
-                this.togglePolicySelection(policyId, item);
+                const policyId = card.dataset.policyId;
+                this.togglePolicySelection(policyId, card);
             });
         });
+    }
 
-        // Drag events
-        document.querySelectorAll('.policy-item').forEach(item => {
-            item.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/plain', item.dataset.policyId);
-                item.classList.add('dragging');
-            });
+    showPolicyDetailsModal(policyId) {
+        const policy = this.policies.get(policyId);
+        if (!policy) return;
 
-            item.addEventListener('dragend', (e) => {
-                item.classList.remove('dragging');
-            });
+        const modal = document.getElementById('policyDetailsModal');
+        modal.dataset.policyId = policyId;
+        
+        // Update modal title
+        modal.querySelector('.modal-header h3').textContent = policy.displayName || 'Policy Details';
+        
+        // Update overview tab
+        this.updatePolicyOverviewTab(policy);
+        
+        // Update settings tab
+        this.updatePolicySettingsTab(policy);
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Default to overview tab
+        this.switchPolicyTab('overview');
+    }
+
+    updatePolicyOverviewTab(policy) {
+        const overviewContent = document.getElementById('policyOverviewContent');
+        const formattedDate = policy.lastModifiedDateTime 
+            ? new Date(policy.lastModifiedDateTime).toLocaleString()
+            : 'Unknown';
+
+        overviewContent.innerHTML = `
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Policy Name</label>
+                    <span>${policy.displayName || 'Unnamed Policy'}</span>
+                </div>
+                <div class="info-item">
+                    <label>Policy Type</label>
+                    <span>${this.formatPolicyType(policy.policyType)}</span>
+                </div>
+                <div class="info-item">
+                    <label>Description</label>
+                    <span>${policy.description || 'No description available'}</span>
+                </div>
+                <div class="info-item">
+                    <label>Created Date</label>
+                    <span>${policy.createdDateTime ? new Date(policy.createdDateTime).toLocaleString() : 'Unknown'}</span>
+                </div>
+                <div class="info-item">
+                    <label>Last Modified</label>
+                    <span>${formattedDate}</span>
+                </div>
+                <div class="info-item">
+                    <label>Policy ID</label>
+                    <span style="font-family: monospace; font-size: 0.875rem;">${policy.id}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    updatePolicySettingsTab(policy) {
+        const settingsContent = document.getElementById('policySettingsContent');
+        
+        // Create a clean version of the policy for display (remove metadata)
+        const cleanPolicy = { ...policy };
+        delete cleanPolicy.id;
+        delete cleanPolicy.createdDateTime;
+        delete cleanPolicy.lastModifiedDateTime;
+        delete cleanPolicy['@odata.type'];
+        delete cleanPolicy['odata.type'];
+
+        settingsContent.innerHTML = `
+            <div class="settings-json">
+                <pre><code>${JSON.stringify(cleanPolicy, null, 2)}</code></pre>
+            </div>
+        `;
+    }
+
+    switchPolicyTab(tabName) {
+        const modal = document.getElementById('policyDetailsModal');
+        
+        // Update tab buttons
+        modal.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.tab === tabName) {
+                btn.classList.add('active');
+            }
         });
+        
+        // Update tab content
+        modal.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+            if (content.id === `policy${tabName.charAt(0).toUpperCase() + tabName.slice(1)}Content`) {
+                content.classList.add('active');
+            }
+        });
+    }
+
+    closePolicyDetailsModal() {
+        const modal = document.getElementById('policyDetailsModal');
+        modal.style.display = 'none';
+        modal.dataset.policyId = '';
     }
 
     togglePolicySelection(policyId, element) {

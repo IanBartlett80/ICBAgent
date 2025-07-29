@@ -325,9 +325,41 @@ class DualTenantManager {
       // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
       const targetJsonMatch = targetResponseText.match(/\{[\s\S]*\}/);
       if (targetJsonMatch) {
-        createdPolicy = JSON.parse(targetJsonMatch[0]);
+        const parsedResponse = JSON.parse(targetJsonMatch[0]);
+        
+        // Check if the parsed response is an error response
+        if (parsedResponse.error) {
+          console.log('🔐 Permission error detected in parsed response, requesting additional permissions...');
+          console.log('📋 Error details:', parsedResponse.error);
+          
+          // Check if this is specifically a permission error
+          if (this.isPermissionError(JSON.stringify(parsedResponse.error)) || this.isPermissionError(parsedResponse.error)) {
+            await this.requestAdditionalPermissions();
+            throw new Error(`PERMISSION_REQUIRED: ${JSON.stringify(parsedResponse.error)}`);
+          } else {
+            throw new Error(`Policy creation failed: ${JSON.stringify(parsedResponse.error)}`);
+          }
+        }
+        
+        createdPolicy = parsedResponse;
       } else if (targetResponseText.trim().startsWith('{') || targetResponseText.trim().startsWith('[')) {
-        createdPolicy = JSON.parse(targetResponseText.trim());
+        const parsedResponse = JSON.parse(targetResponseText.trim());
+        
+        // Check if the parsed response is an error response
+        if (parsedResponse.error) {
+          console.log('🔐 Permission error detected in parsed response, requesting additional permissions...');
+          console.log('📋 Error details:', parsedResponse.error);
+          
+          // Check if this is specifically a permission error
+          if (this.isPermissionError(JSON.stringify(parsedResponse.error)) || this.isPermissionError(parsedResponse.error)) {
+            await this.requestAdditionalPermissions();
+            throw new Error(`PERMISSION_REQUIRED: ${JSON.stringify(parsedResponse.error)}`);
+          } else {
+            throw new Error(`Policy creation failed: ${JSON.stringify(parsedResponse.error)}`);
+          }
+        }
+        
+        createdPolicy = parsedResponse;
       } else {
         throw new Error(`Could not extract JSON from target response: ${targetResponseText.substring(0, 100)}`);
       }
@@ -367,7 +399,8 @@ class DualTenantManager {
           policyType,
           error: error.message.replace('PERMISSION_REQUIRED: ', ''),
           message: 'Additional permissions required. Please complete the authentication flow to grant the necessary permissions.',
-          tenantDomain: this.targetTenant.tenantDomain
+          tenantDomain: this.targetTenant.tenantDomain,
+          tenantRole: 'target'
         });
       } else {
         this.io.to(this.sessionId).emit('policy_clone_failed', {
@@ -418,6 +451,7 @@ class DualTenantManager {
       'Application is not authorized to perform this operation',
       'DeviceManagementConfiguration.ReadWrite',
       'DeviceManagementApps.ReadWrite',
+      'DeviceManagementServiceConfig.ReadWrite',
       'Insufficient privileges',
       'Access denied',
       'Permission denied',
@@ -425,7 +459,16 @@ class DualTenantManager {
       'Forbidden'
     ];
 
-    const errorText = errorMessage.toLowerCase();
+    // Handle both string and object inputs
+    let errorText = '';
+    if (typeof errorMessage === 'string') {
+      errorText = errorMessage.toLowerCase();
+    } else if (typeof errorMessage === 'object') {
+      errorText = JSON.stringify(errorMessage).toLowerCase();
+    } else {
+      return false;
+    }
+    
     return permissionIndicators.some(indicator => 
       errorText.includes(indicator.toLowerCase())
     );
