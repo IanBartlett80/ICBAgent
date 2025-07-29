@@ -29,10 +29,15 @@ class TenantCloneManager {
 
     // Page Navigation System
     showPage(pageId) {
+        console.log(`📄 Navigating to page: ${pageId}`);
+        console.log(`📄 Current page before navigation: ${this.currentPage}`);
+        
         // Hide all pages
         const pages = document.querySelectorAll('.app-page');
+        console.log(`📄 Found ${pages.length} app pages`);
         pages.forEach(page => {
             page.classList.remove('active');
+            console.log(`📄 Hiding page: ${page.id}`);
         });
 
         // Show target page
@@ -41,6 +46,9 @@ class TenantCloneManager {
             targetPage.classList.add('active');
             this.currentPage = pageId;
             this.updateBreadcrumb(pageId);
+            console.log(`📄 Successfully navigated to: ${pageId}`);
+        } else {
+            console.error(`📄 Target page not found: ${pageId}`);
         }
     }
 
@@ -445,6 +453,10 @@ class TenantCloneManager {
     }
 
     initializeMigrationDashboard() {
+        console.log('🏗️ Initializing migration dashboard');
+        console.log('🏗️ Current page:', this.currentPage);
+        console.log('🏗️ Policies loaded:', this.policies.size);
+        
         // Update dashboard with tenant information
         const sourcePanelDomain = document.querySelector('.tenant-panel.source .panel-domain');
         const targetPanelDomain = document.querySelector('.tenant-panel.target .panel-domain');
@@ -454,8 +466,10 @@ class TenantCloneManager {
 
         // Load policies if not already loaded
         if (this.policies.size === 0) {
+            console.log('🏗️ Loading policies for migration dashboard');
             this.loadSourcePolicies();
         } else {
+            console.log('🏗️ Policies already loaded, rendering panels');
             this.renderPolicyPanels();
         }
     }
@@ -914,6 +928,12 @@ class TenantCloneManager {
                 statusText.textContent = 'Both Tenants Connected';
                 console.log('✅ Status text updated');
             }
+
+            // Auto-navigate to migration page after a short delay to show success state
+            setTimeout(() => {
+                console.log('🚀 Auto-navigating to migration dashboard');
+                this.navigateToPage('migrationPage');
+            }, 2000); // 2 second delay to show the success state
 
             // Legacy support for old interface
             this.hideAuthProgress();
