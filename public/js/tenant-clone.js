@@ -1258,9 +1258,23 @@ class TenantCloneManager {
         const bulkBtn = document.getElementById('bulkMigrateBtn');
         const selectedCount = this.selectedPolicies.size;
         
+        if (!bulkBtn) {
+            console.warn('bulkMigrateBtn element not found');
+            return;
+        }
+        
         if (selectedCount > 0) {
             bulkBtn.style.display = 'flex';
-            bulkBtn.querySelector('span').textContent = `Migrate Selected (${selectedCount})`;
+            // Update the text span (first span) and count badge (second span)
+            const textSpan = bulkBtn.querySelector('span:first-of-type');
+            const countBadge = bulkBtn.querySelector('#selectedCount');
+            
+            if (textSpan) {
+                textSpan.textContent = 'Migrate Selected';
+            }
+            if (countBadge) {
+                countBadge.textContent = selectedCount;
+            }
         } else {
             bulkBtn.style.display = 'none';
         }
@@ -1332,8 +1346,13 @@ class TenantCloneManager {
 
     addMigrationProgress(policyId, policyType, status) {
         const policy = this.policies.get(policyId);
-        const progressList = document.getElementById('progressList');
-        const migrationProgress = document.getElementById('migrationProgress');
+        const progressList = document.getElementById('migrationProgressContent');
+        const migrationProgress = document.getElementById('migrationProgressPanel');
+
+        if (!progressList) {
+            console.warn('migrationProgressContent element not found - skipping progress update');
+            return;
+        }
 
         const progressItem = document.createElement('div');
         progressItem.className = 'progress-item';
@@ -1349,7 +1368,9 @@ class TenantCloneManager {
         `;
 
         progressList.appendChild(progressItem);
-        migrationProgress.style.display = 'block';
+        if (migrationProgress) {
+            migrationProgress.style.display = 'block';
+        }
     }
 
     updateMigrationProgress(migrationId, status, message) {
@@ -1538,9 +1559,20 @@ class TenantCloneManager {
             <span>${message}</span>
         `;
         
-        // Insert after header
-        const header = document.querySelector('.tenant-clone-header');
-        header.insertAdjacentElement('afterend', errorDiv);
+        // Insert after header - with fallback
+        const header = document.querySelector('.modern-header');
+        if (header) {
+            header.insertAdjacentElement('afterend', errorDiv);
+        } else {
+            // Fallback: insert at beginning of body
+            const body = document.body;
+            if (body && body.firstChild) {
+                body.insertBefore(errorDiv, body.firstChild);
+            } else {
+                console.error('Could not display error message:', message);
+                return;
+            }
+        }
         
         // Remove after 5 seconds
         setTimeout(() => {
