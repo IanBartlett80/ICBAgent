@@ -677,7 +677,170 @@ Once connected and authenticated, I'll be able to help you with:
     return toolCalls;
   }
 
+  analyzeGeneralQuery(lowerMessage) {
+    const queries = [];
+    
+    // Security-related queries
+    if (lowerMessage.includes('policies') || lowerMessage.includes('policy')) {
+      queries.push({
+        endpoint: '/policies/conditionalAccessPolicies',
+        description: 'Conditional Access Policies',
+        queryParams: { '$select': 'displayName,state,conditions,grantControls,sessionControls,createdDateTime' }
+      });
+      queries.push({
+        endpoint: '/policies/authenticationMethodsPolicy',
+        description: 'Authentication Methods Policy',
+        queryParams: { '$select': 'displayName,description,policyVersion' }
+      });
+    }
+    
+    // Service principals and apps
+    if (lowerMessage.includes('service principal') || lowerMessage.includes('enterprise app')) {
+      queries.push({
+        endpoint: '/servicePrincipals',
+        description: 'Service Principals (Enterprise Applications)',
+        queryParams: { '$select': 'displayName,appId,servicePrincipalType,createdDateTime', '$top': '20' }
+      });
+    }
+    
+    // Directory roles
+    if (lowerMessage.includes('roles') || lowerMessage.includes('admin') || lowerMessage.includes('directory role')) {
+      queries.push({
+        endpoint: '/directoryRoles',
+        description: 'Directory Roles',
+        queryParams: { '$select': 'displayName,description,roleTemplateId' }
+      });
+      queries.push({
+        endpoint: '/roleManagement/directory/roleAssignments',
+        description: 'Role Assignments',
+        queryParams: { '$select': 'principalId,roleDefinitionId,directoryScopeId', '$top': '20' }
+      });
+    }
+    
+    // External users
+    if (lowerMessage.includes('external') || lowerMessage.includes('guest')) {
+      queries.push({
+        endpoint: '/users',
+        description: 'External/Guest Users',
+        queryParams: { 
+          '$filter': "userType eq 'Guest'",
+          '$select': 'displayName,userPrincipalName,userType,createdDateTime,externalUserState'
+        }
+      });
+    }
+    
+    // Domains
+    if (lowerMessage.includes('domain') || lowerMessage.includes('dns')) {
+      queries.push({
+        endpoint: '/domains',
+        description: 'Tenant Domains',
+        queryParams: { '$select': 'id,isDefault,isInitial,isVerified,supportedServices' }
+      });
+    }
+    
+    // Subscriptions and billing
+    if (lowerMessage.includes('subscription') || lowerMessage.includes('billing') || lowerMessage.includes('plan')) {
+      queries.push({
+        endpoint: '/subscribedSkus',
+        description: 'License Subscriptions',
+        queryParams: { '$select': 'skuPartNumber,consumedUnits,prepaidUnits,servicePlans' }
+      });
+    }
+    
+    // Mail and Exchange
+    if (lowerMessage.includes('mail') || lowerMessage.includes('exchange') || lowerMessage.includes('mailbox')) {
+      queries.push({
+        endpoint: '/users',
+        description: 'Mailbox Information',
+        queryParams: { 
+          '$filter': 'assignedLicenses/$count ne 0',
+          '$select': 'displayName,userPrincipalName,mail,mailNickname,proxyAddresses'
+        }
+      });
+    }
+    
+    // Teams and channels
+    if (lowerMessage.includes('team') || lowerMessage.includes('channel')) {
+      queries.push({
+        endpoint: '/teams',
+        description: 'Microsoft Teams',
+        queryParams: { '$select': 'displayName,description,createdDateTime,visibility' }
+      });
+    }
+    
+    // Calendar and events
+    if (lowerMessage.includes('calendar') || lowerMessage.includes('event') || lowerMessage.includes('meeting')) {
+      queries.push({
+        endpoint: '/me/calendars',
+        description: 'Calendars',
+        queryParams: { '$select': 'name,color,isDefaultCalendar,canShare,canViewPrivateItems' }
+      });
+    }
+    
+    // Files and drives
+    if (lowerMessage.includes('file') || lowerMessage.includes('drive') || lowerMessage.includes('onedrive')) {
+      queries.push({
+        endpoint: '/drives',
+        description: 'OneDrive and SharePoint Drives',
+        queryParams: { '$select': 'name,driveType,owner,quota,createdDateTime' }
+      });
+    }
+    
+    // Compliance and auditing
+    if (lowerMessage.includes('audit') || lowerMessage.includes('compliance') || lowerMessage.includes('log')) {
+      queries.push({
+        endpoint: '/auditLogs/directoryAudits',
+        description: 'Directory Audit Logs',
+        queryParams: { '$top': '10', '$select': 'activityDisplayName,category,result,activityDateTime,initiatedBy' }
+      });
+    }
+    
+    return queries;
+  }
+
   async getGeneralInfo(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Try to intelligently guess what Graph API endpoint might be relevant
+    const generalQueries = this.analyzeGeneralQuery(lowerMessage);
+    
+    if (generalQueries.length > 0) {
+      console.log(`Attempting general Graph API queries for: "${message}"`);
+      
+      let response = `🔍 **Searching Microsoft 365 for: "${message}"**\n\n`;
+      
+      // Try each potential query
+      for (const query of generalQueries) {
+        try {
+          console.log(`Trying general query: ${query.endpoint}`);
+          
+          const toolResponse = await this.sendMCPRequest('tools/call', {
+            name: 'Lokka-Microsoft',
+            arguments: {
+              apiType: 'graph',
+              graphApiVersion: 'v1.0',
+              method: 'get',
+              path: query.endpoint,
+              queryParams: query.queryParams || {}
+            }
+          });
+          
+          const formattedResponse = this.formatToolResponse('Lokka-Microsoft', toolResponse);
+          response += `**${query.description}:**\n${formattedResponse}\n\n`;
+          
+        } catch (error) {
+          console.error(`General query failed for ${query.endpoint}:`, error);
+          // Don't show errors to user for general queries, just try the next one
+        }
+      }
+      
+      // If we got any results, return them
+      if (response.length > 100) {
+        return response.trim();
+      }
+    }
+    
+    // Fallback to help message if no general queries worked
     return `🤖 **Connected to Microsoft 365 tenant: ${this.tenantDomain}**
 
 I understand you asked: "${message}"
@@ -724,7 +887,16 @@ I'm connected to your tenant via the Lokka-Microsoft MCP server and can help you
 • "Show me non-compliant devices" - Devices that are not compliant
 • "Show me compliant devices" - Devices that are compliant
 
-Try asking me any of these questions to get real data from your Microsoft 365 tenant!`;
+**💡 Try asking me questions like:**
+• "What policies do we have?"
+• "Show me service principals"
+• "What conditional access policies exist?"
+• "List directory roles"
+• "Show me external users"
+• "What domains are configured?"
+• "Show me audit logs"
+
+I'll try to find relevant information from your Microsoft 365 tenant!`;
   }
 
   formatToolResponse(toolName, toolResponse) {
