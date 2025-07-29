@@ -504,26 +504,26 @@ class TenantCloneManager {
 
     updateTenantCards() {
         // Update source tenant card
-        const sourceCard = document.querySelector('.tenant-card[data-tenant="source"]');
+        const sourceCard = document.querySelector('.tenant-card.source-card');
         if (sourceCard) {
             const badge = sourceCard.querySelector('.connection-badge');
             const info = sourceCard.querySelector('.connection-info');
             
-            if (this.authStatus.source === 'authenticated') {
+            if (badge && this.authStatus.source === 'authenticated') {
                 badge.className = 'connection-badge connected';
                 badge.innerHTML = '<i class="fas fa-check"></i>';
                 if (info) {
                     info.className = 'connection-info connected';
                     info.innerHTML = '<i class="fas fa-check-circle"></i> Connected';
                 }
-            } else if (this.authStatus.source === 'connecting') {
+            } else if (badge && this.authStatus.source === 'connecting') {
                 badge.className = 'connection-badge connecting';
                 badge.innerHTML = '<i class="fas fa-spinner"></i>';
                 if (info) {
                     info.className = 'connection-info';
                     info.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
                 }
-            } else if (this.authStatus.source === 'error') {
+            } else if (badge && this.authStatus.source === 'error') {
                 badge.className = 'connection-badge error';
                 badge.innerHTML = '<i class="fas fa-times"></i>';
                 if (info) {
@@ -534,26 +534,26 @@ class TenantCloneManager {
         }
 
         // Update target tenant card
-        const targetCard = document.querySelector('.tenant-card[data-tenant="target"]');
+        const targetCard = document.querySelector('.tenant-card.target-card');
         if (targetCard) {
             const badge = targetCard.querySelector('.connection-badge');
             const info = targetCard.querySelector('.connection-info');
             
-            if (this.authStatus.target === 'authenticated') {
+            if (badge && this.authStatus.target === 'authenticated') {
                 badge.className = 'connection-badge connected';
                 badge.innerHTML = '<i class="fas fa-check"></i>';
                 if (info) {
                     info.className = 'connection-info connected';
                     info.innerHTML = '<i class="fas fa-check-circle"></i> Connected';
                 }
-            } else if (this.authStatus.target === 'connecting') {
+            } else if (badge && this.authStatus.target === 'connecting') {
                 badge.className = 'connection-badge connecting';
                 badge.innerHTML = '<i class="fas fa-spinner"></i>';
                 if (info) {
                     info.className = 'connection-info';
                     info.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
                 }
-            } else if (this.authStatus.target === 'error') {
+            } else if (badge && this.authStatus.target === 'error') {
                 badge.className = 'connection-badge error';
                 badge.innerHTML = '<i class="fas fa-times"></i>';
                 if (info) {
@@ -573,20 +573,29 @@ class TenantCloneManager {
         this.authStatus[tenantType] = status;
         
         const authItem = document.getElementById(`${tenantType}AuthItem`);
+        if (!authItem) {
+            console.log(`Auth status updated: ${tenantType} = ${status} (UI element not found)`);
+            return;
+        }
+        
         const authStatus = authItem.querySelector('.auth-status');
         const authText = authItem.querySelector(`#${tenantType}AuthText`);
 
-        authStatus.className = `auth-status ${status}`;
+        if (authStatus) {
+            authStatus.className = `auth-status ${status}`;
+        }
         
-        switch (status) {
-            case 'success':
-                authText.textContent = 'Authentication successful';
-                break;
-            case 'error':
-                authText.textContent = 'Authentication failed';
-                break;
-            default:
-                authText.textContent = 'Waiting for authentication...';
+        if (authText) {
+            switch (status) {
+                case 'success':
+                    authText.textContent = 'Authentication successful';
+                    break;
+                case 'error':
+                    authText.textContent = 'Authentication failed';
+                    break;
+                default:
+                    authText.textContent = 'Waiting for authentication...';
+            }
         }
     }
 
@@ -601,21 +610,53 @@ class TenantCloneManager {
     }
 
     showAuthProgress() {
-        document.getElementById('dualTenantSetup').style.display = 'none';
-        document.getElementById('authProgressSection').style.display = 'block';
+        const dualTenantSetup = document.getElementById('dualTenantSetup');
+        const authProgressSection = document.getElementById('authProgressSection');
+        
+        if (dualTenantSetup) {
+            dualTenantSetup.style.display = 'none';
+        }
+        if (authProgressSection) {
+            authProgressSection.style.display = 'block';
+        }
+        
+        // Show the auth section if the setup elements don't exist
+        const authSection = document.getElementById('authSection');
+        if (authSection && !dualTenantSetup) {
+            authSection.style.display = 'block';
+        }
     }
 
     hideAuthProgress() {
-        document.getElementById('authProgressSection').style.display = 'none';
+        const authProgressSection = document.getElementById('authProgressSection');
+        if (authProgressSection) {
+            authProgressSection.style.display = 'none';
+        }
     }
 
     showMigrationInterface() {
-        document.getElementById('migrationInterface').style.display = 'block';
+        const migrationInterface = document.getElementById('migrationInterface');
+        if (migrationInterface) {
+            migrationInterface.style.display = 'block';
+        }
+        
+        // Show the policy section if the migration interface doesn't exist
+        const policySection = document.getElementById('policySection');
+        if (policySection && !migrationInterface) {
+            policySection.style.display = 'block';
+        }
     }
 
     updateTenantConnectionDisplay() {
-        document.getElementById('connectedSourceTenant').textContent = this.sourceTenant;
-        document.getElementById('connectedTargetTenant').textContent = this.targetTenant;
+        const connectedSourceTenant = document.getElementById('connectedSourceTenant');
+        const connectedTargetTenant = document.getElementById('connectedTargetTenant');
+        
+        if (connectedSourceTenant) {
+            connectedSourceTenant.textContent = this.sourceTenant;
+        }
+        if (connectedTargetTenant) {
+            connectedTargetTenant.textContent = this.targetTenant;
+        }
     }
 
     renderSourcePolicies() {
@@ -876,24 +917,46 @@ class TenantCloneManager {
         const policy = this.policies.get(policyId);
         if (!policy) return;
 
-        // Populate modal with policy details
-        document.getElementById('sourcePolicyName').textContent = policy.displayName || 'Unnamed Policy';
-        document.getElementById('sourcePolicyType').textContent = this.formatPolicyType(policyType);
-        document.getElementById('sourcePolicyDescription').textContent = policy.description || 'No description';
+        // Populate modal with policy details (with null checks)
+        const sourcePolicyName = document.getElementById('sourcePolicyName');
+        const sourcePolicyType = document.getElementById('sourcePolicyType');
+        const sourcePolicyDescription = document.getElementById('sourcePolicyDescription');
+        const targetPolicyName = document.getElementById('targetPolicyName');
+        const targetPolicyDescription = document.getElementById('targetPolicyDescription');
+        const cloneModalOverlay = document.getElementById('cloneModalOverlay');
+        
+        if (sourcePolicyName) {
+            sourcePolicyName.textContent = policy.displayName || 'Unnamed Policy';
+        }
+        if (sourcePolicyType) {
+            sourcePolicyType.textContent = this.formatPolicyType(policyType);
+        }
+        if (sourcePolicyDescription) {
+            sourcePolicyDescription.textContent = policy.description || 'No description';
+        }
 
         // Clear form fields
-        document.getElementById('targetPolicyName').value = '';
-        document.getElementById('targetPolicyDescription').value = '';
+        if (targetPolicyName) {
+            targetPolicyName.value = '';
+        }
+        if (targetPolicyDescription) {
+            targetPolicyDescription.value = '';
+        }
 
         // Store current policy for cloning
         this.currentClonePolicy = { policyId, policyType };
 
         // Show modal
-        document.getElementById('cloneModalOverlay').style.display = 'flex';
+        if (cloneModalOverlay) {
+            cloneModalOverlay.style.display = 'flex';
+        }
     }
 
     closeCloneModal() {
-        document.getElementById('cloneModalOverlay').style.display = 'none';
+        const cloneModalOverlay = document.getElementById('cloneModalOverlay');
+        if (cloneModalOverlay) {
+            cloneModalOverlay.style.display = 'none';
+        }
         this.currentClonePolicy = null;
     }
 
@@ -967,13 +1030,18 @@ class TenantCloneManager {
     }
 
     updatePolicyCount(count) {
-        document.getElementById('sourcePolicyCount').textContent = count;
+        const sourcePolicyCount = document.getElementById('sourcePolicyCount');
+        if (sourcePolicyCount) {
+            sourcePolicyCount.textContent = count;
+        }
     }
 
     incrementMigrationCount() {
         const migrationCountElement = document.getElementById('migrationCount');
-        const currentCount = parseInt(migrationCountElement.textContent) || 0;
-        migrationCountElement.textContent = currentCount + 1;
+        if (migrationCountElement) {
+            const currentCount = parseInt(migrationCountElement.textContent) || 0;
+            migrationCountElement.textContent = currentCount + 1;
+        }
     }
 
     // Utility Methods
@@ -1116,6 +1184,12 @@ class TenantCloneManager {
         const timestamp = new Date().toLocaleTimeString();
         const logContent = document.getElementById('logContent');
         
+        // Log to console if log element doesn't exist
+        if (!logContent) {
+            console.log(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
+            return;
+        }
+        
         const logEntry = document.createElement('div');
         logEntry.className = `log-entry ${type}`;
         logEntry.innerHTML = `
@@ -1135,6 +1209,13 @@ class TenantCloneManager {
     clearLog() {
         const logContent = document.getElementById('logContent');
         const currentTime = new Date().toLocaleTimeString();
+        
+        // Log to console if log element doesn't exist
+        if (!logContent) {
+            console.log(`[${currentTime}] SYSTEM: Log cleared`);
+            return;
+        }
+        
         logContent.innerHTML = `
             <div class="log-entry system">
                 <span class="timestamp">${currentTime}</span>
