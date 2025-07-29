@@ -2913,6 +2913,16 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Serve the new policy migration dashboard
+app.get('/tenant-clone-new', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tenant-clone-new.html'));
+});
+
+// Legacy tenant clone page
+app.get('/tenant-clone', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tenant-clone.html'));
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
