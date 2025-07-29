@@ -50,6 +50,10 @@ class TenantCloneManager {
             this.handleSourcePoliciesLoaded(data);
         });
 
+        this.socket.on('source_policies_error', (data) => {
+            this.handleSourcePoliciesError(data);
+        });
+
         this.socket.on('policy_cloned', (data) => {
             this.handlePolicyCloned(data);
         });
@@ -179,6 +183,12 @@ class TenantCloneManager {
     }
 
     async loadSourcePolicies() {
+        console.log('🔍 loadSourcePolicies called');
+        console.log('🔍 isConnected:', this.isConnected);
+        console.log('🔍 sessionId:', this.sessionId);
+        console.log('🔍 sourceTenant:', this.sourceTenant);
+        console.log('🔍 targetTenant:', this.targetTenant);
+        
         if (!this.isConnected) {
             this.showError('Please connect to both tenants first');
             return;
@@ -189,6 +199,7 @@ class TenantCloneManager {
         this.logMessage('system', 'Loading policies from source tenant...');
 
         try {
+            console.log('🚀 Emitting load_source_policies event with sessionId:', this.sessionId);
             this.socket.emit('load_source_policies', {
                 sessionId: this.sessionId
             });
@@ -295,6 +306,13 @@ class TenantCloneManager {
         this.logMessage('success', `Loaded ${data.count} policies from source tenant`);
     }
 
+    handleSourcePoliciesError(data) {
+        console.error('Error loading source policies:', data);
+        this.setButtonLoading(document.getElementById('loadPoliciesBtn'), false);
+        this.logMessage('error', `Failed to load policies: ${data.error}`);
+        this.showError('Failed to load source policies: ' + data.error);
+    }
+
     handlePolicyCloned(data) {
         console.log('Policy cloned successfully:', data);
         this.logMessage('success', `Successfully cloned: ${data.policyName}`);
@@ -311,13 +329,19 @@ class TenantCloneManager {
     handleAuthStatusChanged(data) {
         console.log('Auth status changed:', data);
         
-        // Determine which tenant this is for based on the message or context
-        const isSource = data.message?.includes('source') || data.tenantDomain === this.sourceTenant;
-        const tenantType = isSource ? 'source' : 'target';
+        // Determine which tenant this is for based on tenantRole, message, or domain
+        let tenantType;
+        if (data.tenantRole) {
+            tenantType = data.tenantRole; // 'source' or 'target'
+        } else {
+            // Fallback logic for backwards compatibility
+            const isSource = data.message?.includes('source') || data.tenantDomain === this.sourceTenant;
+            tenantType = isSource ? 'source' : 'target';
+        }
         
         if (data.status === 'authenticated') {
             this.updateAuthStatus(tenantType, 'success');
-            this.logMessage('success', `${tenantType} tenant authenticated successfully`);
+            this.logMessage('success', `${tenantType} tenant (${data.tenantDomain}) authenticated successfully`);
         } else if (data.status === 'needs_authentication') {
             this.updateAuthStatus(tenantType, 'pending');
             this.logMessage('system', `${tenantType} tenant requires authentication`);
@@ -683,8 +707,20 @@ class TenantCloneManager {
     }
 
     setButtonLoading(button, loading) {
+        if (!button) {
+            console.error('setButtonLoading: button element is null');
+            return;
+        }
+        
         const btnText = button.querySelector('.btn-text');
         const btnLoader = button.querySelector('.btn-loader');
+        
+        if (!btnText || !btnLoader) {
+            console.error('setButtonLoading: missing .btn-text or .btn-loader elements in button:', button.id);
+            // Fallback: just disable/enable the button
+            button.disabled = loading;
+            return;
+        }
         
         if (loading) {
             btnText.style.display = 'none';
