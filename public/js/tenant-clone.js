@@ -589,11 +589,14 @@ class TenantCloneManager {
 
     // Event Handlers
     handleDualTenantInitialized(data) {
-        console.log('Dual tenant initialized:', data);
+        console.log('🏁 Dual tenant initialized:', data);
+        console.log('🏁 Current authStatus before update:', this.authStatus);
+        
         this.updateConnectionStatus(data.status);
         
         // If both tenants are already authenticated locally, ensure UI is updated
         if (this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated') {
+            console.log('🏁 Both tenants already authenticated locally - triggering checkBothTenantsAuthenticated');
             this.checkBothTenantsAuthenticated();
         }
     }
@@ -727,24 +730,36 @@ class TenantCloneManager {
 
     // UI Update Methods
     updateConnectionStatus(status) {
+        console.log('🔄 updateConnectionStatus called with:', status);
+        console.log('🔄 Current authStatus:', this.authStatus);
+        
         const statusIndicator = document.querySelector('.status-indicator');
         const statusText = document.querySelector('.connection-status span');
 
-        // Check if both tenants are authenticated either via server status or local auth status
-        const bothAuthenticated = (status.isActive && status.sourceTenant?.authenticated && status.targetTenant?.authenticated) ||
-                                 (this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated');
+        // Priority check: Use local auth status if both tenants are authenticated
+        const bothAuthenticatedLocally = this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated';
+        
+        // Fallback check: Server-reported status
+        const bothAuthenticatedServer = status?.isActive && status?.sourceTenant?.authenticated && status?.targetTenant?.authenticated;
+        
+        const bothAuthenticated = bothAuthenticatedLocally || bothAuthenticatedServer;
+
+        console.log('🔄 bothAuthenticatedLocally:', bothAuthenticatedLocally);
+        console.log('🔄 bothAuthenticatedServer:', bothAuthenticatedServer);
+        console.log('🔄 Final bothAuthenticated:', bothAuthenticated);
 
         if (bothAuthenticated) {
-            statusIndicator.className = 'status-indicator connected';
+            console.log('✅ Both tenants authenticated - updating UI');
+            if (statusIndicator) statusIndicator.className = 'status-indicator connected';
             if (statusText) statusText.textContent = 'Both Tenants Connected';
             this.isConnected = true;
             this.showMigrationInterface();
             this.updateTenantCards();
-        } else if (status.isActive) {
-            statusIndicator.className = 'status-indicator connecting';
+        } else if (status?.isActive) {
+            if (statusIndicator) statusIndicator.className = 'status-indicator connecting';
             if (statusText) statusText.textContent = 'Connecting Tenants';
         } else {
-            statusIndicator.className = 'status-indicator';
+            if (statusIndicator) statusIndicator.className = 'status-indicator';
             if (statusText) statusText.textContent = 'Not Connected';
         }
     }
@@ -856,7 +871,12 @@ class TenantCloneManager {
     }
 
     checkBothTenantsAuthenticated() {
+        console.log('🔍 checkBothTenantsAuthenticated called');
+        console.log('🔍 Source auth status:', this.authStatus.source);
+        console.log('🔍 Target auth status:', this.authStatus.target);
+        
         if (this.authStatus.source === 'authenticated' && this.authStatus.target === 'authenticated') {
+            console.log('✅ Both tenants authenticated - updating all UI elements');
             this.isConnected = true;
             this.logMessage('success', 'Both tenants authenticated successfully');
             
@@ -865,6 +885,7 @@ class TenantCloneManager {
             if (proceedBtn) {
                 proceedBtn.style.display = 'block';
                 proceedBtn.disabled = false;
+                console.log('✅ Proceed button enabled');
             }
 
             // Update progress message
@@ -881,14 +902,16 @@ class TenantCloneManager {
                 progressIcon.style.background = 'linear-gradient(135deg, #10b981, #059669)';
             }
 
-            // Update connection status UI
+            // Update connection status UI with forced update
             const statusIndicator = document.querySelector('.status-indicator');
             const statusText = document.querySelector('.connection-status span');
             if (statusIndicator) {
                 statusIndicator.className = 'status-indicator connected';
+                console.log('✅ Status indicator updated to connected');
             }
             if (statusText) {
                 statusText.textContent = 'Both Tenants Connected';
+                console.log('✅ Status text updated');
             }
 
             // Legacy support for old interface
@@ -896,6 +919,10 @@ class TenantCloneManager {
             this.showMigrationInterface();
             this.updateTenantConnectionDisplay();
             this.updateTenantCards();
+            
+            console.log('✅ All UI updates completed');
+        } else {
+            console.log('⏳ Not both tenants authenticated yet');
         }
     }
 
