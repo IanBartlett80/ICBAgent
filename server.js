@@ -137,6 +137,9 @@ class DualTenantManager {
     }
 
     console.log('📋 Loading policies from source tenant...');
+    console.log(`🔍 Source tenant auth status: ${this.sourceTenant.authStatus}`);
+    console.log(`🔍 Source tenant connected: ${this.sourceTenant.isConnected}`);
+    
     const policyTypes = [
       'deviceConfigurations',
       'deviceCompliancePolicies', 
@@ -148,9 +151,11 @@ class DualTenantManager {
     ];
 
     const policies = new Map();
+    let totalPoliciesFound = 0;
     
     for (const policyType of policyTypes) {
       try {
+        console.log(`🔍 Fetching ${policyType}...`);
         const response = await this.sourceTenant.sendMCPRequest('tools/call', {
           name: 'Lokka-Microsoft',
           arguments: {
@@ -164,17 +169,48 @@ class DualTenantManager {
           }
         });
 
+        console.log(`📊 Response for ${policyType}:`, response ? 'Got response' : 'No response');
+        
         if (response && response.content && response.content[0]) {
-          const data = JSON.parse(response.content[0].text);
-          if (data.value) {
-            policies.set(policyType, data.value);
+          try {
+            let responseText = response.content[0].text;
+            console.log(`📝 Raw response text for ${policyType} (first 200 chars):`, responseText.substring(0, 200));
+            
+            // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+            let jsonData = null;
+            
+            // Try to extract JSON from response that might have prefixes
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              jsonData = JSON.parse(jsonMatch[0]);
+            } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+              jsonData = JSON.parse(responseText.trim());
+            } else {
+              console.log(`⚠️ Could not extract JSON from ${policyType} response:`, responseText.substring(0, 100));
+              continue;
+            }
+            
+            if (jsonData && jsonData.value) {
+              policies.set(policyType, jsonData.value);
+              totalPoliciesFound += jsonData.value.length;
+              console.log(`✅ Found ${jsonData.value.length} ${policyType}`);
+            } else {
+              console.log(`⚠️ No value array found in ${policyType} response`);
+              console.log(`📋 Response structure:`, Object.keys(jsonData || {}));
+            }
+          } catch (parseError) {
+            console.error(`❌ JSON parsing error for ${policyType}:`, parseError.message);
+            console.log(`📝 Problematic response text:`, response.content[0].text.substring(0, 300));
           }
+        } else {
+          console.log(`⚠️ No content found in ${policyType} response`);
         }
       } catch (error) {
-        console.error(`Error loading ${policyType}:`, error);
+        console.error(`❌ Error loading ${policyType}:`, error.message);
       }
     }
 
+    console.log(`📊 Total policies found: ${totalPoliciesFound}`);
     this.policies.source = policies;
     
     this.io.to(this.sessionId).emit('source_policies_loaded', {
@@ -559,12 +595,66 @@ class MCPClient {
         
         // Emit authentication success event
         if (previousStatus !== 'authenticated') {
+          // For dual-tenant sessions, extract the base sessionId once
+          const baseSessionId = this.sessionId.replace(/_source$|_target$/, '');
+          const isDualTenant = baseSessionId !== this.sessionId;
+          
+          // Emit to the specific sessionId (could be with _source/_target suffix)
           this.io.to(this.sessionId).emit('auth_status_changed', {
             status: 'authenticated',
-            message: 'Authentication successful! You can now query your Microsoft 365 tenant.',
+            message: `Authentication successful! You can now query your Microsoft 365 tenant.`,
             hasToken: true,
-            tenantDomain: this.tenantDomain
+            tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole // Add tenant role info
           });
+          
+          // Also emit MCP status ready to ensure UI updates
+          this.io.to(this.sessionId).emit('mcp_status', {
+            status: 'ready',
+            message: `Connected to Microsoft 365 tenant: ${this.tenantDomain}`,
+            authenticated: true,
+            tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole
+          });
+          
+          // For dual-tenant sessions, also emit to the base sessionId
+          if (isDualTenant) {
+            // This is a dual-tenant session, emit to base session too
+            this.io.to(baseSessionId).emit('auth_status_changed', {
+              status: 'authenticated',
+              message: `${this.tenantRole} tenant authentication successful! You can now query your Microsoft 365 tenant.`,
+              hasToken: true,
+              tenantDomain: this.tenantDomain,
+              tenantRole: this.tenantRole
+            });
+            
+            this.io.to(baseSessionId).emit('mcp_status', {
+              status: 'ready',
+              message: `${this.tenantRole} tenant connected to Microsoft 365: ${this.tenantDomain}`,
+              authenticated: true,
+              tenantDomain: this.tenantDomain,
+              tenantRole: this.tenantRole
+            });
+          }
+          
+          // Update session status
+          const sessionToUpdate = activeSessions.has(this.sessionId) ? this.sessionId : baseSessionId;
+          
+          if (activeSessions.has(sessionToUpdate)) {
+            const session = activeSessions.get(sessionToUpdate);
+            session.status = 'authenticated';
+            session.authenticatedAt = new Date();
+          } else if (dualTenantSessions.has(baseSessionId)) {
+            // For dual-tenant sessions, we don't update activeSessions but could track in dualManager
+            console.log(`Authentication successful for dual-tenant role: ${this.tenantRole} in session ${baseSessionId}`);
+          }
+          
+          // Stop authentication monitoring since we're now authenticated
+          if (this.authMonitorInterval) {
+            clearInterval(this.authMonitorInterval);
+            this.authMonitorInterval = null;
+            console.log(`Authentication monitoring stopped for session ${this.sessionId}`);
+          }
           
           console.log(`Authentication successful for session ${this.sessionId}`);
         }
@@ -573,13 +663,30 @@ class MCPClient {
         
         // Emit authentication needed event
         if (previousStatus !== 'needs_authentication') {
+          // For dual-tenant sessions, extract the base sessionId once
+          const baseSessionId = this.sessionId.replace(/_source$|_target$/, '');
+          const isDualTenant = baseSessionId !== this.sessionId;
+          
           this.io.to(this.sessionId).emit('auth_status_changed', {
             status: 'needs_authentication',
             message: 'Please complete the authentication process in your browser window.',
             hasToken: false,
             tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole,
             authUrl: 'http://localhost:3200'
           });
+          
+          // For dual-tenant sessions, also emit to the base sessionId
+          if (isDualTenant) {
+            this.io.to(baseSessionId).emit('auth_status_changed', {
+              status: 'needs_authentication',
+              message: `${this.tenantRole} tenant requires authentication. Please complete the sign-in process.`,
+              hasToken: false,
+              tenantDomain: this.tenantDomain,
+              tenantRole: this.tenantRole,
+              authUrl: 'http://localhost:3200'
+            });
+          }
           
           console.log('Lokka MCP server requires authentication - browser window should have opened');
         }
@@ -592,12 +699,28 @@ class MCPClient {
       
       // Emit error event
       if (previousStatus !== 'authentication_error') {
+        // For dual-tenant sessions, extract the base sessionId once
+        const baseSessionId = this.sessionId.replace(/_source$|_target$/, '');
+        const isDualTenant = baseSessionId !== this.sessionId;
+        
         this.io.to(this.sessionId).emit('auth_status_changed', {
           status: 'authentication_error',
           message: `Authentication error: ${error.message}`,
           hasToken: false,
-          tenantDomain: this.tenantDomain
+          tenantDomain: this.tenantDomain,
+          tenantRole: this.tenantRole
         });
+        
+        // For dual-tenant sessions, also emit to the base sessionId
+        if (isDualTenant) {
+          this.io.to(baseSessionId).emit('auth_status_changed', {
+            status: 'authentication_error',
+            message: `${this.tenantRole} tenant authentication error: ${error.message}`,
+            hasToken: false,
+            tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole
+          });
+        }
       }
     }
   }
