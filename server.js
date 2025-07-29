@@ -498,7 +498,6 @@ class DualTenantManager {
     delete transformed.deviceStatusOverview;
     delete transformed.userStatusOverview;
     delete transformed.assignments;
-    delete transformed.scheduledActionsForRule;
     delete transformed.deviceSettingStateSummaries;
     delete transformed.complianceGracePeriodExpirationDateTime;
     delete transformed.settingStates;
@@ -519,6 +518,44 @@ class DualTenantManager {
     delete transformed['@odata.etag'];
     delete transformed['@odata.editLink'];
     delete transformed['@odata.nextLink'];
+    
+    // Handle scheduledActionsForRule for compliance policies
+    if (transformed.scheduledActionsForRule && Array.isArray(transformed.scheduledActionsForRule)) {
+      // Clean up scheduled actions by removing read-only properties but preserving structure
+      transformed.scheduledActionsForRule = transformed.scheduledActionsForRule.map(rule => {
+        const cleanRule = { ...rule };
+        // Remove read-only properties from the rule
+        delete cleanRule.id;
+        
+        // Clean up scheduledActionConfigurations if present
+        if (cleanRule.scheduledActionConfigurations && Array.isArray(cleanRule.scheduledActionConfigurations)) {
+          cleanRule.scheduledActionConfigurations = cleanRule.scheduledActionConfigurations.map(config => {
+            const cleanConfig = { ...config };
+            delete cleanConfig.id;
+            return cleanConfig;
+          });
+        }
+        
+        return cleanRule;
+      });
+      console.log(`✅ Preserved and cleaned scheduledActionsForRule: ${transformed.scheduledActionsForRule.length} rules`);
+    } else if (originalODataType && originalODataType.includes('CompliancePolicy')) {
+      // If this is a compliance policy but has no scheduledActionsForRule, create a default one
+      transformed.scheduledActionsForRule = [
+        {
+          ruleName: "PasswordRequired",
+          scheduledActionConfigurations: [
+            {
+              actionType: "block",
+              gracePeriodHours: 0,
+              notificationTemplateId: "",
+              notificationMessageCCList: []
+            }
+          ]
+        }
+      ];
+      console.log(`✅ Created default scheduledActionsForRule for compliance policy`);
+    }
     
     // For device compliance and configuration policies, preserve the @odata.type
     // as it's required to specify the concrete implementation
@@ -555,6 +592,7 @@ class DualTenantManager {
       displayName: transformed.displayName,
       odataType: transformed['@odata.type'],
       keys: Object.keys(transformed),
+      hasScheduledActions: !!transformed.scheduledActionsForRule,
       preservedODataType: !!originalODataType
     });
 
