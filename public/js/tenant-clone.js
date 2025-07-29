@@ -24,7 +24,7 @@ class TenantCloneManager {
         this.bindEvents();
         this.initializeDragAndDrop();
         this.logMessage('system', 'Tenant Clone interface initialized');
-        this.showPage('connectionPage'); // Start with connection page
+        this.showPage('connectionPage'); // This will map to connectionSection
     }
 
     // Page Navigation System
@@ -32,23 +32,33 @@ class TenantCloneManager {
         console.log(`📄 Navigating to page: ${pageId}`);
         console.log(`📄 Current page before navigation: ${this.currentPage}`);
         
-        // Hide all pages
-        const pages = document.querySelectorAll('.app-page');
-        console.log(`📄 Found ${pages.length} app pages`);
-        pages.forEach(page => {
-            page.classList.remove('active');
-            console.log(`📄 Hiding page: ${page.id}`);
+        // Map page IDs to section IDs for backwards compatibility
+        const pageToSectionMap = {
+            'connectionPage': 'connectionSection',
+            'authenticationPage': 'authSection', 
+            'migrationPage': 'policySection'
+        };
+        
+        const sectionId = pageToSectionMap[pageId] || pageId;
+        console.log(`📄 Mapped ${pageId} to section: ${sectionId}`);
+        
+        // Hide all sections
+        const sections = document.querySelectorAll('section[id$="Section"]');
+        console.log(`📄 Found ${sections.length} sections`);
+        sections.forEach(section => {
+            section.style.display = 'none';
+            console.log(`📄 Hiding section: ${section.id}`);
         });
 
-        // Show target page
-        const targetPage = document.getElementById(pageId);
-        if (targetPage) {
-            targetPage.classList.add('active');
+        // Show target section
+        const targetSection = document.getElementById(sectionId);
+        if (targetSection) {
+            targetSection.style.display = 'block';
             this.currentPage = pageId;
             this.updateBreadcrumb(pageId);
-            console.log(`📄 Successfully navigated to: ${pageId}`);
+            console.log(`📄 Successfully navigated to: ${pageId} (section: ${sectionId})`);
         } else {
-            console.error(`📄 Target page not found: ${pageId}`);
+            console.error(`📄 Target section not found: ${sectionId}`);
         }
     }
 
@@ -200,7 +210,7 @@ class TenantCloneManager {
         }
 
         // Search functionality
-        const searchInput = document.getElementById('sourcePolicySearch');
+        const searchInput = document.getElementById('policySearchInput');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
                 this.filterPolicies(e.target.value);
@@ -998,15 +1008,15 @@ class TenantCloneManager {
     }
 
     renderSourcePolicies() {
-        const policiesGrid = document.getElementById('policiesGrid');
+        const policyGrid = document.getElementById('policyGrid');
         
-        if (!policiesGrid) {
-            console.warn('policiesGrid element not found - skipping policy rendering');
+        if (!policyGrid) {
+            console.warn('policyGrid element not found - skipping policy rendering');
             return;
         }
         
         if (this.policies.size === 0) {
-            policiesGrid.innerHTML = `
+            policyGrid.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">
                         <i class="fas fa-folder-open"></i>
@@ -1021,7 +1031,7 @@ class TenantCloneManager {
         const policiesArray = Array.from(this.policies.values());
         const policiesHTML = policiesArray.map(policy => this.createPolicyCardHTML(policy)).join('');
         
-        policiesGrid.innerHTML = policiesHTML;
+        policyGrid.innerHTML = policiesHTML;
         
         // Bind events to policy cards
         this.bindPolicyCardEvents();
@@ -1380,7 +1390,7 @@ class TenantCloneManager {
     }
 
     incrementMigrationCount() {
-        const migrationCountElement = document.getElementById('migrationCount');
+        const migrationCountElement = document.getElementById('migratedPolicyCount');
         if (migrationCountElement) {
             const currentCount = parseInt(migrationCountElement.textContent) || 0;
             migrationCountElement.textContent = currentCount + 1;
