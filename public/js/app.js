@@ -14,7 +14,32 @@ class ICBAgent {
         this.bindEvents();
         this.updateConnectionStatus('disconnected');
         this.setupAuthenticationListener();
+        this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
+    }
+
+    testEnhancedRendering() {
+        // Test the enhanced rendering with a sample response
+        console.log('🧪 Testing enhanced rendering...');
+        
+        const sampleResponse = `📱 **iOS Devices in tenant.com** (5 total, showing first 20)
+
+• **John's iPhone** (iOS 17.1)
+  └ ✅ Compliance: compliant | Last Sync: 7/28/2025 | Enrolled: 1/15/2024
+• **Jane's iPad** (iOS 16.8)
+  └ ❌ Compliance: noncompliant | Last Sync: Never | Enrolled: 2/20/2024
+
+**Compliance Summary:** compliant: 3, noncompliant: 2`;
+        
+        try {
+            console.log('📝 Testing with sample response:', sampleResponse.substring(0, 200));
+            const rendered = this.renderEnhancedResponse(sampleResponse);
+            console.log('✅ Enhanced rendering test result:', rendered.substring(0, 500));
+            console.log('🔍 Contains proper list tags:', rendered.includes('<ul class="response-list">'));
+            console.log('🔍 Contains list items:', rendered.includes('<li class="response-list-item">'));
+        } catch (error) {
+            console.error('❌ Enhanced rendering test failed:', error);
+        }
     }
 
     setupAuthenticationListener() {
@@ -95,6 +120,7 @@ class ICBAgent {
         });
 
         this.socket.on('chat_response', (data) => {
+            console.log('📨 Received chat response:', data);
             this.addMessage(data.message, 'assistant');
         });
 
@@ -322,11 +348,14 @@ class ICBAgent {
 
             const data = await response.json();
             
+            console.log('📨 Received API response:', data);
+            
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to send message');
             }
 
             // Add AI response to chat
+            console.log('🤖 Adding AI response to chat:', data.response);
             this.addMessage(data.response.message, 'assistant');
 
         } catch (error) {
@@ -368,6 +397,8 @@ class ICBAgent {
     }
 
     addMessage(content, type, isError = false) {
+        console.log('💬 Adding message:', { type, contentLength: content.length, isError });
+        
         const chatMessages = document.getElementById('chatMessages');
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
@@ -385,7 +416,18 @@ class ICBAgent {
 
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        messageContent.innerHTML = this.formatMessage(content);
+        
+        // Enhanced message rendering - use full markdown for both user and assistant messages
+        if (type === 'assistant') {
+            console.log('🤖 Assistant message detected, using enhanced rendering');
+            messageContent.innerHTML = this.renderEnhancedResponse(content);
+        } else if (type === 'user') {
+            console.log('👤 User message detected, using full markdown rendering');
+            messageContent.innerHTML = this.formatMessage(content);
+        } else {
+            console.log('🔧 System message detected, using enhanced rendering');
+            messageContent.innerHTML = this.renderEnhancedResponse(content);
+        }
 
         messageDiv.appendChild(messageContent);
         chatMessages.appendChild(messageDiv);
@@ -395,12 +437,311 @@ class ICBAgent {
     }
 
     formatMessage(content) {
-        // Basic markdown-like formatting
-        return content
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            .replace(/\n/g, '<br>');
+        // Enhanced markdown formatting for user messages
+        console.log('👤 Formatting user message with full markdown support');
+        
+        // First apply the same markdown parsing as assistant messages
+        let html = this.parseMarkdown(content);
+        
+        return html;
+    }
+
+    renderEnhancedResponse(content) {
+        console.log('🚀 Enhanced rendering triggered');
+        
+        // Enhanced markdown rendering with insights and recommendations
+        let html = this.parseMarkdown(content);
+        
+        // Add insights and recommendations if this looks like a data response
+        if (this.isDataResponse(content)) {
+            console.log('📊 Data response detected, generating insights...');
+            html += this.generateInsightsAndRecommendations(content);
+        }
+        
+        return html;
+    }
+
+    parseMarkdown(content) {
+        // Enhanced markdown parsing
+        let html = content;
+        
+        // Headers
+        html = html.replace(/^### (.*$)/gm, '<h3 class="response-header">$1</h3>');
+        html = html.replace(/^## (.*$)/gm, '<h2 class="response-title">$1</h2>');
+        html = html.replace(/^# (.*$)/gm, '<h1 class="response-main-title">$1</h1>');
+        
+        // Bold and italic
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="response-bold">$1</strong>');
+        html = html.replace(/\*(.*?)\*/g, '<em class="response-italic">$1</em>');
+        
+        // Code blocks
+        html = html.replace(/```json\n([\s\S]*?)\n```/g, '<div class="code-block json-block"><pre><code>$1</code></pre></div>');
+        html = html.replace(/```([\s\S]*?)```/g, '<div class="code-block"><pre><code>$1</code></pre></div>');
+        html = html.replace(/`(.*?)`/g, '<code class="inline-code">$1</code>');
+        
+        // Lists - Enhanced styling with support for nested content
+        // Process lists by handling multi-line list items properly
+        // Split into lines first and process line by line
+        const lines = html.split('\n');
+        let processedLines = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Check if this line starts with a bullet point
+            if (line.match(/^• /)) {
+                let listItemContent = line.substring(2); // Remove the bullet
+                
+                // Look ahead for indented continuation lines
+                let j = i + 1;
+                while (j < lines.length && lines[j].match(/^  └/)) {
+                    listItemContent += '<br>&nbsp;&nbsp;' + lines[j].substring(2);
+                    j++;
+                }
+                
+                // Create the list item
+                processedLines.push(`<li class="response-list-item">${listItemContent}</li>`);
+                
+                // Skip the lines we've already processed
+                i = j - 1;
+            } else if (line.match(/^- /)) {
+                // Handle simple dash lists
+                processedLines.push(`<li class="response-list-item">${line.substring(2)}</li>`);
+            } else {
+                // Regular line
+                processedLines.push(line);
+            }
+        }
+        
+        html = processedLines.join('\n');
+        
+        // Then wrap consecutive list items in ul tags
+        const finalLines = html.split('\n');
+        let inList = false;
+        let finalProcessedLines = [];
+        
+        for (let i = 0; i < finalLines.length; i++) {
+            const line = finalLines[i];
+            const isListItem = line.trim().startsWith('<li class="response-list-item">');
+            
+            if (isListItem && !inList) {
+                // Starting a new list
+                finalProcessedLines.push('<ul class="response-list">');
+                finalProcessedLines.push(line);
+                inList = true;
+            } else if (isListItem && inList) {
+                // Continue existing list
+                finalProcessedLines.push(line);
+            } else if (!isListItem && inList) {
+                // End existing list
+                finalProcessedLines.push('</ul>');
+                finalProcessedLines.push(line);
+                inList = false;
+            } else {
+                // Regular line
+                finalProcessedLines.push(line);
+            }
+        }
+        
+        // Close any remaining open list
+        if (inList) {
+            finalProcessedLines.push('</ul>');
+        }
+        
+        html = finalProcessedLines.join('\n');
+        
+        // Emojis and status indicators - Enhanced styling
+        html = html.replace(/(✅|🔒|📊|👥|📱|🖥️|🤖|💻|📈|🌐|👨‍👩‍👧‍👦|🏢|📋|👤|❌|⚠️|ℹ️|🔄|🎉)/g, '<span class="status-emoji">$1</span>');
+        
+        // Special sections
+        html = html.replace(/\*\*([^*]+):\*\*/g, '<div class="section-header"><strong>$1:</strong></div>');
+        
+        // Line breaks
+        html = html.replace(/\n\n/g, '</p><p class="response-paragraph">');
+        html = html.replace(/\n/g, '<br>');
+        
+        // Wrap in paragraph if not already wrapped
+        if (!html.includes('<p') && !html.includes('<h') && !html.includes('<ul') && !html.includes('<div')) {
+            html = `<p class="response-paragraph">${html}</p>`;
+        }
+        
+        return html;
+    }
+
+    isDataResponse(content) {
+        // Check if the response contains structured data that could benefit from insights
+        const dataIndicators = [
+            'total', 'showing first', 'devices', 'users', 'licenses', 'alerts',
+            'compliance', 'non-compliant', 'grace period', 'last sync', 'enrolled',
+            'sign-in', 'groups', 'applications', 'subscriptions', 'policies'
+        ];
+        
+        const lowerContent = content.toLowerCase();
+        const hasDataIndicators = dataIndicators.some(indicator => lowerContent.includes(indicator));
+        
+        console.log('🔍 Checking if data response:', { 
+            hasDataIndicators, 
+            foundIndicators: dataIndicators.filter(indicator => lowerContent.includes(indicator))
+        });
+        
+        return hasDataIndicators;
+    }
+
+    generateInsightsAndRecommendations(content) {
+        const insights = this.extractInsights(content);
+        const recommendations = this.generateRecommendations(content);
+        
+        if (insights.length === 0 && recommendations.length === 0) {
+            return '';
+        }
+        
+        let html = '<div class="insights-recommendations-section">';
+        
+        if (insights.length > 0) {
+            html += '<div class="insights-section">';
+            html += '<h4 class="insights-title"><span class="insights-icon">💡</span> Key Insights</h4>';
+            html += '<ul class="insights-list">';
+            insights.forEach(insight => {
+                html += `<li class="insight-item">${insight}</li>`;
+            });
+            html += '</ul>';
+            html += '</div>';
+        }
+        
+        if (recommendations.length > 0) {
+            html += '<div class="recommendations-section">';
+            html += '<h4 class="recommendations-title"><span class="recommendations-icon">🎯</span> Recommendations</h4>';
+            html += '<ul class="recommendations-list">';
+            recommendations.forEach(recommendation => {
+                html += `<li class="recommendation-item">${recommendation}</li>`;
+            });
+            html += '</ul>';
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        return html;
+    }
+
+    extractInsights(content) {
+        const insights = [];
+        
+        // Device insights
+        if (content.includes('iOS Devices') || content.includes('Android Devices') || content.includes('Windows Devices')) {
+            const deviceCount = this.extractNumber(content, /\((\d+) total/);
+            if (deviceCount) {
+                insights.push(`You have ${deviceCount} managed devices in your environment`);
+            }
+        }
+        
+        // Compliance insights
+        if (content.includes('Compliance:')) {
+            const nonCompliantCount = (content.match(/❌ Compliance: noncompliant/g) || []).length;
+            const graceCount = (content.match(/⏳ Compliance: inGracePeriod/g) || []).length;
+            
+            if (nonCompliantCount > 0) {
+                insights.push(`${nonCompliantCount} devices are currently non-compliant and may need attention`);
+            }
+            if (graceCount > 0) {
+                insights.push(`${graceCount} devices are in compliance grace period - action needed soon`);
+            }
+        }
+        
+        // User insights
+        if (content.includes('Users in') && content.includes('total')) {
+            const userCount = this.extractNumber(content, /\((\d+) total/);
+            if (userCount) {
+                insights.push(`Your tenant has ${userCount} total users`);
+                
+                // Check for inactive users
+                const neverSignedIn = (content.match(/Last sign-in: Never/g) || []).length;
+                if (neverSignedIn > 0) {
+                    insights.push(`${neverSignedIn} users have never signed in - consider reviewing these accounts`);
+                }
+            }
+        }
+        
+        // License insights
+        if (content.includes('License Usage')) {
+            const licenseLines = content.match(/Used: (\d+)\/(\d+)/g);
+            if (licenseLines) {
+                licenseLines.forEach(line => {
+                    const [used, total] = line.match(/(\d+)/g);
+                    const utilization = Math.round((used / total) * 100);
+                    if (utilization > 90) {
+                        insights.push(`License utilization is ${utilization}% - consider purchasing additional licenses`);
+                    } else if (utilization < 50) {
+                        insights.push(`License utilization is only ${utilization}% - potential cost optimization opportunity`);
+                    }
+                });
+            }
+        }
+        
+        // Security insights
+        if (content.includes('Security Alerts')) {
+            if (content.includes('No active security alerts')) {
+                insights.push('Your tenant currently has no active security alerts - great security posture!');
+            } else {
+                const alertCount = this.extractNumber(content, /\((\d+) total\)/);
+                if (alertCount && alertCount > 0) {
+                    insights.push(`${alertCount} security alerts require your attention`);
+                }
+            }
+        }
+        
+        return insights;
+    }
+
+    generateRecommendations(content) {
+        const recommendations = [];
+        
+        // Device management recommendations
+        if (content.includes('non-compliant') || content.includes('grace period')) {
+            recommendations.push('Review and remediate non-compliant devices to improve security posture');
+            recommendations.push('Set up automated compliance policies to prevent future compliance issues');
+        }
+        
+        // User management recommendations
+        if (content.includes('Never')) {
+            recommendations.push('Review users who have never signed in and consider disabling unused accounts');
+            recommendations.push('Implement regular user access reviews to maintain good security hygiene');
+        }
+        
+        // License optimization recommendations
+        if (content.includes('License Usage')) {
+            recommendations.push('Monitor license usage regularly to optimize costs and ensure adequate capacity');
+            recommendations.push('Consider implementing license assignment policies based on job roles');
+        }
+        
+        // Security recommendations
+        if (content.includes('security alerts') && !content.includes('No active')) {
+            recommendations.push('Address security alerts promptly to minimize potential security risks');
+            recommendations.push('Enable additional security monitoring and alerting for proactive threat detection');
+        }
+        
+        // Device-specific recommendations
+        if (content.includes('Last Sync:')) {
+            recommendations.push('Ensure devices sync regularly with Intune for proper management and security');
+            recommendations.push('Consider implementing conditional access policies for better device control');
+        }
+        
+        // General recommendations based on data type
+        if (content.includes('Applications')) {
+            recommendations.push('Regularly review registered applications and remove unused ones');
+            recommendations.push('Implement app governance policies to control application permissions');
+        }
+        
+        if (content.includes('Groups')) {
+            recommendations.push('Use security groups for efficient permission management');
+            recommendations.push('Regularly review group memberships to ensure appropriate access');
+        }
+        
+        return recommendations;
+    }
+
+    extractNumber(content, regex) {
+        const match = content.match(regex);
+        return match ? parseInt(match[1]) : null;
     }
 
     showChatInterface() {

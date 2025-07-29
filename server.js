@@ -24,8 +24,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       connectSrc: ["'self'", "ws:", "wss:"]
     }
@@ -49,11 +49,695 @@ app.use(express.static(path.join(__dirname, 'public')));
 const activeSessions = new Map();
 const mcpConnections = new Map();
 
+// Store dual-tenant sessions for Tenant Clone feature
+const dualTenantSessions = new Map();
+
+// Dual Tenant Manager for Tenant Clone feature
+class DualTenantManager {
+  constructor(sessionId, io) {
+    this.sessionId = sessionId;
+    this.io = io;
+    this.sourceTenant = null;
+    this.targetTenant = null;
+    this.isActive = false;
+    this.policies = {
+      source: new Map(),
+      target: new Map()
+    };
+    this.migrations = new Map(); // Track ongoing migrations
+  }
+
+  async initializeSourceTenant(tenantDomain) {
+    try {
+      console.log(`🔄 Initializing source tenant: ${tenantDomain}`);
+      
+      // Create dedicated MCP client for source tenant
+      this.sourceTenant = new MCPClient(
+        `${this.sessionId}_source`, 
+        tenantDomain, 
+        this.io,
+        'source' // tenant role
+      );
+      
+      await this.sourceTenant.start();
+      
+      this.io.to(this.sessionId).emit('dual_tenant_status', {
+        type: 'source_initialized',
+        tenant: tenantDomain,
+        status: 'connecting'
+      });
+      
+      return true;
+    } catch (error) {
+      console.error(`Error initializing source tenant: ${error.message}`);
+      this.io.to(this.sessionId).emit('dual_tenant_error', {
+        type: 'source_init_failed',
+        tenant: tenantDomain,
+        error: error.message
+      });
+      return false;
+    }
+  }
+
+  async initializeTargetTenant(tenantDomain) {
+    try {
+      console.log(`🔄 Initializing target tenant: ${tenantDomain}`);
+      
+      // Create dedicated MCP client for target tenant
+      this.targetTenant = new MCPClient(
+        `${this.sessionId}_target`, 
+        tenantDomain, 
+        this.io,
+        'target' // tenant role
+      );
+      
+      await this.targetTenant.start();
+      
+      this.io.to(this.sessionId).emit('dual_tenant_status', {
+        type: 'target_initialized',
+        tenant: tenantDomain,
+        status: 'connecting'
+      });
+      
+      return true;
+    } catch (error) {
+      console.error(`Error initializing target tenant: ${error.message}`);
+      this.io.to(this.sessionId).emit('dual_tenant_error', {
+        type: 'target_init_failed',
+        tenant: tenantDomain,
+        error: error.message
+      });
+      return false;
+    }
+  }
+
+  async loadSourcePolicies() {
+    if (!this.sourceTenant || this.sourceTenant.authStatus !== 'authenticated') {
+      throw new Error('Source tenant not authenticated');
+    }
+
+    console.log('📋 Loading policies from source tenant...');
+    console.log(`🔍 Source tenant auth status: ${this.sourceTenant.authStatus}`);
+    console.log(`🔍 Source tenant connected: ${this.sourceTenant.isConnected}`);
+    
+    const policyTypes = [
+      'deviceConfigurations',
+      'deviceCompliancePolicies', 
+      'mobileAppManagementPolicies',
+      'appProtectionPolicies',
+      'deviceEnrollmentConfigurations',
+      'windowsInformationProtectionPolicies',
+      'managedAppPolicies'
+    ];
+
+    const policies = new Map();
+    let totalPoliciesFound = 0;
+    
+    for (const policyType of policyTypes) {
+      try {
+        console.log(`🔍 Fetching ${policyType}...`);
+        
+        // First get the list of policies (basic info)
+        const listResponse = await this.sourceTenant.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: {
+            apiType: 'graph',
+            graphApiVersion: 'beta',
+            method: 'get',
+            path: `/deviceManagement/${policyType}`,
+            queryParams: {
+              '$select': 'id,displayName,description,createdDateTime,lastModifiedDateTime,version'
+            }
+          }
+        });
+
+        console.log(`📊 List response for ${policyType}:`, listResponse ? 'Got response' : 'No response');
+        
+        if (listResponse && listResponse.content && listResponse.content[0]) {
+          try {
+            let responseText = listResponse.content[0].text;
+            console.log(`📝 Raw list response for ${policyType} (first 200 chars):`, responseText.substring(0, 200));
+            
+            // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+            let jsonData = null;
+            
+            // Try to extract JSON from response that might have prefixes
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              jsonData = JSON.parse(jsonMatch[0]);
+            } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+              jsonData = JSON.parse(responseText.trim());
+            } else {
+              console.log(`⚠️ Could not extract JSON from ${policyType} response:`, responseText.substring(0, 100));
+              continue;
+            }
+            
+            if (jsonData && jsonData.value && jsonData.value.length > 0) {
+              console.log(`✅ Found ${jsonData.value.length} ${policyType}, fetching full configurations...`);
+              
+              // Now fetch full configuration for each policy
+              const fullPolicies = [];
+              for (const basicPolicy of jsonData.value) {
+                try {
+                  console.log(`🔄 Fetching full config for policy: ${basicPolicy.displayName} (${basicPolicy.id})`);
+                  
+                  const fullPolicyResponse = await this.sourceTenant.sendMCPRequest('tools/call', {
+                    name: 'Lokka-Microsoft',
+                    arguments: {
+                      apiType: 'graph',
+                      graphApiVersion: 'beta',
+                      method: 'get',
+                      path: `/deviceManagement/${policyType}/${basicPolicy.id}`
+                    }
+                  });
+
+                  if (fullPolicyResponse && fullPolicyResponse.content && fullPolicyResponse.content[0]) {
+                    let fullResponseText = fullPolicyResponse.content[0].text;
+                    
+                    // Extract JSON from the full policy response
+                    const fullJsonMatch = fullResponseText.match(/\{[\s\S]*\}/);
+                    if (fullJsonMatch) {
+                      const fullPolicyData = JSON.parse(fullJsonMatch[0]);
+                      fullPolicies.push({
+                        ...fullPolicyData,
+                        policyType: policyType // Add policy type for easier handling
+                      });
+                      console.log(`✅ Full config loaded for: ${fullPolicyData.displayName}`);
+                    } else {
+                      console.log(`⚠️ Could not extract JSON from full policy response for ${basicPolicy.id}`);
+                      // Fallback to basic policy info
+                      fullPolicies.push({
+                        ...basicPolicy,
+                        policyType: policyType,
+                        configurationIncomplete: true
+                      });
+                    }
+                  } else {
+                    console.log(`⚠️ No response for full policy ${basicPolicy.id}`);
+                    // Fallback to basic policy info
+                    fullPolicies.push({
+                      ...basicPolicy,
+                      policyType: policyType,
+                      configurationIncomplete: true
+                    });
+                  }
+                } catch (fullPolicyError) {
+                  console.error(`❌ Error fetching full policy ${basicPolicy.id}:`, fullPolicyError.message);
+                  // Fallback to basic policy info
+                  fullPolicies.push({
+                    ...basicPolicy,
+                    policyType: policyType,
+                    configurationIncomplete: true
+                  });
+                }
+              }
+              
+              policies.set(policyType, fullPolicies);
+              totalPoliciesFound += fullPolicies.length;
+              console.log(`🎯 Completed loading ${fullPolicies.length} ${policyType} with full configurations`);
+              
+            } else {
+              console.log(`⚠️ No value array found in ${policyType} response`);
+              console.log(`📋 Response structure:`, Object.keys(jsonData || {}));
+            }
+          } catch (parseError) {
+            console.error(`❌ JSON parsing error for ${policyType}:`, parseError.message);
+            console.log(`📝 Problematic response text:`, listResponse.content[0].text.substring(0, 300));
+          }
+        } else {
+          console.log(`⚠️ No content found in ${policyType} response`);
+        }
+      } catch (error) {
+        console.error(`❌ Error loading ${policyType}:`, error.message);
+      }
+    }
+
+    console.log(`📊 Total policies found: ${totalPoliciesFound}`);
+    this.policies.source = policies;
+    
+    this.io.to(this.sessionId).emit('source_policies_loaded', {
+      policies: this.convertPoliciesToClientFormat(policies),
+      count: this.getTotalPolicyCount(policies)
+    });
+
+    return policies;
+  }
+
+  async clonePolicy(policyId, policyType, customizations = {}) {
+    if (!this.sourceTenant || !this.targetTenant) {
+      throw new Error('Both tenants must be initialized');
+    }
+
+    if (this.sourceTenant.authStatus !== 'authenticated' || 
+        this.targetTenant.authStatus !== 'authenticated') {
+      throw new Error('Both tenants must be authenticated');
+    }
+
+    const migrationId = uuidv4();
+    this.migrations.set(migrationId, {
+      policyId,
+      policyType,
+      status: 'starting',
+      startTime: new Date()
+    });
+
+    try {
+      // Step 1: Fetch full policy details from source
+      console.log(`🔄 Fetching policy ${policyId} from source tenant...`);
+      
+      const sourcePolicy = await this.sourceTenant.sendMCPRequest('tools/call', {
+        name: 'Lokka-Microsoft',
+        arguments: {
+          apiType: 'graph',
+          graphApiVersion: 'beta',
+          method: 'get',
+          path: `/deviceManagement/${policyType}/${policyId}`
+        }
+      });
+
+      if (!sourcePolicy || !sourcePolicy.content || !sourcePolicy.content[0]) {
+        throw new Error('Failed to fetch source policy');
+      }
+
+      // Parse the response text with the same logic as loadSourcePolicies
+      let responseText = sourcePolicy.content[0].text;
+      console.log(`📝 Raw policy response text (first 200 chars):`, responseText.substring(0, 200));
+      
+      let policyData = null;
+      
+      // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        policyData = JSON.parse(jsonMatch[0]);
+      } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        policyData = JSON.parse(responseText.trim());
+      } else {
+        throw new Error(`Could not extract JSON from policy response: ${responseText.substring(0, 100)}`);
+      }
+      
+      this.migrations.get(migrationId).status = 'transforming';
+      
+      // Step 2: Transform policy for target tenant
+      const transformedPolicy = this.transformPolicyForTarget(policyData, customizations);
+      
+      this.migrations.get(migrationId).status = 'creating';
+      
+      // Step 3: Create policy in target tenant
+      console.log(`🔄 Creating policy in target tenant...`);
+      console.log(`📋 Policy payload size: ${JSON.stringify(transformedPolicy).length} characters`);
+      console.log(`📋 Policy payload keys: ${Object.keys(transformedPolicy).join(', ')}`);
+      
+      let targetResponse;
+      try {
+        targetResponse = await this.targetTenant.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: {
+            apiType: 'graph',
+            graphApiVersion: 'beta',
+            method: 'post',
+            path: `/deviceManagement/${policyType}`,
+            body: transformedPolicy
+          }
+        });
+      } catch (error) {
+        console.error(`❌ Request error during policy creation:`, error.message);
+        // Check if this is a permission error
+        if (this.isPermissionError(error.message)) {
+          console.log('🔐 Permission error detected, requesting additional permissions...');
+          await this.requestAdditionalPermissions();
+          throw new Error(`PERMISSION_REQUIRED: ${error.message}`);
+        }
+        throw error;
+      }
+
+      if (!targetResponse || !targetResponse.content || !targetResponse.content[0]) {
+        throw new Error('Failed to create policy in target tenant');
+      }
+
+      // Parse the target response text with the same logic
+      let targetResponseText = targetResponse.content[0].text;
+      console.log(`📝 Raw target response text (first 200 chars):`, targetResponseText.substring(0, 200));
+      
+      // Check if the response contains a permission error even in successful response
+      if (this.isPermissionError(targetResponseText)) {
+        console.log('🔐 Permission error detected in response, requesting additional permissions...');
+        await this.requestAdditionalPermissions();
+        throw new Error(`PERMISSION_REQUIRED: ${targetResponseText}`);
+      }
+      
+      let createdPolicy = null;
+      
+      // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+      const targetJsonMatch = targetResponseText.match(/\{[\s\S]*\}/);
+      if (targetJsonMatch) {
+        const parsedResponse = JSON.parse(targetJsonMatch[0]);
+        
+        // Check if the parsed response is an error response
+        if (parsedResponse.error) {
+          console.log('🔐 Permission error detected in parsed response, requesting additional permissions...');
+          console.log('📋 Error details:', parsedResponse.error);
+          
+          // Check if this is specifically a permission error
+          if (this.isPermissionError(JSON.stringify(parsedResponse.error)) || this.isPermissionError(parsedResponse.error)) {
+            await this.requestAdditionalPermissions();
+            throw new Error(`PERMISSION_REQUIRED: ${JSON.stringify(parsedResponse.error)}`);
+          } else {
+            throw new Error(`Policy creation failed: ${JSON.stringify(parsedResponse.error)}`);
+          }
+        }
+        
+        createdPolicy = parsedResponse;
+      } else if (targetResponseText.trim().startsWith('{') || targetResponseText.trim().startsWith('[')) {
+        const parsedResponse = JSON.parse(targetResponseText.trim());
+        
+        // Check if the parsed response is an error response
+        if (parsedResponse.error) {
+          console.log('🔐 Permission error detected in parsed response, requesting additional permissions...');
+          console.log('📋 Error details:', parsedResponse.error);
+          
+          // Check if this is specifically a permission error
+          if (this.isPermissionError(JSON.stringify(parsedResponse.error)) || this.isPermissionError(parsedResponse.error)) {
+            await this.requestAdditionalPermissions();
+            throw new Error(`PERMISSION_REQUIRED: ${JSON.stringify(parsedResponse.error)}`);
+          } else {
+            throw new Error(`Policy creation failed: ${JSON.stringify(parsedResponse.error)}`);
+          }
+        }
+        
+        createdPolicy = parsedResponse;
+      } else {
+        throw new Error(`Could not extract JSON from target response: ${targetResponseText.substring(0, 100)}`);
+      }
+      
+      this.migrations.get(migrationId).status = 'completed';
+      this.migrations.get(migrationId).targetPolicyId = createdPolicy.id;
+      this.migrations.get(migrationId).endTime = new Date();
+
+      // Emit success event
+      this.io.to(this.sessionId).emit('policy_cloned', {
+        migrationId,
+        sourcePolicyId: policyId,
+        targetPolicyId: createdPolicy.id,
+        policyType,
+        policyName: createdPolicy.displayName
+      });
+
+      return {
+        success: true,
+        migrationId,
+        targetPolicyId: createdPolicy.id,
+        message: `Successfully cloned policy "${createdPolicy.displayName}" to target tenant`
+      };
+
+    } catch (error) {
+      console.error(`Error cloning policy ${policyId}:`, error);
+      
+      this.migrations.get(migrationId).status = 'failed';
+      this.migrations.get(migrationId).error = error.message;
+      this.migrations.get(migrationId).endTime = new Date();
+
+      // Check if this is a permission error
+      if (error.message.startsWith('PERMISSION_REQUIRED:')) {
+        this.io.to(this.sessionId).emit('policy_clone_permission_required', {
+          migrationId,
+          policyId,
+          policyType,
+          error: error.message.replace('PERMISSION_REQUIRED: ', ''),
+          message: 'Additional permissions required. Please complete the authentication flow to grant the necessary permissions.',
+          tenantDomain: this.targetTenant.tenantDomain,
+          tenantRole: 'target'
+        });
+      } else {
+        this.io.to(this.sessionId).emit('policy_clone_failed', {
+          migrationId,
+          policyId,
+          policyType,
+          error: error.message
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  transformPolicyForTarget(sourcePolicy, customizations) {
+    // Remove source-specific properties and read-only fields
+    const transformed = { ...sourcePolicy };
+    
+    // Preserve the @odata.type as it's required for concrete policy type identification
+    const originalODataType = sourcePolicy['@odata.type'];
+    
+    // Remove all Microsoft Graph metadata EXCEPT @odata.type for policy creation
+    delete transformed.id;
+    delete transformed.createdDateTime;
+    delete transformed.lastModifiedDateTime;
+    delete transformed.supportsScopeTags;
+    delete transformed.roleScopeTagIds;
+    delete transformed.deviceStatuses;
+    delete transformed.userStatuses;
+    delete transformed.deviceStatusOverview;
+    delete transformed.userStatusOverview;
+    delete transformed.assignments;
+    delete transformed.deviceSettingStateSummaries;
+    delete transformed.complianceGracePeriodExpirationDateTime;
+    delete transformed.settingStates;
+    delete transformed.rootCertificateId;
+    delete transformed.trustedRootCertificate;
+    delete transformed.derivedCredentialSettings;
+    delete transformed.advancedThreatProtectionAutoEnableType;
+    delete transformed.advancedThreatProtectionOfficeKind;
+    delete transformed.advancedThreatProtectionOfficeDataSharing;
+    delete transformed.advancedThreatProtectionOfficeNetworkScanningType;
+    delete transformed.advancedThreatProtectionOfficeAntivirusType;
+    delete transformed.advancedThreatProtectionOfficeRealtimeProtectionType;
+    delete transformed.advancedThreatProtectionOfficeSignatureUpdateIntervalInHours;
+    
+    // Remove other OData specific properties but preserve @odata.type
+    delete transformed['@odata.context'];
+    delete transformed['@odata.id'];
+    delete transformed['@odata.etag'];
+    delete transformed['@odata.editLink'];
+    delete transformed['@odata.nextLink'];
+    
+    // Handle scheduledActionsForRule for compliance policies
+    if (transformed.scheduledActionsForRule && Array.isArray(transformed.scheduledActionsForRule)) {
+      // Clean up scheduled actions by removing read-only properties but preserving structure
+      transformed.scheduledActionsForRule = transformed.scheduledActionsForRule.map(rule => {
+        const cleanRule = { ...rule };
+        // Remove read-only properties from the rule
+        delete cleanRule.id;
+        
+        // Clean up scheduledActionConfigurations if present
+        if (cleanRule.scheduledActionConfigurations && Array.isArray(cleanRule.scheduledActionConfigurations)) {
+          cleanRule.scheduledActionConfigurations = cleanRule.scheduledActionConfigurations.map(config => {
+            const cleanConfig = { ...config };
+            delete cleanConfig.id;
+            return cleanConfig;
+          });
+        }
+        
+        return cleanRule;
+      });
+      console.log(`✅ Preserved and cleaned scheduledActionsForRule: ${transformed.scheduledActionsForRule.length} rules`);
+    } else if (originalODataType && originalODataType.includes('CompliancePolicy')) {
+      // If this is a compliance policy but has no scheduledActionsForRule, create a default one
+      transformed.scheduledActionsForRule = [
+        {
+          ruleName: "PasswordRequired",
+          scheduledActionConfigurations: [
+            {
+              actionType: "block",
+              gracePeriodHours: 0,
+              notificationTemplateId: "",
+              notificationMessageCCList: []
+            }
+          ]
+        }
+      ];
+      console.log(`✅ Created default scheduledActionsForRule for compliance policy`);
+    }
+    
+    // For device compliance and configuration policies, preserve the @odata.type
+    // as it's required to specify the concrete implementation
+    if (originalODataType) {
+      transformed['@odata.type'] = originalODataType;
+      console.log(`✅ Preserving @odata.type: ${originalODataType}`);
+    }
+    
+    // Apply customizations
+    if (customizations.displayName) {
+      transformed.displayName = customizations.displayName;
+    } else {
+      transformed.displayName = `${sourcePolicy.displayName} (Cloned)`;
+    }
+
+    if (customizations.description) {
+      transformed.description = customizations.description;
+    }
+
+    // Reset version for new policy
+    if (transformed.version) {
+      transformed.version = 1;
+    }
+    
+    // Remove any null or undefined values that might cause issues
+    Object.keys(transformed).forEach(key => {
+      if (transformed[key] === null || transformed[key] === undefined) {
+        delete transformed[key];
+      }
+    });
+    
+    // Log the cleaned policy for debugging
+    console.log(`🧹 Cleaned policy for creation:`, {
+      displayName: transformed.displayName,
+      odataType: transformed['@odata.type'],
+      keys: Object.keys(transformed),
+      hasScheduledActions: !!transformed.scheduledActionsForRule,
+      preservedODataType: !!originalODataType
+    });
+
+    return transformed;
+  }
+
+  // Helper method to detect permission errors
+  isPermissionError(errorMessage) {
+    if (!errorMessage) return false;
+    
+    const permissionIndicators = [
+      'Application is not authorized to perform this operation',
+      'DeviceManagementConfiguration.ReadWrite',
+      'DeviceManagementApps.ReadWrite',
+      'DeviceManagementServiceConfig.ReadWrite',
+      'Insufficient privileges',
+      'Access denied',
+      'Permission denied',
+      'Authorization_RequestDenied',
+      'Forbidden'
+    ];
+
+    // Handle both string and object inputs
+    let errorText = '';
+    if (typeof errorMessage === 'string') {
+      errorText = errorMessage.toLowerCase();
+    } else if (typeof errorMessage === 'object') {
+      errorText = JSON.stringify(errorMessage).toLowerCase();
+    } else {
+      return false;
+    }
+    
+    return permissionIndicators.some(indicator => 
+      errorText.includes(indicator.toLowerCase())
+    );
+  }
+
+  // Method to request additional permissions
+  async requestAdditionalPermissions() {
+    console.log('🔐 Requesting additional permissions for policy management...');
+    
+    const requiredScopes = [
+      'DeviceManagementConfiguration.ReadWrite.All',
+      'DeviceManagementApps.ReadWrite.All',
+      'DeviceManagementServiceConfig.ReadWrite.All',
+      'Policy.ReadWrite.ConditionalAccess'
+    ];
+
+    try {
+      // Use the target tenant to request additional permissions
+      const permissionResponse = await this.targetTenant.sendMCPRequest('tools/call', {
+        name: 'add-graph-permission',
+        arguments: {
+          scopes: requiredScopes
+        }
+      });
+
+      console.log('✅ Additional permissions requested successfully:', permissionResponse);
+
+      // Emit event to frontend to inform user about permission request
+      this.io.to(this.sessionId).emit('permissions_requested', {
+        tenantRole: 'target',
+        tenantDomain: this.targetTenant.tenantDomain,
+        requiredScopes,
+        message: 'Additional permissions required for policy creation. Please complete the authentication flow in your browser.',
+        authUrl: 'http://localhost:3200'
+      });
+
+      return permissionResponse;
+      
+    } catch (error) {
+      console.error('❌ Failed to request additional permissions:', error);
+      
+      // Emit event to frontend about permission request failure
+      this.io.to(this.sessionId).emit('permission_request_failed', {
+        tenantRole: 'target',
+        tenantDomain: this.targetTenant.tenantDomain,
+        error: error.message,
+        message: 'Failed to request additional permissions. Please try authenticating again with administrator privileges.'
+      });
+      
+      throw error;
+    }
+  }
+
+  convertPoliciesToClientFormat(policies) {
+    const formatted = {};
+    
+    for (const [policyType, policyList] of policies) {
+      formatted[policyType] = policyList.map(policy => ({
+        // Include all policy data for full JSON editing capabilities
+        ...policy,
+        // Ensure consistent policyType field
+        policyType: policy.policyType || policyType
+      }));
+    }
+
+    return formatted;
+  }
+
+  getTotalPolicyCount(policies) {
+    let count = 0;
+    for (const [, policyList] of policies) {
+      count += policyList.length;
+    }
+    return count;
+  }
+
+  getStatus() {
+    return {
+      isActive: this.isActive,
+      sourceTenant: this.sourceTenant ? {
+        domain: this.sourceTenant.tenantDomain,
+        connected: this.sourceTenant.isConnected,
+        authenticated: this.sourceTenant.authStatus === 'authenticated'
+      } : null,
+      targetTenant: this.targetTenant ? {
+        domain: this.targetTenant.tenantDomain,
+        connected: this.targetTenant.isConnected,
+        authenticated: this.targetTenant.authStatus === 'authenticated'
+      } : null,
+      policyCount: this.getTotalPolicyCount(this.policies.source),
+      activeMigrations: this.migrations.size
+    };
+  }
+
+  async cleanup() {
+    if (this.sourceTenant) {
+      await this.sourceTenant.cleanup();
+    }
+    if (this.targetTenant) {
+      await this.targetTenant.cleanup();
+    }
+    this.policies.source.clear();
+    this.policies.target.clear();
+    this.migrations.clear();
+  }
+}
+
 // Real MCP Client class for communicating with Lokka Microsoft MCP server
 class MCPClient {
-  constructor(sessionId, tenantDomain, io) {
+  constructor(sessionId, tenantDomain, io, tenantRole = 'primary') {
     this.sessionId = sessionId;
     this.tenantDomain = tenantDomain;
+    this.tenantRole = tenantRole; // 'primary', 'source', or 'target'
     this.io = io; // Socket.IO instance for emitting events
     this.process = null;
     this.isConnected = false;
@@ -68,7 +752,16 @@ class MCPClient {
   async start() {
     return new Promise((resolve, reject) => {
       try {
-        console.log(`Starting Lokka Microsoft MCP server for tenant: ${this.tenantDomain}`);
+        console.log(`Starting Lokka Microsoft MCP server for tenant: ${this.tenantDomain} (${this.tenantRole})`);
+        
+        // Different redirect URIs for different tenant roles to avoid conflicts
+        const redirectPorts = {
+          'primary': '3000',
+          'source': '3001', 
+          'target': '3002'
+        };
+        
+        const redirectUri = `http://localhost:${redirectPorts[this.tenantRole]}/auth/success`;
         
         // Spawn the Lokka MCP server process with interactive authentication
         this.process = spawn('npx', ['-y', '@merill/lokka'], {
@@ -76,7 +769,7 @@ class MCPClient {
           env: {
             ...process.env,
             USE_INTERACTIVE: 'true',
-            REDIRECT_URI: 'http://localhost:3000/auth/success',
+            REDIRECT_URI: redirectUri,
             // Set tenant domain if provided (for organizational logins)
             ...(this.tenantDomain && !this.tenantDomain.includes('.onmicrosoft.com') ? {} : {
               TENANT_ID: this.tenantDomain.replace('.onmicrosoft.com', '')
@@ -226,12 +919,66 @@ class MCPClient {
         
         // Emit authentication success event
         if (previousStatus !== 'authenticated') {
+          // For dual-tenant sessions, extract the base sessionId once
+          const baseSessionId = this.sessionId.replace(/_source$|_target$/, '');
+          const isDualTenant = baseSessionId !== this.sessionId;
+          
+          // Emit to the specific sessionId (could be with _source/_target suffix)
           this.io.to(this.sessionId).emit('auth_status_changed', {
             status: 'authenticated',
-            message: 'Authentication successful! You can now query your Microsoft 365 tenant.',
+            message: `Authentication successful! You can now query your Microsoft 365 tenant.`,
             hasToken: true,
-            tenantDomain: this.tenantDomain
+            tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole // Add tenant role info
           });
+          
+          // Also emit MCP status ready to ensure UI updates
+          this.io.to(this.sessionId).emit('mcp_status', {
+            status: 'ready',
+            message: `Connected to Microsoft 365 tenant: ${this.tenantDomain}`,
+            authenticated: true,
+            tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole
+          });
+          
+          // For dual-tenant sessions, also emit to the base sessionId
+          if (isDualTenant) {
+            // This is a dual-tenant session, emit to base session too
+            this.io.to(baseSessionId).emit('auth_status_changed', {
+              status: 'authenticated',
+              message: `${this.tenantRole} tenant authentication successful! You can now query your Microsoft 365 tenant.`,
+              hasToken: true,
+              tenantDomain: this.tenantDomain,
+              tenantRole: this.tenantRole
+            });
+            
+            this.io.to(baseSessionId).emit('mcp_status', {
+              status: 'ready',
+              message: `${this.tenantRole} tenant connected to Microsoft 365: ${this.tenantDomain}`,
+              authenticated: true,
+              tenantDomain: this.tenantDomain,
+              tenantRole: this.tenantRole
+            });
+          }
+          
+          // Update session status
+          const sessionToUpdate = activeSessions.has(this.sessionId) ? this.sessionId : baseSessionId;
+          
+          if (activeSessions.has(sessionToUpdate)) {
+            const session = activeSessions.get(sessionToUpdate);
+            session.status = 'authenticated';
+            session.authenticatedAt = new Date();
+          } else if (dualTenantSessions.has(baseSessionId)) {
+            // For dual-tenant sessions, we don't update activeSessions but could track in dualManager
+            console.log(`Authentication successful for dual-tenant role: ${this.tenantRole} in session ${baseSessionId}`);
+          }
+          
+          // Stop authentication monitoring since we're now authenticated
+          if (this.authMonitorInterval) {
+            clearInterval(this.authMonitorInterval);
+            this.authMonitorInterval = null;
+            console.log(`Authentication monitoring stopped for session ${this.sessionId}`);
+          }
           
           console.log(`Authentication successful for session ${this.sessionId}`);
         }
@@ -240,13 +987,30 @@ class MCPClient {
         
         // Emit authentication needed event
         if (previousStatus !== 'needs_authentication') {
+          // For dual-tenant sessions, extract the base sessionId once
+          const baseSessionId = this.sessionId.replace(/_source$|_target$/, '');
+          const isDualTenant = baseSessionId !== this.sessionId;
+          
           this.io.to(this.sessionId).emit('auth_status_changed', {
             status: 'needs_authentication',
             message: 'Please complete the authentication process in your browser window.',
             hasToken: false,
             tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole,
             authUrl: 'http://localhost:3200'
           });
+          
+          // For dual-tenant sessions, also emit to the base sessionId
+          if (isDualTenant) {
+            this.io.to(baseSessionId).emit('auth_status_changed', {
+              status: 'needs_authentication',
+              message: `${this.tenantRole} tenant requires authentication. Please complete the sign-in process.`,
+              hasToken: false,
+              tenantDomain: this.tenantDomain,
+              tenantRole: this.tenantRole,
+              authUrl: 'http://localhost:3200'
+            });
+          }
           
           console.log('Lokka MCP server requires authentication - browser window should have opened');
         }
@@ -259,12 +1023,28 @@ class MCPClient {
       
       // Emit error event
       if (previousStatus !== 'authentication_error') {
+        // For dual-tenant sessions, extract the base sessionId once
+        const baseSessionId = this.sessionId.replace(/_source$|_target$/, '');
+        const isDualTenant = baseSessionId !== this.sessionId;
+        
         this.io.to(this.sessionId).emit('auth_status_changed', {
           status: 'authentication_error',
           message: `Authentication error: ${error.message}`,
           hasToken: false,
-          tenantDomain: this.tenantDomain
+          tenantDomain: this.tenantDomain,
+          tenantRole: this.tenantRole
         });
+        
+        // For dual-tenant sessions, also emit to the base sessionId
+        if (isDualTenant) {
+          this.io.to(baseSessionId).emit('auth_status_changed', {
+            status: 'authentication_error',
+            message: `${this.tenantRole} tenant authentication error: ${error.message}`,
+            hasToken: false,
+            tenantDomain: this.tenantDomain,
+            tenantRole: this.tenantRole
+          });
+        }
       }
     }
   }
@@ -332,61 +1112,338 @@ class MCPClient {
     try {
       console.log(`Processing message via Lokka MCP server: ${userMessage}`);
       
-      // Analyze the message to determine which MCP tools to use
-      const toolCalls = this.analyzeMessageForTools(userMessage);
+      // PRIORITY 1: Always try Lokka MCP first for ALL queries
+      let response = await this.processWithLokkaMCP(userMessage);
       
-      let response = '';
-      
-      if (toolCalls.length === 0) {
-        // If no specific tools identified, get general info
-        response = await this.getGeneralInfo(userMessage);
-      } else {
-        // Execute the identified tools
-        for (const toolCall of toolCalls) {
-          try {
-            console.log(`Calling MCP tool: ${toolCall.name} with args:`, toolCall.arguments);
-            
-            const toolResponse = await this.sendMCPRequest('tools/call', {
-              name: toolCall.name,
-              arguments: toolCall.arguments
-            });
-            
-            console.log(`MCP tool response received for ${toolCall.name}`);
-            
-            // Check if response indicates permission error
-            if (this.isPermissionError(toolResponse)) {
-              const permissionResponse = await this.handlePermissionRequest(toolCall, userMessage);
-              response += permissionResponse + '\n\n';
-            } else {
-              const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
-              response += formattedResponse + '\n\n';
-            }
-            
-          } catch (error) {
-            console.error(`Error calling MCP tool ${toolCall.name}:`, error);
-            
-            // Check if error is permission-related
-            if (this.isPermissionError(error)) {
-              const permissionResponse = await this.handlePermissionRequest(toolCall, userMessage);
-              response += permissionResponse + '\n\n';
-            } else {
-              response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
-            }
-          }
-        }
+      if (response) {
+        console.log(`✅ Successfully processed with Lokka MCP`);
+        return {
+          id: uuidv4(),
+          message: response,
+          timestamp: new Date().toISOString(),
+          type: 'mcp_response'
+        };
       }
+      
+      // FALLBACK: Only if Lokka MCP fails completely
+      console.log(`⚠️ Lokka MCP processing failed, falling back to help message`);
+      response = this.getFallbackHelp(userMessage);
       
       return {
         id: uuidv4(),
-        message: response.trim(),
+        message: response,
         timestamp: new Date().toISOString(),
-        type: 'mcp_response'
+        type: 'fallback_response'
       };
 
     } catch (error) {
       console.error(`Error processing message via Lokka MCP: ${error.message}`);
       throw error;
     }
+  }
+
+  async processWithLokkaMCP(userMessage) {
+    try {
+      // First, try specific tool matching
+      const specificToolCalls = this.analyzeMessageForTools(userMessage);
+      
+      if (specificToolCalls.length > 0) {
+        console.log(`🎯 Found ${specificToolCalls.length} specific tool matches`);
+        return await this.executeSpecificTools(specificToolCalls, userMessage);
+      }
+      
+      // Second, try general Graph API queries
+      console.log(`🔍 No specific tools found, trying general Graph API queries`);
+      const generalResponse = await this.tryGeneralGraphQueries(userMessage);
+      
+      if (generalResponse) {
+        return generalResponse;
+      }
+      
+      // Third, try intelligent query expansion
+      console.log(`🧠 Trying intelligent query expansion`);
+      const expandedResponse = await this.tryIntelligentQueryExpansion(userMessage);
+      
+      if (expandedResponse) {
+        return expandedResponse;
+      }
+      
+      return null; // No results found
+      
+    } catch (error) {
+      console.error(`Error in Lokka MCP processing: ${error.message}`);
+      return null;
+    }
+  }
+
+  async executeSpecificTools(toolCalls, originalMessage) {
+    let response = '';
+    
+    for (const toolCall of toolCalls) {
+      try {
+        console.log(`Calling MCP tool: ${toolCall.name} with args:`, toolCall.arguments);
+        
+        const toolResponse = await this.sendMCPRequest('tools/call', {
+          name: toolCall.name,
+          arguments: toolCall.arguments
+        });
+        
+        console.log(`MCP tool response received for ${toolCall.name}`);
+        
+        // Check if response indicates permission error
+        if (this.isPermissionError(toolResponse)) {
+          const permissionResponse = await this.handlePermissionRequest(toolCall, originalMessage);
+          response += permissionResponse + '\n\n';
+        } else {
+          const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
+          response += formattedResponse + '\n\n';
+        }
+        
+      } catch (error) {
+        console.error(`Error calling MCP tool ${toolCall.name}:`, error);
+        
+        // Check if error is permission-related
+        if (this.isPermissionError(error)) {
+          const permissionResponse = await this.handlePermissionRequest(toolCall, originalMessage);
+          response += permissionResponse + '\n\n';
+        } else {
+          response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
+        }
+      }
+    }
+    
+    return response.trim() || null;
+  }
+
+  async tryGeneralGraphQueries(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    const generalQueries = this.analyzeGeneralQuery(lowerMessage);
+    
+    if (generalQueries.length === 0) {
+      return null;
+    }
+    
+    console.log(`Attempting ${generalQueries.length} general Graph API queries for: "${userMessage}"`);
+    
+    let response = `🔍 **Microsoft 365 Search Results for: "${userMessage}"**\n\n`;
+    let hasResults = false;
+    
+    // Try each potential query
+    for (const query of generalQueries) {
+      try {
+        console.log(`Trying general query: ${query.endpoint}`);
+        
+        const toolResponse = await this.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: {
+            apiType: 'graph',
+            graphApiVersion: 'v1.0',
+            method: 'get',
+            path: query.endpoint,
+            queryParams: query.queryParams || {}
+          }
+        });
+        
+        const formattedResponse = this.formatToolResponse('Lokka-Microsoft', toolResponse);
+        if (formattedResponse && !formattedResponse.includes('Error')) {
+          response += `**${query.description}:**\n${formattedResponse}\n\n`;
+          hasResults = true;
+        }
+        
+      } catch (error) {
+        console.error(`General query failed for ${query.endpoint}:`, error);
+        // Continue to next query without showing error to user
+      }
+    }
+    
+    return hasResults ? response.trim() : null;
+  }
+
+  async tryIntelligentQueryExpansion(userMessage) {
+    // Try to intelligently expand the query to common Graph API endpoints
+    const expandedQueries = this.generateIntelligentQueries(userMessage);
+    
+    if (expandedQueries.length === 0) {
+      return null;
+    }
+    
+    console.log(`Trying ${expandedQueries.length} intelligent query expansions`);
+    
+    let response = `🤖 **AI-Enhanced Search for: "${userMessage}"**\n\n`;
+    let hasResults = false;
+    
+    for (const query of expandedQueries) {
+      try {
+        const toolResponse = await this.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: query.arguments
+        });
+        
+        const formattedResponse = this.formatToolResponse('Lokka-Microsoft', toolResponse);
+        if (formattedResponse && !formattedResponse.includes('Error')) {
+          response += `**${query.description}:**\n${formattedResponse}\n\n`;
+          hasResults = true;
+        }
+        
+      } catch (error) {
+        console.error(`Intelligent query failed for ${query.description}:`, error);
+      }
+    }
+    
+    return hasResults ? response.trim() : null;
+  }
+
+  generateIntelligentQueries(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    const queries = [];
+    
+    // Common search terms that might relate to various Graph API endpoints
+    const searchTerms = {
+      // User-related terms
+      'user': ['/users', '/me/profile'],
+      'people': ['/users', '/me/people'],
+      'person': ['/users'],
+      'employee': ['/users'],
+      'staff': ['/users'],
+      
+      // Device-related terms
+      'device': ['/deviceManagement/managedDevices', '/devices'],
+      'computer': ['/deviceManagement/managedDevices'],
+      'phone': ['/deviceManagement/managedDevices'],
+      'tablet': ['/deviceManagement/managedDevices'],
+      'mobile': ['/deviceManagement/managedDevices'],
+      
+      // Security-related terms
+      'security': ['/security/alerts_v2', '/identityGovernance/privilegedAccess'],
+      'alert': ['/security/alerts_v2'],
+      'threat': ['/security/alerts_v2'],
+      'risk': ['/identityProtection/riskyUsers'],
+      
+      // License-related terms
+      'license': ['/subscribedSkus', '/users'],
+      'subscription': ['/subscribedSkus'],
+      'plan': ['/subscribedSkus'],
+      
+      // Group-related terms
+      'group': ['/groups'],
+      'team': ['/teams', '/groups'],
+      'channel': ['/teams'],
+      
+      // App-related terms
+      'app': ['/applications', '/servicePrincipals'],
+      'application': ['/applications'],
+      'service': ['/servicePrincipals'],
+      
+      // Mail-related terms
+      'mail': ['/me/messages', '/users'],
+      'email': ['/me/messages', '/users'],
+      'message': ['/me/messages'],
+      
+      // File-related terms
+      'file': ['/me/drive/root/children', '/drives'],
+      'document': ['/me/drive/root/children'],
+      'folder': ['/me/drive/root/children'],
+      
+      // Calendar-related terms
+      'calendar': ['/me/calendars', '/me/events'],
+      'event': ['/me/events'],
+      'meeting': ['/me/events'],
+      'appointment': ['/me/events']
+    };
+    
+    // Find matching terms and generate queries
+    for (const [term, endpoints] of Object.entries(searchTerms)) {
+      if (lowerMessage.includes(term)) {
+        for (const endpoint of endpoints) {
+          queries.push({
+            description: `${term.charAt(0).toUpperCase() + term.slice(1)} Information`,
+            arguments: {
+              apiType: 'graph',
+              graphApiVersion: 'v1.0',
+              method: 'get',
+              path: endpoint,
+              queryParams: this.getOptimalQueryParams(endpoint)
+            }
+          });
+        }
+      }
+    }
+    
+    // Remove duplicates based on endpoint
+    const uniqueQueries = queries.filter((query, index, self) => 
+      index === self.findIndex(q => q.arguments.path === query.arguments.path)
+    );
+    
+    return uniqueQueries.slice(0, 5); // Limit to 5 queries to avoid overwhelming
+  }
+
+  getOptimalQueryParams(endpoint) {
+    // Return optimal query parameters for different endpoints
+    const paramMap = {
+      '/users': { '$select': 'displayName,userPrincipalName,assignedLicenses,lastSignInDateTime', '$top': '20' },
+      '/deviceManagement/managedDevices': { '$select': 'deviceName,operatingSystem,complianceState,lastSyncDateTime,userDisplayName', '$top': '20' },
+      '/groups': { '$select': 'displayName,description,groupTypes,createdDateTime', '$top': '20' },
+      '/applications': { '$select': 'displayName,appId,createdDateTime', '$top': '20' },
+      '/servicePrincipals': { '$select': 'displayName,appId,servicePrincipalType', '$top': '20' },
+      '/subscribedSkus': { '$select': 'skuPartNumber,consumedUnits,prepaidUnits' },
+      '/security/alerts_v2': { '$top': '10' },
+      '/me/messages': { '$select': 'subject,from,receivedDateTime,isRead', '$top': '10' },
+      '/me/events': { '$select': 'subject,start,end,organizer', '$top': '10' },
+      '/me/drive/root/children': { '$select': 'name,size,lastModifiedDateTime,webUrl', '$top': '20' },
+      '/drives': { '$select': 'name,driveType,quota', '$top': '10' }
+    };
+    
+    return paramMap[endpoint] || { '$top': '20' };
+  }
+
+  getFallbackHelp(userMessage) {
+    return `🤖 **Connected to Microsoft 365 via Lokka MCP**
+
+I tried to find information for: "${userMessage}" but couldn't locate specific results.
+
+**✅ Test Markdown Rendering:**
+
+Here's a sample of what proper markdown should look like:
+
+• **John Doe** (john.doe@company.com)
+  └ Last sign-in: 12/15/2024 | Licenses: 3
+• **Jane Smith** (jane.smith@company.com)  
+  └ Last sign-in: 12/14/2024 | Licenses: 2
+• **Bob Johnson** (bob.johnson@company.com)
+  └ Last sign-in: Never | Licenses: 1
+
+**👥 User & Identity Management:**
+• "show me all users" | "list users" | "user information"
+• "show me external users" | "guest users" | "directory roles"
+
+**📱 Device Management:**
+• "show me all devices" | "ios devices" | "android devices" | "windows devices"
+• "compliance status" | "device sync" | "managed devices"
+
+**🔒 Security & Compliance:**
+• "security alerts" | "conditional access policies" | "risk users"
+• "audit logs" | "sign-in activity" | "authentication methods"
+
+**📊 Licenses & Subscriptions:**
+• "license usage" | "subscription status" | "sku information"
+
+**🏢 Organization & Apps:**
+• "tenant information" | "registered applications" | "service principals"
+• "domains" | "organization details"
+
+**🌐 Collaboration:**
+• "sharepoint sites" | "teams" | "groups" | "channels"
+• "mail" | "calendars" | "files" | "drives"
+
+**💡 Pro Tips:**
+• All queries use **native Lokka MCP** with Microsoft Graph API v1.0
+• Responses include **intelligent insights** and **actionable recommendations**
+• Try natural language like "What's our security status?" or "Show me non-compliant devices"
+
+**🔧 Current Connection:** Authenticated with full Graph API access
+**📈 Query Processing:** 100% Lokka MCP + Graph API (no external tools)
+
+Ask me anything about your Microsoft 365 environment!`;
   }
 
   async handleAuthentication(userMessage) {
@@ -493,8 +1550,9 @@ Once connected and authenticated, I'll be able to help you with:
 
     const toolName = lokkaTool.name;
 
-    // Map user intent to Lokka MCP tool calls - ALL USING v1.0 endpoints
-    if (lowerMessage.includes('users') || lowerMessage.includes('list users')) {
+    // Enhanced user query analysis with specific filtering
+    if (lowerMessage.includes('users') || lowerMessage.includes('list users') || lowerMessage.includes('user')) {
+      const userQueryParams = this.buildUserQueryParams(message, lowerMessage);
       toolCalls.push({
         name: toolName,
         arguments: {
@@ -502,9 +1560,7 @@ Once connected and authenticated, I'll be able to help you with:
           graphApiVersion: 'v1.0',
           method: 'get',
           path: '/users',
-          queryParams: {
-            '$select': 'displayName,userPrincipalName,assignedLicenses,createdDateTime,signInActivity'
-          }
+          queryParams: userQueryParams
         }
       });
     }
@@ -594,44 +1650,14 @@ Once connected and authenticated, I'll be able to help you with:
       });
     }
 
-    // Enhanced device queries with proper compliance and OS filtering
+    // Enhanced device queries with specific device name filtering and "show all" support
     if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices') || 
         lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad') ||
         lowerMessage.includes('android') || lowerMessage.includes('windows') || lowerMessage.includes('macos')) {
-      let queryParams = {
-        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,complianceGracePeriodExpirationDateTime,serialNumber,manufacturer,model,deviceOwnerType,deviceRegistrationState,managementState,enrollmentType,azureADDeviceId,emailAddress,userId,userDisplayName,userPrincipalName,deviceCategoryDisplayName,exchangeLastSuccessfulSyncDateTime,freeStorageSpaceInBytes,totalStorageSpaceInBytes,partnerReportedThreatState,requireUserEnrollmentApproval,managementCertificateExpirationDate,iccid,udid,roleScopeTagIds,windowsActiveMalwareCount,windowsRemediatedMalwareCount,notes,configurationManagerClientEnabledFeatures,deviceHealthAttestationState,subscriberCarrier,meid,imei,cellularTechnology,wiFiMacAddress,phoneNumber,hardwareInformation,deviceActionResults'
-      };
-
-      let filterConditions = [];
-
-      // Check for specific OS-related queries  
-      if (lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad')) {
-        filterConditions.push("operatingSystem eq 'iOS'");
-      } else if (lowerMessage.includes('android')) {
-        filterConditions.push("operatingSystem eq 'Android'");  
-      } else if (lowerMessage.includes('windows')) {
-        filterConditions.push("operatingSystem eq 'Windows'");
-      } else if (lowerMessage.includes('macos')) {
-        filterConditions.push("operatingSystem eq 'macOS'");
-      }
-
-      // Check for specific compliance-related queries
-      if (lowerMessage.includes('grace period') || lowerMessage.includes('compliance grace')) {
-        // Filter for devices in grace period (complianceState = 'inGracePeriod')
-        filterConditions.push("complianceState eq 'inGracePeriod'");
-      } else if (lowerMessage.includes('non-compliant') || lowerMessage.includes('noncompliant')) {
-        // Filter for non-compliant devices
-        filterConditions.push("complianceState eq 'noncompliant'");
-      } else if (lowerMessage.includes('compliant') && !lowerMessage.includes('non-compliant')) {
-        // Filter for compliant devices only
-        filterConditions.push("complianceState eq 'compliant'");
-      }
-
-      // Combine filter conditions with 'and'
-      if (filterConditions.length > 0) {
-        queryParams['$filter'] = filterConditions.join(' and ');
-      }
-
+      
+      const deviceQueryParams = this.buildDeviceQueryParams(message, lowerMessage);
+      console.log('🔍 Built device query params:', deviceQueryParams);
+      
       toolCalls.push({
         name: toolName,
         arguments: {
@@ -639,7 +1665,7 @@ Once connected and authenticated, I'll be able to help you with:
           graphApiVersion: 'v1.0',
           method: 'get',
           path: '/deviceManagement/managedDevices',
-          queryParams: queryParams
+          queryParams: deviceQueryParams
         }
       });
     }
@@ -677,7 +1703,323 @@ Once connected and authenticated, I'll be able to help you with:
     return toolCalls;
   }
 
+  // Helper method to build enhanced user query parameters
+  buildUserQueryParams(originalMessage, lowerMessage) {
+    let queryParams = {
+      '$select': 'displayName,userPrincipalName,assignedLicenses,accountEnabled,lastSignInDateTime,createdDateTime,userType,jobTitle,department'
+    };
+
+    let filterConditions = [];
+
+    // Check for specific user name or email in the query
+    const specificUserMatch = this.extractSpecificIdentifier(originalMessage, ['user', 'person', 'employee']);
+    if (specificUserMatch) {
+      // Search for users by display name or user principal name
+      filterConditions.push(`startswith(displayName,'${specificUserMatch}') or startswith(userPrincipalName,'${specificUserMatch}')`);
+      console.log('🎯 Searching for specific user:', specificUserMatch);
+    }
+
+    // Check for external/guest user queries
+    if (lowerMessage.includes('external') || lowerMessage.includes('guest')) {
+      filterConditions.push("userType eq 'Guest'");
+    }
+
+    // Check for enabled/disabled status
+    if (lowerMessage.includes('disabled') || lowerMessage.includes('inactive')) {
+      filterConditions.push("accountEnabled eq false");
+    } else if (lowerMessage.includes('enabled') || lowerMessage.includes('active')) {
+      filterConditions.push("accountEnabled eq true");
+    }
+
+    // Handle "show all" requests by increasing the limit
+    if (lowerMessage.includes('show all') || lowerMessage.includes('list all') || lowerMessage.includes('all users')) {
+      queryParams['$top'] = '999'; // GraphAPI max is usually 999
+      console.log('📊 User requested ALL users - setting $top to 999');
+    } else {
+      queryParams['$top'] = '50'; // Default reasonable limit
+    }
+
+    // Combine filter conditions
+    if (filterConditions.length > 0) {
+      queryParams['$filter'] = filterConditions.join(' and ');
+    }
+
+    return queryParams;
+  }
+
+  // Helper method to build enhanced device query parameters
+  buildDeviceQueryParams(originalMessage, lowerMessage) {
+    let queryParams = {
+      '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,userDisplayName,emailAddress,model,manufacturer,serialNumber,id'
+    };
+
+    let filterConditions = [];
+
+    // Check for specific device name in the query
+    const specificDeviceName = this.extractSpecificIdentifier(originalMessage, ['device', 'computer', 'phone', 'tablet', 'laptop']);
+    if (specificDeviceName) {
+      // Search for devices by device name
+      filterConditions.push(`startswith(deviceName,'${specificDeviceName}') or contains(deviceName,'${specificDeviceName}')`);
+      console.log('🎯 Searching for specific device:', specificDeviceName);
+    }
+
+    // Check for specific OS-related queries  
+    if (lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad')) {
+      filterConditions.push("operatingSystem eq 'iOS'");
+    } else if (lowerMessage.includes('android')) {
+      filterConditions.push("operatingSystem eq 'Android'");  
+    } else if (lowerMessage.includes('windows')) {
+      filterConditions.push("operatingSystem eq 'Windows'");
+    } else if (lowerMessage.includes('macos')) {
+      filterConditions.push("operatingSystem eq 'macOS'");
+    }
+
+    // Check for specific compliance-related queries
+    if (lowerMessage.includes('grace period') || lowerMessage.includes('compliance grace')) {
+      filterConditions.push("complianceState eq 'inGracePeriod'");
+    } else if (lowerMessage.includes('non-compliant') || lowerMessage.includes('noncompliant')) {
+      filterConditions.push("complianceState eq 'noncompliant'");
+    } else if (lowerMessage.includes('compliant') && !lowerMessage.includes('non-compliant')) {
+      filterConditions.push("complianceState eq 'compliant'");
+    }
+
+    // Check for specific user ownership
+    const userOwnerMatch = this.extractUserFromDeviceQuery(originalMessage);
+    if (userOwnerMatch) {
+      filterConditions.push(`contains(userDisplayName,'${userOwnerMatch}') or contains(emailAddress,'${userOwnerMatch}')`);
+      console.log('🎯 Filtering devices by user:', userOwnerMatch);
+    }
+
+    // Handle "show all" requests by removing the limit or setting it very high
+    if (lowerMessage.includes('show all') || lowerMessage.includes('list all') || lowerMessage.includes('all devices')) {
+      queryParams['$top'] = '999'; // GraphAPI max
+      console.log('📊 User requested ALL devices - setting $top to 999');
+    } else if (specificDeviceName) {
+      queryParams['$top'] = '50'; // More results when searching for specific device
+    } else {
+      queryParams['$top'] = '25'; // Default reasonable limit
+    }
+
+    // Combine filter conditions
+    if (filterConditions.length > 0) {
+      queryParams['$filter'] = filterConditions.join(' and ');
+    }
+
+    return queryParams;
+  }
+
+  // Helper method to extract specific identifiers from user queries
+  extractSpecificIdentifier(message, entityTypes) {
+    // Look for patterns like "show me device ABC123" or "find user John Smith"
+    const patterns = [
+      // Pattern: "show me device XYZ", "find device XYZ", "search for device XYZ"
+      new RegExp(`(?:show me|find|search for|get|locate)\\s+(?:${entityTypes.join('|')})\\s+([\\w\\-\\.@\\s]+?)(?:\\s|$|\\?|,)`, 'i'),
+      // Pattern: "device XYZ", "user XYZ" (when not at start of sentence)
+      new RegExp(`\\b(?:${entityTypes.join('|')})\\s+([\\w\\-\\.@\\s]+?)(?:\\s(?:is|has|was|does|can|should|will)|$|\\?|\\.|,)`, 'i'),
+      // Pattern: quoted strings like "device 'ABC123'" or 'user "John Smith"'
+      new RegExp(`(?:${entityTypes.join('|')})\\s+['"]([^'"]+)['"]`, 'i')
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        const identifier = match[1].trim();
+        // Filter out common words that aren't identifiers
+        const commonWords = ['all', 'any', 'some', 'the', 'a', 'an', 'that', 'this', 'with', 'in', 'on', 'for', 'by', 'named', 'called'];
+        if (!commonWords.includes(identifier.toLowerCase()) && identifier.length > 1) {
+          return identifier;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Helper method to extract user information from device queries
+  extractUserFromDeviceQuery(message) {
+    const patterns = [
+      // Pattern: "devices for user John", "devices owned by Jane"
+      /(?:devices?|computers?|phones?|tablets?).*(?:for|owned by|belonging to|assigned to)\s+(?:user\s+)?([a-zA-Z][a-zA-Z0-9\.\-_@\s]+?)(?:\s|$|\?|,)/i,
+      // Pattern: "John's devices", "Jane's computers"
+      /([a-zA-Z][a-zA-Z0-9\.\-_@]+)'s\s+(?:devices?|computers?|phones?|tablets?)/i,
+      // Pattern: "show me devices user:john.doe"
+      /user:([a-zA-Z0-9\.\-_@]+)/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+
+    return null;
+  }
+
+  analyzeGeneralQuery(lowerMessage) {
+    const queries = [];
+    
+    // Security-related queries
+    if (lowerMessage.includes('policies') || lowerMessage.includes('policy')) {
+      queries.push({
+        endpoint: '/policies/conditionalAccessPolicies',
+        description: 'Conditional Access Policies',
+        queryParams: { '$select': 'displayName,state,conditions,grantControls,sessionControls,createdDateTime' }
+      });
+      queries.push({
+        endpoint: '/policies/authenticationMethodsPolicy',
+        description: 'Authentication Methods Policy',
+        queryParams: { '$select': 'displayName,description,policyVersion' }
+      });
+    }
+    
+    // Service principals and apps
+    if (lowerMessage.includes('service principal') || lowerMessage.includes('enterprise app')) {
+      queries.push({
+        endpoint: '/servicePrincipals',
+        description: 'Service Principals (Enterprise Applications)',
+        queryParams: { '$select': 'displayName,appId,servicePrincipalType,createdDateTime', '$top': '20' }
+      });
+    }
+    
+    // Directory roles
+    if (lowerMessage.includes('roles') || lowerMessage.includes('admin') || lowerMessage.includes('directory role')) {
+      queries.push({
+        endpoint: '/directoryRoles',
+        description: 'Directory Roles',
+        queryParams: { '$select': 'displayName,description,roleTemplateId' }
+      });
+      queries.push({
+        endpoint: '/roleManagement/directory/roleAssignments',
+        description: 'Role Assignments',
+        queryParams: { '$select': 'principalId,roleDefinitionId,directoryScopeId', '$top': '20' }
+      });
+    }
+    
+    // External users
+    if (lowerMessage.includes('external') || lowerMessage.includes('guest')) {
+      queries.push({
+        endpoint: '/users',
+        description: 'External/Guest Users',
+        queryParams: { 
+          '$filter': "userType eq 'Guest'",
+          '$select': 'displayName,userPrincipalName,userType,createdDateTime,externalUserState'
+        }
+      });
+    }
+    
+    // Domains
+    if (lowerMessage.includes('domain') || lowerMessage.includes('dns')) {
+      queries.push({
+        endpoint: '/domains',
+        description: 'Tenant Domains',
+        queryParams: { '$select': 'id,isDefault,isInitial,isVerified,supportedServices' }
+      });
+    }
+    
+    // Subscriptions and billing
+    if (lowerMessage.includes('subscription') || lowerMessage.includes('billing') || lowerMessage.includes('plan')) {
+      queries.push({
+        endpoint: '/subscribedSkus',
+        description: 'License Subscriptions',
+        queryParams: { '$select': 'skuPartNumber,consumedUnits,prepaidUnits,servicePlans' }
+      });
+    }
+    
+    // Mail and Exchange
+    if (lowerMessage.includes('mail') || lowerMessage.includes('exchange') || lowerMessage.includes('mailbox')) {
+      queries.push({
+        endpoint: '/users',
+        description: 'Mailbox Information',
+        queryParams: { 
+          '$filter': 'assignedLicenses/$count ne 0',
+          '$select': 'displayName,userPrincipalName,mail,mailNickname,proxyAddresses'
+        }
+      });
+    }
+    
+    // Teams and channels
+    if (lowerMessage.includes('team') || lowerMessage.includes('channel')) {
+      queries.push({
+        endpoint: '/teams',
+        description: 'Microsoft Teams',
+        queryParams: { '$select': 'displayName,description,createdDateTime,visibility' }
+      });
+    }
+    
+    // Calendar and events
+    if (lowerMessage.includes('calendar') || lowerMessage.includes('event') || lowerMessage.includes('meeting')) {
+      queries.push({
+        endpoint: '/me/calendars',
+        description: 'Calendars',
+        queryParams: { '$select': 'name,color,isDefaultCalendar,canShare,canViewPrivateItems' }
+      });
+    }
+    
+    // Files and drives
+    if (lowerMessage.includes('file') || lowerMessage.includes('drive') || lowerMessage.includes('onedrive')) {
+      queries.push({
+        endpoint: '/drives',
+        description: 'OneDrive and SharePoint Drives',
+        queryParams: { '$select': 'name,driveType,owner,quota,createdDateTime' }
+      });
+    }
+    
+    // Compliance and auditing
+    if (lowerMessage.includes('audit') || lowerMessage.includes('compliance') || lowerMessage.includes('log')) {
+      queries.push({
+        endpoint: '/auditLogs/directoryAudits',
+        description: 'Directory Audit Logs',
+        queryParams: { '$top': '10', '$select': 'activityDisplayName,category,result,activityDateTime,initiatedBy' }
+      });
+    }
+    
+    return queries;
+  }
+
   async getGeneralInfo(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Try to intelligently guess what Graph API endpoint might be relevant
+    const generalQueries = this.analyzeGeneralQuery(lowerMessage);
+    
+    if (generalQueries.length > 0) {
+      console.log(`Attempting general Graph API queries for: "${message}"`);
+      
+      let response = `🔍 **Searching Microsoft 365 for: "${message}"**\n\n`;
+      
+      // Try each potential query
+      for (const query of generalQueries) {
+        try {
+          console.log(`Trying general query: ${query.endpoint}`);
+          
+          const toolResponse = await this.sendMCPRequest('tools/call', {
+            name: 'Lokka-Microsoft',
+            arguments: {
+              apiType: 'graph',
+              graphApiVersion: 'v1.0',
+              method: 'get',
+              path: query.endpoint,
+              queryParams: query.queryParams || {}
+            }
+          });
+          
+          const formattedResponse = this.formatToolResponse('Lokka-Microsoft', toolResponse);
+          response += `**${query.description}:**\n${formattedResponse}\n\n`;
+          
+        } catch (error) {
+          console.error(`General query failed for ${query.endpoint}:`, error);
+          // Don't show errors to user for general queries, just try the next one
+        }
+      }
+      
+      // If we got any results, return them
+      if (response.length > 100) {
+        return response.trim();
+      }
+    }
+    
+    // Fallback to help message if no general queries worked
     return `🤖 **Connected to Microsoft 365 tenant: ${this.tenantDomain}**
 
 I understand you asked: "${message}"
@@ -724,7 +2066,16 @@ I'm connected to your tenant via the Lokka-Microsoft MCP server and can help you
 • "Show me non-compliant devices" - Devices that are not compliant
 • "Show me compliant devices" - Devices that are compliant
 
-Try asking me any of these questions to get real data from your Microsoft 365 tenant!`;
+**💡 Try asking me questions like:**
+• "What policies do we have?"
+• "Show me service principals"
+• "What conditional access policies exist?"
+• "List directory roles"
+• "Show me external users"
+• "What domains are configured?"
+• "Show me audit logs"
+
+I'll try to find relevant information from your Microsoft 365 tenant!`;
   }
 
   formatToolResponse(toolName, toolResponse) {
@@ -739,11 +2090,23 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
       // Handle Lokka MCP response format with content array
       if (Array.isArray(data) && data[0] && data[0].text) {
         const responseText = data[0].text;
+        console.log('📝 Raw Lokka response text (first 200 chars):', responseText.substring(0, 200));
         
-        // Check if the response text looks like JSON
-        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        // Try to extract JSON from the response text
+        let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            data = JSON.parse(jsonMatch[0]);
+            console.log('✅ Successfully extracted and parsed JSON from Lokka response');
+          } catch (parseError) {
+            console.error('Error parsing extracted JSON:', parseError);
+            // If JSON parsing fails, return the raw text formatted nicely
+            return `**Live Data from ${toolName}:**\n\n${responseText}`;
+          }
+        } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
           try {
             data = JSON.parse(responseText);
+            console.log('✅ Successfully parsed JSON response from Lokka MCP');
           } catch (parseError) {
             console.error('Error parsing Lokka JSON response:', parseError);
             // If JSON parsing fails, return the raw text formatted nicely
@@ -751,6 +2114,7 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
           }
         } else {
           // It's plain text, return it formatted
+          console.log('ℹ️ Received plain text response from Lokka MCP');
           return `**Response from ${toolName}:**\n\n${responseText}`;
         }
       }
@@ -762,28 +2126,50 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
       // Handle Microsoft Graph API responses
       if (data.value && Array.isArray(data.value)) {
         const items = data.value;
+        console.log('📊 Processing Graph API response with', items.length, 'items');
+        console.log('🔍 Context:', data['@odata.context']);
+        console.log('🛠️ Tool name:', toolName);
         
         if (toolName.includes('users') || data['@odata.context']?.includes('users')) {
+          console.log('👥 Formatting as users response');
           return this.formatUsersResponse(items);
         } else if (toolName.includes('subscribedSkus') || data['@odata.context']?.includes('subscribedSkus')) {
+          console.log('📊 Formatting as license response');
           return this.formatLicenseResponse(items);
         } else if (toolName.includes('security') || data['@odata.context']?.includes('security')) {
+          console.log('🔒 Formatting as security response');
           return this.formatSecurityResponse(items);
         } else if (toolName.includes('signIns') || data['@odata.context']?.includes('signIns')) {
+          console.log('📈 Formatting as sign-in response');
           return this.formatSignInResponse(items);
         } else if (toolName.includes('sites') || data['@odata.context']?.includes('sites')) {
+          console.log('🌐 Formatting as sites response');
           return this.formatSitesResponse(items);
         } else if (toolName.includes('groups') || data['@odata.context']?.includes('groups')) {
+          console.log('👨‍👩‍👧‍👦 Formatting as groups response');
           return this.formatGroupsResponse(items);
         } else if (toolName.includes('organization') || data['@odata.context']?.includes('organization')) {
+          console.log('🏢 Formatting as organization response');
           return this.formatOrganizationResponse(items);
         } else if (toolName.includes('devices') || toolName.includes('deviceManagement') || data['@odata.context']?.includes('deviceManagement')) {
+          console.log('📱 Formatting as devices response');
           return this.formatDevicesResponse(items);
         } else if (toolName.includes('applications') || data['@odata.context']?.includes('applications')) {
+          console.log('📋 Formatting as applications response');
           return this.formatApplicationsResponse(items);
         } else if (toolName.includes('contacts') || data['@odata.context']?.includes('contacts')) {
+          console.log('👤 Formatting as contacts response');
           return this.formatContactsResponse(items);
         }
+        
+        console.log('⚠️ No specific formatter found, using default array conversion');
+        return this.convertArrayToMarkdown(items, toolName);
+      }
+
+      // Handle single objects - convert to markdown
+      if (typeof data === 'object' && data !== null) {
+        console.log('📄 Converting single object to markdown');
+        return this.convertObjectToMarkdown(data, toolName);
       }
 
       // Default formatting for unknown responses
@@ -795,26 +2181,172 @@ Try asking me any of these questions to get real data from your Microsoft 365 te
     }
   }
 
+  // New method to convert arrays to markdown format
+  convertArrayToMarkdown(items, toolName) {
+    if (!items || items.length === 0) {
+      return `**No data found from ${toolName}**`;
+    }
+
+    // Take first few items to avoid overwhelming the user
+    const displayItems = items.slice(0, 15);
+    let markdown = `**Data from ${toolName}** (${items.length} total${items.length > 15 ? ', showing first 15' : ''})\n\n`;
+
+    displayItems.forEach((item, index) => {
+      markdown += `### Item ${index + 1}\n\n`;
+      markdown += this.convertObjectToMarkdown(item, '', false);
+      markdown += '\n\n---\n\n';
+    });
+
+    if (items.length > 15) {
+      markdown += `*...and ${items.length - 15} more items*`;
+    }
+
+    return markdown.trim();
+  }
+
+  // New method to convert objects to markdown format
+  convertObjectToMarkdown(obj, toolName = '', includeTitle = true) {
+    if (!obj || typeof obj !== 'object') {
+      return `**${toolName}:** ${obj}`;
+    }
+
+    let markdown = '';
+    
+    if (includeTitle && toolName) {
+      markdown += `**Data from ${toolName}:**\n\n`;
+    }
+
+    // Convert object properties to markdown list
+    const entries = Object.entries(obj);
+    
+    entries.forEach(([key, value]) => {
+      // Skip null, undefined, or empty values
+      if (value === null || value === undefined || value === '') {
+        return;
+      }
+
+      // Format the key nicely
+      const formattedKey = key
+        .replace(/([A-Z])/g, ' $1') // Add space before capitals
+        .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+        .replace(/Id$/, 'ID') // Fix ID capitalization
+        .replace(/Url$/, 'URL') // Fix URL capitalization
+        .replace(/Api$/, 'API'); // Fix API capitalization
+
+      if (Array.isArray(value)) {
+        if (value.length === 0) {
+          markdown += `• **${formattedKey}:** None\n`;
+        } else if (value.length <= 5) {
+          // For small arrays, show all items
+          const arrayItems = value.map(item => 
+            typeof item === 'object' ? JSON.stringify(item) : String(item)
+          ).join(', ');
+          markdown += `• **${formattedKey}:** ${arrayItems}\n`;
+        } else {
+          // For large arrays, show count and first few items
+          const preview = value.slice(0, 3).map(item => 
+            typeof item === 'object' ? JSON.stringify(item) : String(item)
+          ).join(', ');
+          markdown += `• **${formattedKey}:** ${preview}... (${value.length} total)\n`;
+        }
+      } else if (typeof value === 'object') {
+        // For nested objects, show key properties
+        const nestedEntries = Object.entries(value).slice(0, 3);
+        const nestedText = nestedEntries.map(([k, v]) => `${k}: ${v}`).join(', ');
+        markdown += `• **${formattedKey}:** ${nestedText}${Object.keys(value).length > 3 ? '...' : ''}\n`;
+      } else if (typeof value === 'boolean') {
+        markdown += `• **${formattedKey}:** ${value ? '✅ Yes' : '❌ No'}\n`;
+      } else if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+        // Format dates nicely
+        try {
+          const date = new Date(value);
+          if (!isNaN(date.getTime())) {
+            markdown += `• **${formattedKey}:** ${date.toLocaleString()}\n`;
+          } else {
+            markdown += `• **${formattedKey}:** ${value}\n`;
+          }
+        } catch {
+          markdown += `• **${formattedKey}:** ${value}\n`;
+        }
+      } else if (key.toLowerCase().includes('url') || key.toLowerCase().includes('link')) {
+        // Format URLs as clickable links
+        markdown += `• **${formattedKey}:** [${value}](${value})\n`;
+      } else {
+        // Regular value
+        markdown += `• **${formattedKey}:** ${value}\n`;
+      }
+    });
+
+    return markdown;
+  }
+
   formatUsersResponse(users) {
     if (!users || users.length === 0) {
       return `👥 **No users found in ${this.tenantDomain}**`;
     }
 
-    const userList = users.slice(0, 15).map(user => {
+    // Determine display limit based on total results and user intent
+    let displayLimit = 20; // Default limit
+    let showAllRequested = false;
+    
+    // Check if this is a "show all" request by looking at the total count
+    if (users.length > 50 || users.length === 999) { // 999 indicates a "show all" request
+      displayLimit = users.length; // Show all results
+      showAllRequested = true;
+      console.log('📊 Showing ALL users as requested:', users.length);
+    } else if (users.length <= 5) {
+      displayLimit = users.length; // Show all for small result sets
+    }
+
+    // For users, a table format is much more readable than a list
+    const displayUsers = users.slice(0, displayLimit);
+    
+    let tableHtml = `<div class="data-table-container">
+<h3><span class="status-emoji">👥</span> <strong>Users in ${this.tenantDomain}</strong> (${users.length} total${showAllRequested ? ', showing all' : `, showing first ${displayUsers.length}`})</h3>
+
+<table class="data-table">
+<thead>
+<tr>
+<th>Display Name</th>
+<th>User Principal Name</th>
+<th>Last Sign-in</th>
+<th>Licenses</th>
+<th>Enabled</th>
+</tr>
+</thead>
+<tbody>`;
+
+    displayUsers.forEach(user => {
       const lastSignIn = user.lastSignInDateTime 
         ? new Date(user.lastSignInDateTime).toLocaleDateString()
         : 'Never';
       
       const licenseCount = user.assignedLicenses ? user.assignedLicenses.length : 0;
+      const isEnabled = user.accountEnabled ? '✅' : '❌';
+      const displayName = user.displayName || 'N/A';
+      const userPrincipalName = user.userPrincipalName || 'N/A';
       
-      return `• **${user.displayName}** (${user.userPrincipalName})\n  └ Last sign-in: ${lastSignIn} | Licenses: ${licenseCount}`;
-    }).join('\n');
+      tableHtml += `
+<tr>
+<td><strong>${displayName}</strong></td>
+<td><code>${userPrincipalName}</code></td>
+<td>${lastSignIn === 'Never' ? '<em>Never</em>' : lastSignIn}</td>
+<td><span class="license-count">${licenseCount}</span></td>
+<td>${isEnabled}</td>
+</tr>`;
+    });
 
-    return `👥 **Users in ${this.tenantDomain}** (${users.length} total, showing first 15)
+    tableHtml += `
+</tbody>
+</table>`;
 
-${userList}
-
-${users.length > 15 ? `\n*...and ${users.length - 15} more users*` : ''}`;
+    if (!showAllRequested && users.length > displayLimit) {
+      tableHtml += `<p class="table-footer"><em>...and ${users.length - displayLimit} more users. <strong>Say "show me all users" to see the complete list.</strong></em></p>`;
+    }
+    
+    tableHtml += `</div>`;
+    
+    return tableHtml;
   }
 
   formatLicenseResponse(licenses) {
@@ -945,7 +2477,41 @@ ${groupList}`;
       }
     }
 
-    const deviceList = devices.slice(0, 20).map(device => {
+    // Determine display limit based on total results and user intent
+    let displayLimit = 15; // Default limit for devices (fewer due to more columns)
+    let showAllRequested = false;
+    
+    // Check if this is a "show all" request or specific device search
+    if (devices.length > 25 || devices.length === 999) { // 999 indicates a "show all" request
+      displayLimit = devices.length; // Show all results
+      showAllRequested = true;
+      console.log('📊 Showing ALL devices as requested:', devices.length);
+    } else if (devices.length <= 10) {
+      displayLimit = devices.length; // Show all for small result sets (likely specific searches)
+    } else if (devices.length <= 25) {
+      displayLimit = devices.length; // Show all for medium result sets
+    }
+
+    // For devices, table format is much more readable
+    const displayDevices = devices.slice(0, displayLimit);
+    
+    let tableHtml = `<div class="data-table-container">
+<h3><span class="status-emoji">${titlePrefix}</span> <strong>${titleText} in ${this.tenantDomain}</strong> (${devices.length} total${showAllRequested ? ', showing all' : `, showing first ${displayDevices.length}`})</h3>
+
+<table class="data-table devices-table">
+<thead>
+<tr>
+<th>Device Name</th>
+<th>OS / Version</th>
+<th>Compliance</th>
+<th>Owner</th>
+<th>Last Sync</th>
+<th>Enrolled</th>
+</tr>
+</thead>
+<tbody>`;
+
+    displayDevices.forEach(device => {
       const lastSync = device.lastSyncDateTime 
         ? new Date(device.lastSyncDateTime).toLocaleDateString()
         : 'Never';
@@ -955,51 +2521,52 @@ ${groupList}`;
       const compliance = device.complianceState || 'Unknown';
       const os = device.operatingSystem || 'Unknown';
       const version = device.osVersion || 'Unknown';
-      
-      // Add device-specific information for iOS devices
-      let deviceDetails = '';
-      if (os === 'iOS') {
-        const carrier = device.subscriberCarrier || 'Unknown carrier';
-        const phoneNumber = device.phoneNumber || 'No phone number';
-        const model = device.model || 'Unknown model';
-        const serialNumber = device.serialNumber || 'Unknown S/N';
-        
-        deviceDetails = `\n    📞 ${phoneNumber} | 📶 ${carrier} | 🔢 ${serialNumber.slice(-4)} | 📦 ${model}`;
-      } else if (os === 'Android') {
-        const model = device.model || 'Unknown model';
-        const manufacturer = device.manufacturer || 'Unknown manufacturer';
-        const serialNumber = device.serialNumber || 'Unknown S/N';
-        
-        deviceDetails = `\n    🏭 ${manufacturer} | 📦 ${model} | 🔢 ${serialNumber.slice(-4)}`;
-      } else if (os === 'Windows' || os === 'macOS') {
-        const serialNumber = device.serialNumber || 'Unknown S/N';
-        deviceDetails = `\n    🔢 S/N: ${serialNumber.slice(-4)}`;
-      }
+      const deviceName = device.deviceName || 'Unknown Device';
+      const owner = device.userDisplayName || device.emailAddress || 'Unknown';
       
       // Handle grace period expiration date
       let graceInfo = '';
-      if (device.complianceGracePeriodExpirationDateTime) {
+      if (device.complianceGracePeriodExpirationDateTime && compliance === 'inGracePeriod') {
         const graceExpiry = new Date(device.complianceGracePeriodExpirationDateTime);
         const now = new Date();
         const daysLeft = Math.ceil((graceExpiry - now) / (1000 * 60 * 60 * 24));
-        
-        if (compliance === 'inGracePeriod') {
-          graceInfo = ` | Grace expires in ${daysLeft} days`;
-        }
+        graceInfo = ` (${daysLeft}d left)`;
       }
       
-      // Add compliance status emoji
-      let complianceEmoji = '';
+      // Add compliance status emoji and styling
+      let complianceCell = '';
       switch (compliance) {
-        case 'compliant': complianceEmoji = '✅'; break;
-        case 'noncompliant': complianceEmoji = '❌'; break;
-        case 'inGracePeriod': complianceEmoji = '⏳'; break;
-        case 'conflict': complianceEmoji = '⚠️'; break;
-        default: complianceEmoji = '❓'; break;
+        case 'compliant': 
+          complianceCell = `<span class="compliance-status compliant">✅ Compliant</span>`;
+          break;
+        case 'noncompliant': 
+          complianceCell = `<span class="compliance-status noncompliant">❌ Non-compliant</span>`;
+          break;
+        case 'inGracePeriod': 
+          complianceCell = `<span class="compliance-status grace-period">⏳ Grace Period${graceInfo}</span>`;
+          break;
+        case 'conflict': 
+          complianceCell = `<span class="compliance-status conflict">⚠️ Conflict</span>`;
+          break;
+        default: 
+          complianceCell = `<span class="compliance-status unknown">❓ Unknown</span>`;
+          break;
       }
       
-      return `• **${device.deviceName || 'Unknown Device'}** (${os} ${version})\n  └ ${complianceEmoji} Compliance: ${compliance}${graceInfo} | Last Sync: ${lastSync} | Enrolled: ${enrolled}${deviceDetails}`;
-    }).join('\n');
+      tableHtml += `
+<tr>
+<td><strong>${deviceName}</strong></td>
+<td><code>${os} ${version}</code></td>
+<td>${complianceCell}</td>
+<td><em>${owner}</em></td>
+<td>${lastSync === 'Never' ? '<em>Never</em>' : lastSync}</td>
+<td>${enrolled === 'Unknown' ? '<em>Unknown</em>' : enrolled}</td>
+</tr>`;
+    });
+
+    tableHtml += `
+</tbody>
+</table>`;
 
     // Add summary statistics
     const complianceStats = devices.reduce((stats, device) => {
@@ -1015,26 +2582,27 @@ ${groupList}`;
       return stats;
     }, {});
 
-    let statsText = '';
     if (Object.keys(complianceStats).length > 1) {
       const statsList = Object.entries(complianceStats)
         .map(([state, count]) => `${state}: ${count}`)
         .join(', ');
-      statsText = `\n\n**Compliance Summary:** ${statsList}`;
+      tableHtml += `<div class="table-summary"><strong>Compliance Summary:</strong> ${statsList}</div>`;
     }
     
     if (Object.keys(osStats).length > 1) {
       const osList = Object.entries(osStats)
         .map(([os, count]) => `${os}: ${count}`)
         .join(', ');
-      statsText += `\n**OS Breakdown:** ${osList}`;
+      tableHtml += `<div class="table-summary"><strong>OS Breakdown:</strong> ${osList}</div>`;
     }
 
-    return `${titlePrefix} **${titleText} in ${this.tenantDomain}** (${devices.length} total, showing first 20)
-
-${deviceList}
-
-${devices.length > 20 ? `\n*...and ${devices.length - 20} more devices*` : ''}${statsText}`;
+    if (!showAllRequested && devices.length > displayLimit) {
+      tableHtml += `<p class="table-footer"><em>...and ${devices.length - displayLimit} more devices. <strong>Say "show me all devices" to see the complete list.</strong></em></p>`;
+    }
+    
+    tableHtml += `</div>`;
+    
+    return tableHtml;
   }
 
   formatApplicationsResponse(apps) {
@@ -1484,11 +3052,29 @@ Please try your query again or contact support if the issue persists.`,
       console.error(`Error stopping Lokka MCP client: ${error.message}`);
     }
   }
+
+  async cleanup() {
+    await this.stop();
+    this.availableTools = [];
+    this.accessToken = null;
+    this.authStatus = 'not_authenticated';
+    this.pendingQuery = null;
+  }
 }
 
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Serve the new policy migration dashboard
+app.get('/tenant-clone-new', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tenant-clone-new.html'));
+});
+
+// Legacy tenant clone page
+app.get('/tenant-clone', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'tenant-clone.html'));
 });
 
 app.get('/health', (req, res) => {
@@ -1592,6 +3178,11 @@ app.post('/api/chat', async (req, res) => {
   try {
     // Process chat message through AI agent
     const response = await processAIMessage(sessionId, message);
+    console.log('📤 Sending response to frontend:', { 
+      messageLength: response.message.length,
+      messagePreview: response.message.substring(0, 200) + '...',
+      responseType: response.type 
+    });
     res.json({ response });
   } catch (error) {
     console.error('Error processing chat message:', error);
@@ -1625,6 +3216,94 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} joined session ${sessionId}`);
   });
   
+  // Dual-Tenant Socket Events for Tenant Clone Feature
+  socket.on('dual_tenant_init', async (data) => {
+    const { sessionId, sourceTenant, targetTenant } = data;
+    
+    try {
+      console.log(`🔄 Initializing dual-tenant session: ${sessionId}`);
+      
+      // Create dual tenant manager
+      const dualManager = new DualTenantManager(sessionId, io);
+      dualTenantSessions.set(sessionId, dualManager);
+      
+      // Initialize source tenant
+      if (sourceTenant) {
+        await dualManager.initializeSourceTenant(sourceTenant);
+      }
+      
+      // Initialize target tenant  
+      if (targetTenant) {
+        await dualManager.initializeTargetTenant(targetTenant);
+      }
+      
+      socket.emit('dual_tenant_initialized', {
+        sessionId,
+        status: dualManager.getStatus()
+      });
+      
+    } catch (error) {
+      console.error('Error initializing dual tenant session:', error);
+      socket.emit('dual_tenant_error', {
+        type: 'init_failed',
+        error: error.message
+      });
+    }
+  });
+  
+  socket.on('load_source_policies', async (data) => {
+    const { sessionId } = data;
+    
+    try {
+      if (!dualTenantSessions.has(sessionId)) {
+        throw new Error('Dual tenant session not found');
+      }
+      
+      const dualManager = dualTenantSessions.get(sessionId);
+      await dualManager.loadSourcePolicies();
+      
+    } catch (error) {
+      console.error('Error loading source policies:', error);
+      socket.emit('source_policies_error', {
+        error: error.message
+      });
+    }
+  });
+  
+  socket.on('clone_policy', async (data) => {
+    const { sessionId, policyId, policyType, customizations } = data;
+    
+    try {
+      if (!dualTenantSessions.has(sessionId)) {
+        throw new Error('Dual tenant session not found');
+      }
+      
+      const dualManager = dualTenantSessions.get(sessionId);
+      const result = await dualManager.clonePolicy(policyId, policyType, customizations);
+      
+      socket.emit('policy_clone_result', result);
+      
+    } catch (error) {
+      console.error('Error cloning policy:', error);
+      socket.emit('policy_clone_error', {
+        policyId,
+        policyType,
+        error: error.message
+      });
+    }
+  });
+  
+  socket.on('get_dual_tenant_status', (data) => {
+    const { sessionId } = data;
+    
+    if (dualTenantSessions.has(sessionId)) {
+      const dualManager = dualTenantSessions.get(sessionId);
+      socket.emit('dual_tenant_status_update', dualManager.getStatus());
+    } else {
+      socket.emit('dual_tenant_status_update', { isActive: false });
+    }
+  });
+  
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
@@ -1642,6 +3321,13 @@ async function cleanupSession(sessionId) {
     const mcpClient = mcpConnections.get(sessionId);
     await mcpClient.stop();
     mcpConnections.delete(sessionId);
+  }
+  
+  // Clean up dual-tenant session if exists
+  if (dualTenantSessions.has(sessionId)) {
+    const dualManager = dualTenantSessions.get(sessionId);
+    await dualManager.cleanup();
+    dualTenantSessions.delete(sessionId);
   }
   
   // Remove session
@@ -1889,6 +3575,165 @@ app.get('/auth/success', async (req, res) => {
       </body>
     </html>
   `);
+});
+
+// Dual-Tenant API Endpoints for Tenant Clone Feature
+app.post('/api/dual-tenant/initialize', async (req, res) => {
+  const { sessionId, sourceTenant, targetTenant } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!sourceTenant || !targetTenant) {
+    return res.status(400).json({ 
+      error: 'Both source and target tenant domains are required' 
+    });
+  }
+  
+  try {
+    console.log(`🔄 Initializing dual-tenant for session ${sessionId}`);
+    
+    // Create dual tenant manager
+    const dualManager = new DualTenantManager(sessionId, io);
+    dualTenantSessions.set(sessionId, dualManager);
+    
+    // Initialize both tenants
+    const sourceResult = await dualManager.initializeSourceTenant(sourceTenant);
+    const targetResult = await dualManager.initializeTargetTenant(targetTenant);
+    
+    if (!sourceResult || !targetResult) {
+      throw new Error('Failed to initialize one or both tenants');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Dual-tenant session initialized successfully',
+      status: dualManager.getStatus()
+    });
+    
+  } catch (error) {
+    console.error('Error initializing dual-tenant session:', error);
+    
+    // Clean up on error
+    if (dualTenantSessions.has(sessionId)) {
+      const dualManager = dualTenantSessions.get(sessionId);
+      await dualManager.cleanup();
+      dualTenantSessions.delete(sessionId);
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to initialize dual-tenant session: ' + error.message 
+    });
+  }
+});
+
+app.get('/api/dual-tenant/status/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (dualTenantSessions.has(sessionId)) {
+    const dualManager = dualTenantSessions.get(sessionId);
+    res.json({
+      success: true,
+      status: dualManager.getStatus()
+    });
+  } else {
+    res.json({
+      success: true,
+      status: { isActive: false }
+    });
+  }
+});
+
+app.post('/api/dual-tenant/load-policies', async (req, res) => {
+  const { sessionId } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!dualTenantSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Dual-tenant session not found' });
+  }
+  
+  try {
+    const dualManager = dualTenantSessions.get(sessionId);
+    const policies = await dualManager.loadSourcePolicies();
+    
+    res.json({
+      success: true,
+      policies: dualManager.convertPoliciesToClientFormat(policies),
+      count: dualManager.getTotalPolicyCount(policies)
+    });
+    
+  } catch (error) {
+    console.error('Error loading source policies:', error);
+    res.status(500).json({ 
+      error: 'Failed to load source policies: ' + error.message 
+    });
+  }
+});
+
+app.post('/api/dual-tenant/clone-policy', async (req, res) => {
+  const { sessionId, policyId, policyType, customizations } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!dualTenantSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Dual-tenant session not found' });
+  }
+  
+  if (!policyId || !policyType) {
+    return res.status(400).json({ 
+      error: 'Policy ID and policy type are required' 
+    });
+  }
+  
+  try {
+    const dualManager = dualTenantSessions.get(sessionId);
+    const result = await dualManager.clonePolicy(policyId, policyType, customizations || {});
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('Error cloning policy:', error);
+    res.status(500).json({ 
+      error: 'Failed to clone policy: ' + error.message 
+    });
+  }
+});
+
+app.post('/api/dual-tenant/cleanup', async (req, res) => {
+  const { sessionId } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  try {
+    if (dualTenantSessions.has(sessionId)) {
+      const dualManager = dualTenantSessions.get(sessionId);
+      await dualManager.cleanup();
+      dualTenantSessions.delete(sessionId);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Dual-tenant session cleaned up successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning up dual-tenant session:', error);
+    res.status(500).json({ 
+      error: 'Failed to cleanup dual-tenant session: ' + error.message 
+    });
+  }
 });
 
 // Helper functions
