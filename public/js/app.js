@@ -14,7 +14,32 @@ class ICBAgent {
         this.bindEvents();
         this.updateConnectionStatus('disconnected');
         this.setupAuthenticationListener();
+        this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
+    }
+
+    testEnhancedRendering() {
+        // Test the enhanced rendering with a sample response
+        console.log('🧪 Testing enhanced rendering...');
+        
+        const sampleResponse = `📱 **iOS Devices in tenant.com** (5 total, showing first 20)
+
+• **John's iPhone** (iOS 17.1)
+  └ ✅ Compliance: compliant | Last Sync: 7/28/2025 | Enrolled: 1/15/2024
+• **Jane's iPad** (iOS 16.8)
+  └ ❌ Compliance: noncompliant | Last Sync: Never | Enrolled: 2/20/2024
+
+**Compliance Summary:** compliant: 3, noncompliant: 2`;
+        
+        try {
+            console.log('📝 Testing with sample response:', sampleResponse.substring(0, 200));
+            const rendered = this.renderEnhancedResponse(sampleResponse);
+            console.log('✅ Enhanced rendering test result:', rendered.substring(0, 500));
+            console.log('🔍 Contains proper list tags:', rendered.includes('<ul class="response-list">'));
+            console.log('🔍 Contains list items:', rendered.includes('<li class="response-list-item">'));
+        } catch (error) {
+            console.error('❌ Enhanced rendering test failed:', error);
+        }
     }
 
     setupAuthenticationListener() {
@@ -95,6 +120,7 @@ class ICBAgent {
         });
 
         this.socket.on('chat_response', (data) => {
+            console.log('📨 Received chat response:', data);
             this.addMessage(data.message, 'assistant');
         });
 
@@ -322,11 +348,14 @@ class ICBAgent {
 
             const data = await response.json();
             
+            console.log('📨 Received API response:', data);
+            
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to send message');
             }
 
             // Add AI response to chat
+            console.log('🤖 Adding AI response to chat:', data.response);
             this.addMessage(data.response.message, 'assistant');
 
         } catch (error) {
@@ -368,6 +397,8 @@ class ICBAgent {
     }
 
     addMessage(content, type, isError = false) {
+        console.log('💬 Adding message:', { type, contentLength: content.length, isError });
+        
         const chatMessages = document.getElementById('chatMessages');
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
@@ -388,8 +419,10 @@ class ICBAgent {
         
         // Enhanced message rendering with insights and recommendations
         if (type === 'assistant') {
+            console.log('🤖 Assistant message detected, using enhanced rendering');
             messageContent.innerHTML = this.renderEnhancedResponse(content);
         } else {
+            console.log('👤 User message detected, using basic formatting');
             messageContent.innerHTML = this.formatMessage(content);
         }
 
@@ -410,11 +443,14 @@ class ICBAgent {
     }
 
     renderEnhancedResponse(content) {
+        console.log('🚀 Enhanced rendering triggered');
+        
         // Enhanced markdown rendering with insights and recommendations
         let html = this.parseMarkdown(content);
         
         // Add insights and recommendations if this looks like a data response
         if (this.isDataResponse(content)) {
+            console.log('📊 Data response detected, generating insights...');
             html += this.generateInsightsAndRecommendations(content);
         }
         
@@ -439,10 +475,76 @@ class ICBAgent {
         html = html.replace(/```([\s\S]*?)```/g, '<div class="code-block"><pre><code>$1</code></pre></div>');
         html = html.replace(/`(.*?)`/g, '<code class="inline-code">$1</code>');
         
-        // Lists - Enhanced styling
-        html = html.replace(/^• (.*$)/gm, '<li class="response-list-item">$1</li>');
-        html = html.replace(/^- (.*$)/gm, '<li class="response-list-item">$1</li>');
-        html = html.replace(/(<li class="response-list-item">.*<\/li>)/s, '<ul class="response-list">$1</ul>');
+        // Lists - Enhanced styling with support for nested content
+        // Process lists by handling multi-line list items properly
+        // Split into lines first and process line by line
+        const lines = html.split('\n');
+        let processedLines = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Check if this line starts with a bullet point
+            if (line.match(/^• /)) {
+                let listItemContent = line.substring(2); // Remove the bullet
+                
+                // Look ahead for indented continuation lines
+                let j = i + 1;
+                while (j < lines.length && lines[j].match(/^  └/)) {
+                    listItemContent += '<br>&nbsp;&nbsp;' + lines[j].substring(2);
+                    j++;
+                }
+                
+                // Create the list item
+                processedLines.push(`<li class="response-list-item">${listItemContent}</li>`);
+                
+                // Skip the lines we've already processed
+                i = j - 1;
+            } else if (line.match(/^- /)) {
+                // Handle simple dash lists
+                processedLines.push(`<li class="response-list-item">${line.substring(2)}</li>`);
+            } else {
+                // Regular line
+                processedLines.push(line);
+            }
+        }
+        
+        html = processedLines.join('\n');
+        
+        // Then wrap consecutive list items in ul tags
+        const finalLines = html.split('\n');
+        let inList = false;
+        let finalProcessedLines = [];
+        
+        for (let i = 0; i < finalLines.length; i++) {
+            const line = finalLines[i];
+            const isListItem = line.trim().startsWith('<li class="response-list-item">');
+            
+            if (isListItem && !inList) {
+                // Starting a new list
+                finalProcessedLines.push('<ul class="response-list">');
+                finalProcessedLines.push(line);
+                inList = true;
+            } else if (isListItem && inList) {
+                // Continue existing list
+                finalProcessedLines.push(line);
+            } else if (!isListItem && inList) {
+                // End existing list
+                finalProcessedLines.push('</ul>');
+                finalProcessedLines.push(line);
+                inList = false;
+            } else {
+                // Regular line
+                finalProcessedLines.push(line);
+            }
+        }
+        
+        // Close any remaining open list
+        if (inList) {
+            finalProcessedLines.push('</ul>');
+        }
+        
+        html = finalProcessedLines.join('\n');
         
         // Emojis and status indicators - Enhanced styling
         html = html.replace(/(✅|🔒|📊|👥|📱|🖥️|🤖|💻|📈|🌐|👨‍👩‍👧‍👦|🏢|📋|👤|❌|⚠️|ℹ️|🔄|🎉)/g, '<span class="status-emoji">$1</span>');
@@ -471,7 +573,14 @@ class ICBAgent {
         ];
         
         const lowerContent = content.toLowerCase();
-        return dataIndicators.some(indicator => lowerContent.includes(indicator));
+        const hasDataIndicators = dataIndicators.some(indicator => lowerContent.includes(indicator));
+        
+        console.log('🔍 Checking if data response:', { 
+            hasDataIndicators, 
+            foundIndicators: dataIndicators.filter(indicator => lowerContent.includes(indicator))
+        });
+        
+        return hasDataIndicators;
     }
 
     generateInsightsAndRecommendations(content) {

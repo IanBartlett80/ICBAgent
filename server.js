@@ -332,61 +332,338 @@ class MCPClient {
     try {
       console.log(`Processing message via Lokka MCP server: ${userMessage}`);
       
-      // Analyze the message to determine which MCP tools to use
-      const toolCalls = this.analyzeMessageForTools(userMessage);
+      // PRIORITY 1: Always try Lokka MCP first for ALL queries
+      let response = await this.processWithLokkaMCP(userMessage);
       
-      let response = '';
-      
-      if (toolCalls.length === 0) {
-        // If no specific tools identified, get general info
-        response = await this.getGeneralInfo(userMessage);
-      } else {
-        // Execute the identified tools
-        for (const toolCall of toolCalls) {
-          try {
-            console.log(`Calling MCP tool: ${toolCall.name} with args:`, toolCall.arguments);
-            
-            const toolResponse = await this.sendMCPRequest('tools/call', {
-              name: toolCall.name,
-              arguments: toolCall.arguments
-            });
-            
-            console.log(`MCP tool response received for ${toolCall.name}`);
-            
-            // Check if response indicates permission error
-            if (this.isPermissionError(toolResponse)) {
-              const permissionResponse = await this.handlePermissionRequest(toolCall, userMessage);
-              response += permissionResponse + '\n\n';
-            } else {
-              const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
-              response += formattedResponse + '\n\n';
-            }
-            
-          } catch (error) {
-            console.error(`Error calling MCP tool ${toolCall.name}:`, error);
-            
-            // Check if error is permission-related
-            if (this.isPermissionError(error)) {
-              const permissionResponse = await this.handlePermissionRequest(toolCall, userMessage);
-              response += permissionResponse + '\n\n';
-            } else {
-              response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
-            }
-          }
-        }
+      if (response) {
+        console.log(`✅ Successfully processed with Lokka MCP`);
+        return {
+          id: uuidv4(),
+          message: response,
+          timestamp: new Date().toISOString(),
+          type: 'mcp_response'
+        };
       }
+      
+      // FALLBACK: Only if Lokka MCP fails completely
+      console.log(`⚠️ Lokka MCP processing failed, falling back to help message`);
+      response = this.getFallbackHelp(userMessage);
       
       return {
         id: uuidv4(),
-        message: response.trim(),
+        message: response,
         timestamp: new Date().toISOString(),
-        type: 'mcp_response'
+        type: 'fallback_response'
       };
 
     } catch (error) {
       console.error(`Error processing message via Lokka MCP: ${error.message}`);
       throw error;
     }
+  }
+
+  async processWithLokkaMCP(userMessage) {
+    try {
+      // First, try specific tool matching
+      const specificToolCalls = this.analyzeMessageForTools(userMessage);
+      
+      if (specificToolCalls.length > 0) {
+        console.log(`🎯 Found ${specificToolCalls.length} specific tool matches`);
+        return await this.executeSpecificTools(specificToolCalls, userMessage);
+      }
+      
+      // Second, try general Graph API queries
+      console.log(`🔍 No specific tools found, trying general Graph API queries`);
+      const generalResponse = await this.tryGeneralGraphQueries(userMessage);
+      
+      if (generalResponse) {
+        return generalResponse;
+      }
+      
+      // Third, try intelligent query expansion
+      console.log(`🧠 Trying intelligent query expansion`);
+      const expandedResponse = await this.tryIntelligentQueryExpansion(userMessage);
+      
+      if (expandedResponse) {
+        return expandedResponse;
+      }
+      
+      return null; // No results found
+      
+    } catch (error) {
+      console.error(`Error in Lokka MCP processing: ${error.message}`);
+      return null;
+    }
+  }
+
+  async executeSpecificTools(toolCalls, originalMessage) {
+    let response = '';
+    
+    for (const toolCall of toolCalls) {
+      try {
+        console.log(`Calling MCP tool: ${toolCall.name} with args:`, toolCall.arguments);
+        
+        const toolResponse = await this.sendMCPRequest('tools/call', {
+          name: toolCall.name,
+          arguments: toolCall.arguments
+        });
+        
+        console.log(`MCP tool response received for ${toolCall.name}`);
+        
+        // Check if response indicates permission error
+        if (this.isPermissionError(toolResponse)) {
+          const permissionResponse = await this.handlePermissionRequest(toolCall, originalMessage);
+          response += permissionResponse + '\n\n';
+        } else {
+          const formattedResponse = this.formatToolResponse(toolCall.name, toolResponse);
+          response += formattedResponse + '\n\n';
+        }
+        
+      } catch (error) {
+        console.error(`Error calling MCP tool ${toolCall.name}:`, error);
+        
+        // Check if error is permission-related
+        if (this.isPermissionError(error)) {
+          const permissionResponse = await this.handlePermissionRequest(toolCall, originalMessage);
+          response += permissionResponse + '\n\n';
+        } else {
+          response += `❌ **Error calling ${toolCall.name}:** ${error.message}\n\n`;
+        }
+      }
+    }
+    
+    return response.trim() || null;
+  }
+
+  async tryGeneralGraphQueries(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    const generalQueries = this.analyzeGeneralQuery(lowerMessage);
+    
+    if (generalQueries.length === 0) {
+      return null;
+    }
+    
+    console.log(`Attempting ${generalQueries.length} general Graph API queries for: "${userMessage}"`);
+    
+    let response = `🔍 **Microsoft 365 Search Results for: "${userMessage}"**\n\n`;
+    let hasResults = false;
+    
+    // Try each potential query
+    for (const query of generalQueries) {
+      try {
+        console.log(`Trying general query: ${query.endpoint}`);
+        
+        const toolResponse = await this.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: {
+            apiType: 'graph',
+            graphApiVersion: 'v1.0',
+            method: 'get',
+            path: query.endpoint,
+            queryParams: query.queryParams || {}
+          }
+        });
+        
+        const formattedResponse = this.formatToolResponse('Lokka-Microsoft', toolResponse);
+        if (formattedResponse && !formattedResponse.includes('Error')) {
+          response += `**${query.description}:**\n${formattedResponse}\n\n`;
+          hasResults = true;
+        }
+        
+      } catch (error) {
+        console.error(`General query failed for ${query.endpoint}:`, error);
+        // Continue to next query without showing error to user
+      }
+    }
+    
+    return hasResults ? response.trim() : null;
+  }
+
+  async tryIntelligentQueryExpansion(userMessage) {
+    // Try to intelligently expand the query to common Graph API endpoints
+    const expandedQueries = this.generateIntelligentQueries(userMessage);
+    
+    if (expandedQueries.length === 0) {
+      return null;
+    }
+    
+    console.log(`Trying ${expandedQueries.length} intelligent query expansions`);
+    
+    let response = `🤖 **AI-Enhanced Search for: "${userMessage}"**\n\n`;
+    let hasResults = false;
+    
+    for (const query of expandedQueries) {
+      try {
+        const toolResponse = await this.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: query.arguments
+        });
+        
+        const formattedResponse = this.formatToolResponse('Lokka-Microsoft', toolResponse);
+        if (formattedResponse && !formattedResponse.includes('Error')) {
+          response += `**${query.description}:**\n${formattedResponse}\n\n`;
+          hasResults = true;
+        }
+        
+      } catch (error) {
+        console.error(`Intelligent query failed for ${query.description}:`, error);
+      }
+    }
+    
+    return hasResults ? response.trim() : null;
+  }
+
+  generateIntelligentQueries(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    const queries = [];
+    
+    // Common search terms that might relate to various Graph API endpoints
+    const searchTerms = {
+      // User-related terms
+      'user': ['/users', '/me/profile'],
+      'people': ['/users', '/me/people'],
+      'person': ['/users'],
+      'employee': ['/users'],
+      'staff': ['/users'],
+      
+      // Device-related terms
+      'device': ['/deviceManagement/managedDevices', '/devices'],
+      'computer': ['/deviceManagement/managedDevices'],
+      'phone': ['/deviceManagement/managedDevices'],
+      'tablet': ['/deviceManagement/managedDevices'],
+      'mobile': ['/deviceManagement/managedDevices'],
+      
+      // Security-related terms
+      'security': ['/security/alerts_v2', '/identityGovernance/privilegedAccess'],
+      'alert': ['/security/alerts_v2'],
+      'threat': ['/security/alerts_v2'],
+      'risk': ['/identityProtection/riskyUsers'],
+      
+      // License-related terms
+      'license': ['/subscribedSkus', '/users'],
+      'subscription': ['/subscribedSkus'],
+      'plan': ['/subscribedSkus'],
+      
+      // Group-related terms
+      'group': ['/groups'],
+      'team': ['/teams', '/groups'],
+      'channel': ['/teams'],
+      
+      // App-related terms
+      'app': ['/applications', '/servicePrincipals'],
+      'application': ['/applications'],
+      'service': ['/servicePrincipals'],
+      
+      // Mail-related terms
+      'mail': ['/me/messages', '/users'],
+      'email': ['/me/messages', '/users'],
+      'message': ['/me/messages'],
+      
+      // File-related terms
+      'file': ['/me/drive/root/children', '/drives'],
+      'document': ['/me/drive/root/children'],
+      'folder': ['/me/drive/root/children'],
+      
+      // Calendar-related terms
+      'calendar': ['/me/calendars', '/me/events'],
+      'event': ['/me/events'],
+      'meeting': ['/me/events'],
+      'appointment': ['/me/events']
+    };
+    
+    // Find matching terms and generate queries
+    for (const [term, endpoints] of Object.entries(searchTerms)) {
+      if (lowerMessage.includes(term)) {
+        for (const endpoint of endpoints) {
+          queries.push({
+            description: `${term.charAt(0).toUpperCase() + term.slice(1)} Information`,
+            arguments: {
+              apiType: 'graph',
+              graphApiVersion: 'v1.0',
+              method: 'get',
+              path: endpoint,
+              queryParams: this.getOptimalQueryParams(endpoint)
+            }
+          });
+        }
+      }
+    }
+    
+    // Remove duplicates based on endpoint
+    const uniqueQueries = queries.filter((query, index, self) => 
+      index === self.findIndex(q => q.arguments.path === query.arguments.path)
+    );
+    
+    return uniqueQueries.slice(0, 5); // Limit to 5 queries to avoid overwhelming
+  }
+
+  getOptimalQueryParams(endpoint) {
+    // Return optimal query parameters for different endpoints
+    const paramMap = {
+      '/users': { '$select': 'displayName,userPrincipalName,assignedLicenses,lastSignInDateTime', '$top': '20' },
+      '/deviceManagement/managedDevices': { '$select': 'deviceName,operatingSystem,complianceState,lastSyncDateTime,userDisplayName', '$top': '20' },
+      '/groups': { '$select': 'displayName,description,groupTypes,createdDateTime', '$top': '20' },
+      '/applications': { '$select': 'displayName,appId,createdDateTime', '$top': '20' },
+      '/servicePrincipals': { '$select': 'displayName,appId,servicePrincipalType', '$top': '20' },
+      '/subscribedSkus': { '$select': 'skuPartNumber,consumedUnits,prepaidUnits' },
+      '/security/alerts_v2': { '$top': '10' },
+      '/me/messages': { '$select': 'subject,from,receivedDateTime,isRead', '$top': '10' },
+      '/me/events': { '$select': 'subject,start,end,organizer', '$top': '10' },
+      '/me/drive/root/children': { '$select': 'name,size,lastModifiedDateTime,webUrl', '$top': '20' },
+      '/drives': { '$select': 'name,driveType,quota', '$top': '10' }
+    };
+    
+    return paramMap[endpoint] || { '$top': '20' };
+  }
+
+  getFallbackHelp(userMessage) {
+    return `🤖 **Connected to Microsoft 365 via Lokka MCP**
+
+I tried to find information for: "${userMessage}" but couldn't locate specific results.
+
+**✅ Test Markdown Rendering:**
+
+Here's a sample of what proper markdown should look like:
+
+• **John Doe** (john.doe@company.com)
+  └ Last sign-in: 12/15/2024 | Licenses: 3
+• **Jane Smith** (jane.smith@company.com)  
+  └ Last sign-in: 12/14/2024 | Licenses: 2
+• **Bob Johnson** (bob.johnson@company.com)
+  └ Last sign-in: Never | Licenses: 1
+
+**👥 User & Identity Management:**
+• "show me all users" | "list users" | "user information"
+• "show me external users" | "guest users" | "directory roles"
+
+**📱 Device Management:**
+• "show me all devices" | "ios devices" | "android devices" | "windows devices"
+• "compliance status" | "device sync" | "managed devices"
+
+**🔒 Security & Compliance:**
+• "security alerts" | "conditional access policies" | "risk users"
+• "audit logs" | "sign-in activity" | "authentication methods"
+
+**📊 Licenses & Subscriptions:**
+• "license usage" | "subscription status" | "sku information"
+
+**🏢 Organization & Apps:**
+• "tenant information" | "registered applications" | "service principals"
+• "domains" | "organization details"
+
+**🌐 Collaboration:**
+• "sharepoint sites" | "teams" | "groups" | "channels"
+• "mail" | "calendars" | "files" | "drives"
+
+**💡 Pro Tips:**
+• All queries use **native Lokka MCP** with Microsoft Graph API v1.0
+• Responses include **intelligent insights** and **actionable recommendations**
+• Try natural language like "What's our security status?" or "Show me non-compliant devices"
+
+**🔧 Current Connection:** Authenticated with full Graph API access
+**📈 Query Processing:** 100% Lokka MCP + Graph API (no external tools)
+
+Ask me anything about your Microsoft 365 environment!`;
   }
 
   async handleAuthentication(userMessage) {
@@ -911,11 +1188,23 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
       // Handle Lokka MCP response format with content array
       if (Array.isArray(data) && data[0] && data[0].text) {
         const responseText = data[0].text;
+        console.log('📝 Raw Lokka response text (first 200 chars):', responseText.substring(0, 200));
         
-        // Check if the response text looks like JSON
-        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        // Try to extract JSON from the response text
+        let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            data = JSON.parse(jsonMatch[0]);
+            console.log('✅ Successfully extracted and parsed JSON from Lokka response');
+          } catch (parseError) {
+            console.error('Error parsing extracted JSON:', parseError);
+            // If JSON parsing fails, return the raw text formatted nicely
+            return `**Live Data from ${toolName}:**\n\n${responseText}`;
+          }
+        } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
           try {
             data = JSON.parse(responseText);
+            console.log('✅ Successfully parsed JSON response from Lokka MCP');
           } catch (parseError) {
             console.error('Error parsing Lokka JSON response:', parseError);
             // If JSON parsing fails, return the raw text formatted nicely
@@ -923,6 +1212,7 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
           }
         } else {
           // It's plain text, return it formatted
+          console.log('ℹ️ Received plain text response from Lokka MCP');
           return `**Response from ${toolName}:**\n\n${responseText}`;
         }
       }
@@ -934,28 +1224,43 @@ I'll try to find relevant information from your Microsoft 365 tenant!`;
       // Handle Microsoft Graph API responses
       if (data.value && Array.isArray(data.value)) {
         const items = data.value;
+        console.log('📊 Processing Graph API response with', items.length, 'items');
+        console.log('🔍 Context:', data['@odata.context']);
+        console.log('🛠️ Tool name:', toolName);
         
         if (toolName.includes('users') || data['@odata.context']?.includes('users')) {
+          console.log('👥 Formatting as users response');
           return this.formatUsersResponse(items);
         } else if (toolName.includes('subscribedSkus') || data['@odata.context']?.includes('subscribedSkus')) {
+          console.log('📊 Formatting as license response');
           return this.formatLicenseResponse(items);
         } else if (toolName.includes('security') || data['@odata.context']?.includes('security')) {
+          console.log('🔒 Formatting as security response');
           return this.formatSecurityResponse(items);
         } else if (toolName.includes('signIns') || data['@odata.context']?.includes('signIns')) {
+          console.log('📈 Formatting as sign-in response');
           return this.formatSignInResponse(items);
         } else if (toolName.includes('sites') || data['@odata.context']?.includes('sites')) {
+          console.log('🌐 Formatting as sites response');
           return this.formatSitesResponse(items);
         } else if (toolName.includes('groups') || data['@odata.context']?.includes('groups')) {
+          console.log('👨‍👩‍👧‍👦 Formatting as groups response');
           return this.formatGroupsResponse(items);
         } else if (toolName.includes('organization') || data['@odata.context']?.includes('organization')) {
+          console.log('🏢 Formatting as organization response');
           return this.formatOrganizationResponse(items);
         } else if (toolName.includes('devices') || toolName.includes('deviceManagement') || data['@odata.context']?.includes('deviceManagement')) {
+          console.log('📱 Formatting as devices response');
           return this.formatDevicesResponse(items);
         } else if (toolName.includes('applications') || data['@odata.context']?.includes('applications')) {
+          console.log('📋 Formatting as applications response');
           return this.formatApplicationsResponse(items);
         } else if (toolName.includes('contacts') || data['@odata.context']?.includes('contacts')) {
+          console.log('👤 Formatting as contacts response');
           return this.formatContactsResponse(items);
         }
+        
+        console.log('⚠️ No specific formatter found, using default');
       }
 
       // Default formatting for unknown responses
@@ -1764,6 +2069,11 @@ app.post('/api/chat', async (req, res) => {
   try {
     // Process chat message through AI agent
     const response = await processAIMessage(sessionId, message);
+    console.log('📤 Sending response to frontend:', { 
+      messageLength: response.message.length,
+      messagePreview: response.message.substring(0, 200) + '...',
+      responseType: response.type 
+    });
     res.json({ response });
   } catch (error) {
     console.error('Error processing chat message:', error);

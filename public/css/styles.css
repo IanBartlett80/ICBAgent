@@ -2209,6 +2209,7 @@ body::before {
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   position: relative;
   transition: all var(--animation-medium);
+  line-height: 1.6;
 }
 
 .response-list-item:hover {
