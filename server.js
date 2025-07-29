@@ -49,11 +49,335 @@ app.use(express.static(path.join(__dirname, 'public')));
 const activeSessions = new Map();
 const mcpConnections = new Map();
 
+// Store dual-tenant sessions for Tenant Clone feature
+const dualTenantSessions = new Map();
+
+// Dual Tenant Manager for Tenant Clone feature
+class DualTenantManager {
+  constructor(sessionId, io) {
+    this.sessionId = sessionId;
+    this.io = io;
+    this.sourceTenant = null;
+    this.targetTenant = null;
+    this.isActive = false;
+    this.policies = {
+      source: new Map(),
+      target: new Map()
+    };
+    this.migrations = new Map(); // Track ongoing migrations
+  }
+
+  async initializeSourceTenant(tenantDomain) {
+    try {
+      console.log(`🔄 Initializing source tenant: ${tenantDomain}`);
+      
+      // Create dedicated MCP client for source tenant
+      this.sourceTenant = new MCPClient(
+        `${this.sessionId}_source`, 
+        tenantDomain, 
+        this.io,
+        'source' // tenant role
+      );
+      
+      await this.sourceTenant.start();
+      
+      this.io.to(this.sessionId).emit('dual_tenant_status', {
+        type: 'source_initialized',
+        tenant: tenantDomain,
+        status: 'connecting'
+      });
+      
+      return true;
+    } catch (error) {
+      console.error(`Error initializing source tenant: ${error.message}`);
+      this.io.to(this.sessionId).emit('dual_tenant_error', {
+        type: 'source_init_failed',
+        tenant: tenantDomain,
+        error: error.message
+      });
+      return false;
+    }
+  }
+
+  async initializeTargetTenant(tenantDomain) {
+    try {
+      console.log(`🔄 Initializing target tenant: ${tenantDomain}`);
+      
+      // Create dedicated MCP client for target tenant
+      this.targetTenant = new MCPClient(
+        `${this.sessionId}_target`, 
+        tenantDomain, 
+        this.io,
+        'target' // tenant role
+      );
+      
+      await this.targetTenant.start();
+      
+      this.io.to(this.sessionId).emit('dual_tenant_status', {
+        type: 'target_initialized',
+        tenant: tenantDomain,
+        status: 'connecting'
+      });
+      
+      return true;
+    } catch (error) {
+      console.error(`Error initializing target tenant: ${error.message}`);
+      this.io.to(this.sessionId).emit('dual_tenant_error', {
+        type: 'target_init_failed',
+        tenant: tenantDomain,
+        error: error.message
+      });
+      return false;
+    }
+  }
+
+  async loadSourcePolicies() {
+    if (!this.sourceTenant || this.sourceTenant.authStatus !== 'authenticated') {
+      throw new Error('Source tenant not authenticated');
+    }
+
+    console.log('📋 Loading policies from source tenant...');
+    const policyTypes = [
+      'deviceConfigurations',
+      'deviceCompliancePolicies', 
+      'mobileAppManagementPolicies',
+      'appProtectionPolicies',
+      'deviceEnrollmentConfigurations',
+      'windowsInformationProtectionPolicies',
+      'managedAppPolicies'
+    ];
+
+    const policies = new Map();
+    
+    for (const policyType of policyTypes) {
+      try {
+        const response = await this.sourceTenant.sendMCPRequest('tools/call', {
+          name: 'Lokka-Microsoft',
+          arguments: {
+            apiType: 'graph',
+            graphApiVersion: 'beta',
+            method: 'get',
+            path: `/deviceManagement/${policyType}`,
+            queryParams: {
+              '$select': 'id,displayName,description,createdDateTime,lastModifiedDateTime,version'
+            }
+          }
+        });
+
+        if (response && response.content && response.content[0]) {
+          const data = JSON.parse(response.content[0].text);
+          if (data.value) {
+            policies.set(policyType, data.value);
+          }
+        }
+      } catch (error) {
+        console.error(`Error loading ${policyType}:`, error);
+      }
+    }
+
+    this.policies.source = policies;
+    
+    this.io.to(this.sessionId).emit('source_policies_loaded', {
+      policies: this.convertPoliciesToClientFormat(policies),
+      count: this.getTotalPolicyCount(policies)
+    });
+
+    return policies;
+  }
+
+  async clonePolicy(policyId, policyType, customizations = {}) {
+    if (!this.sourceTenant || !this.targetTenant) {
+      throw new Error('Both tenants must be initialized');
+    }
+
+    if (this.sourceTenant.authStatus !== 'authenticated' || 
+        this.targetTenant.authStatus !== 'authenticated') {
+      throw new Error('Both tenants must be authenticated');
+    }
+
+    const migrationId = uuidv4();
+    this.migrations.set(migrationId, {
+      policyId,
+      policyType,
+      status: 'starting',
+      startTime: new Date()
+    });
+
+    try {
+      // Step 1: Fetch full policy details from source
+      console.log(`🔄 Fetching policy ${policyId} from source tenant...`);
+      
+      const sourcePolicy = await this.sourceTenant.sendMCPRequest('tools/call', {
+        name: 'Lokka-Microsoft',
+        arguments: {
+          apiType: 'graph',
+          graphApiVersion: 'beta',
+          method: 'get',
+          path: `/deviceManagement/${policyType}/${policyId}`
+        }
+      });
+
+      if (!sourcePolicy || !sourcePolicy.content || !sourcePolicy.content[0]) {
+        throw new Error('Failed to fetch source policy');
+      }
+
+      const policyData = JSON.parse(sourcePolicy.content[0].text);
+      
+      this.migrations.get(migrationId).status = 'transforming';
+      
+      // Step 2: Transform policy for target tenant
+      const transformedPolicy = this.transformPolicyForTarget(policyData, customizations);
+      
+      this.migrations.get(migrationId).status = 'creating';
+      
+      // Step 3: Create policy in target tenant
+      console.log(`🔄 Creating policy in target tenant...`);
+      
+      const targetResponse = await this.targetTenant.sendMCPRequest('tools/call', {
+        name: 'Lokka-Microsoft',
+        arguments: {
+          apiType: 'graph',
+          graphApiVersion: 'beta',
+          method: 'post',
+          path: `/deviceManagement/${policyType}`,
+          body: transformedPolicy
+        }
+      });
+
+      if (!targetResponse || !targetResponse.content || !targetResponse.content[0]) {
+        throw new Error('Failed to create policy in target tenant');
+      }
+
+      const createdPolicy = JSON.parse(targetResponse.content[0].text);
+      
+      this.migrations.get(migrationId).status = 'completed';
+      this.migrations.get(migrationId).targetPolicyId = createdPolicy.id;
+      this.migrations.get(migrationId).endTime = new Date();
+
+      // Emit success event
+      this.io.to(this.sessionId).emit('policy_cloned', {
+        migrationId,
+        sourcePolicyId: policyId,
+        targetPolicyId: createdPolicy.id,
+        policyType,
+        policyName: createdPolicy.displayName
+      });
+
+      return {
+        success: true,
+        migrationId,
+        targetPolicyId: createdPolicy.id,
+        message: `Successfully cloned policy "${createdPolicy.displayName}" to target tenant`
+      };
+
+    } catch (error) {
+      console.error(`Error cloning policy ${policyId}:`, error);
+      
+      this.migrations.get(migrationId).status = 'failed';
+      this.migrations.get(migrationId).error = error.message;
+      this.migrations.get(migrationId).endTime = new Date();
+
+      this.io.to(this.sessionId).emit('policy_clone_failed', {
+        migrationId,
+        policyId,
+        policyType,
+        error: error.message
+      });
+
+      throw error;
+    }
+  }
+
+  transformPolicyForTarget(sourcePolicy, customizations) {
+    // Remove source-specific properties
+    const transformed = { ...sourcePolicy };
+    delete transformed.id;
+    delete transformed.createdDateTime;
+    delete transformed.lastModifiedDateTime;
+    delete transformed['@odata.type'];
+    delete transformed['@odata.context'];
+
+    // Apply customizations
+    if (customizations.displayName) {
+      transformed.displayName = customizations.displayName;
+    } else {
+      transformed.displayName = `${sourcePolicy.displayName} (Cloned)`;
+    }
+
+    if (customizations.description) {
+      transformed.description = customizations.description;
+    }
+
+    // Reset version for new policy
+    if (transformed.version) {
+      transformed.version = 1;
+    }
+
+    return transformed;
+  }
+
+  convertPoliciesToClientFormat(policies) {
+    const formatted = {};
+    
+    for (const [policyType, policyList] of policies) {
+      formatted[policyType] = policyList.map(policy => ({
+        id: policy.id,
+        displayName: policy.displayName,
+        description: policy.description,
+        createdDateTime: policy.createdDateTime,
+        lastModifiedDateTime: policy.lastModifiedDateTime,
+        policyType: policyType
+      }));
+    }
+
+    return formatted;
+  }
+
+  getTotalPolicyCount(policies) {
+    let count = 0;
+    for (const [, policyList] of policies) {
+      count += policyList.length;
+    }
+    return count;
+  }
+
+  getStatus() {
+    return {
+      isActive: this.isActive,
+      sourceTenant: this.sourceTenant ? {
+        domain: this.sourceTenant.tenantDomain,
+        connected: this.sourceTenant.isConnected,
+        authenticated: this.sourceTenant.authStatus === 'authenticated'
+      } : null,
+      targetTenant: this.targetTenant ? {
+        domain: this.targetTenant.tenantDomain,
+        connected: this.targetTenant.isConnected,
+        authenticated: this.targetTenant.authStatus === 'authenticated'
+      } : null,
+      policyCount: this.getTotalPolicyCount(this.policies.source),
+      activeMigrations: this.migrations.size
+    };
+  }
+
+  async cleanup() {
+    if (this.sourceTenant) {
+      await this.sourceTenant.cleanup();
+    }
+    if (this.targetTenant) {
+      await this.targetTenant.cleanup();
+    }
+    this.policies.source.clear();
+    this.policies.target.clear();
+    this.migrations.clear();
+  }
+}
+
 // Real MCP Client class for communicating with Lokka Microsoft MCP server
 class MCPClient {
-  constructor(sessionId, tenantDomain, io) {
+  constructor(sessionId, tenantDomain, io, tenantRole = 'primary') {
     this.sessionId = sessionId;
     this.tenantDomain = tenantDomain;
+    this.tenantRole = tenantRole; // 'primary', 'source', or 'target'
     this.io = io; // Socket.IO instance for emitting events
     this.process = null;
     this.isConnected = false;
@@ -68,7 +392,16 @@ class MCPClient {
   async start() {
     return new Promise((resolve, reject) => {
       try {
-        console.log(`Starting Lokka Microsoft MCP server for tenant: ${this.tenantDomain}`);
+        console.log(`Starting Lokka Microsoft MCP server for tenant: ${this.tenantDomain} (${this.tenantRole})`);
+        
+        // Different redirect URIs for different tenant roles to avoid conflicts
+        const redirectPorts = {
+          'primary': '3000',
+          'source': '3001', 
+          'target': '3002'
+        };
+        
+        const redirectUri = `http://localhost:${redirectPorts[this.tenantRole]}/auth/success`;
         
         // Spawn the Lokka MCP server process with interactive authentication
         this.process = spawn('npx', ['-y', '@merill/lokka'], {
@@ -76,7 +409,7 @@ class MCPClient {
           env: {
             ...process.env,
             USE_INTERACTIVE: 'true',
-            REDIRECT_URI: 'http://localhost:3000/auth/success',
+            REDIRECT_URI: redirectUri,
             // Set tenant domain if provided (for organizational logins)
             ...(this.tenantDomain && !this.tenantDomain.includes('.onmicrosoft.com') ? {} : {
               TENANT_ID: this.tenantDomain.replace('.onmicrosoft.com', '')
@@ -2272,6 +2605,14 @@ Please try your query again or contact support if the issue persists.`,
       console.error(`Error stopping Lokka MCP client: ${error.message}`);
     }
   }
+
+  async cleanup() {
+    await this.stop();
+    this.availableTools = [];
+    this.accessToken = null;
+    this.authStatus = 'not_authenticated';
+    this.pendingQuery = null;
+  }
 }
 
 // Routes
@@ -2418,6 +2759,94 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} joined session ${sessionId}`);
   });
   
+  // Dual-Tenant Socket Events for Tenant Clone Feature
+  socket.on('dual_tenant_init', async (data) => {
+    const { sessionId, sourceTenant, targetTenant } = data;
+    
+    try {
+      console.log(`🔄 Initializing dual-tenant session: ${sessionId}`);
+      
+      // Create dual tenant manager
+      const dualManager = new DualTenantManager(sessionId, io);
+      dualTenantSessions.set(sessionId, dualManager);
+      
+      // Initialize source tenant
+      if (sourceTenant) {
+        await dualManager.initializeSourceTenant(sourceTenant);
+      }
+      
+      // Initialize target tenant  
+      if (targetTenant) {
+        await dualManager.initializeTargetTenant(targetTenant);
+      }
+      
+      socket.emit('dual_tenant_initialized', {
+        sessionId,
+        status: dualManager.getStatus()
+      });
+      
+    } catch (error) {
+      console.error('Error initializing dual tenant session:', error);
+      socket.emit('dual_tenant_error', {
+        type: 'init_failed',
+        error: error.message
+      });
+    }
+  });
+  
+  socket.on('load_source_policies', async (data) => {
+    const { sessionId } = data;
+    
+    try {
+      if (!dualTenantSessions.has(sessionId)) {
+        throw new Error('Dual tenant session not found');
+      }
+      
+      const dualManager = dualTenantSessions.get(sessionId);
+      await dualManager.loadSourcePolicies();
+      
+    } catch (error) {
+      console.error('Error loading source policies:', error);
+      socket.emit('source_policies_error', {
+        error: error.message
+      });
+    }
+  });
+  
+  socket.on('clone_policy', async (data) => {
+    const { sessionId, policyId, policyType, customizations } = data;
+    
+    try {
+      if (!dualTenantSessions.has(sessionId)) {
+        throw new Error('Dual tenant session not found');
+      }
+      
+      const dualManager = dualTenantSessions.get(sessionId);
+      const result = await dualManager.clonePolicy(policyId, policyType, customizations);
+      
+      socket.emit('policy_clone_result', result);
+      
+    } catch (error) {
+      console.error('Error cloning policy:', error);
+      socket.emit('policy_clone_error', {
+        policyId,
+        policyType,
+        error: error.message
+      });
+    }
+  });
+  
+  socket.on('get_dual_tenant_status', (data) => {
+    const { sessionId } = data;
+    
+    if (dualTenantSessions.has(sessionId)) {
+      const dualManager = dualTenantSessions.get(sessionId);
+      socket.emit('dual_tenant_status_update', dualManager.getStatus());
+    } else {
+      socket.emit('dual_tenant_status_update', { isActive: false });
+    }
+  });
+  
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
@@ -2435,6 +2864,13 @@ async function cleanupSession(sessionId) {
     const mcpClient = mcpConnections.get(sessionId);
     await mcpClient.stop();
     mcpConnections.delete(sessionId);
+  }
+  
+  // Clean up dual-tenant session if exists
+  if (dualTenantSessions.has(sessionId)) {
+    const dualManager = dualTenantSessions.get(sessionId);
+    await dualManager.cleanup();
+    dualTenantSessions.delete(sessionId);
   }
   
   // Remove session
@@ -2682,6 +3118,165 @@ app.get('/auth/success', async (req, res) => {
       </body>
     </html>
   `);
+});
+
+// Dual-Tenant API Endpoints for Tenant Clone Feature
+app.post('/api/dual-tenant/initialize', async (req, res) => {
+  const { sessionId, sourceTenant, targetTenant } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!sourceTenant || !targetTenant) {
+    return res.status(400).json({ 
+      error: 'Both source and target tenant domains are required' 
+    });
+  }
+  
+  try {
+    console.log(`🔄 Initializing dual-tenant for session ${sessionId}`);
+    
+    // Create dual tenant manager
+    const dualManager = new DualTenantManager(sessionId, io);
+    dualTenantSessions.set(sessionId, dualManager);
+    
+    // Initialize both tenants
+    const sourceResult = await dualManager.initializeSourceTenant(sourceTenant);
+    const targetResult = await dualManager.initializeTargetTenant(targetTenant);
+    
+    if (!sourceResult || !targetResult) {
+      throw new Error('Failed to initialize one or both tenants');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Dual-tenant session initialized successfully',
+      status: dualManager.getStatus()
+    });
+    
+  } catch (error) {
+    console.error('Error initializing dual-tenant session:', error);
+    
+    // Clean up on error
+    if (dualTenantSessions.has(sessionId)) {
+      const dualManager = dualTenantSessions.get(sessionId);
+      await dualManager.cleanup();
+      dualTenantSessions.delete(sessionId);
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to initialize dual-tenant session: ' + error.message 
+    });
+  }
+});
+
+app.get('/api/dual-tenant/status/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (dualTenantSessions.has(sessionId)) {
+    const dualManager = dualTenantSessions.get(sessionId);
+    res.json({
+      success: true,
+      status: dualManager.getStatus()
+    });
+  } else {
+    res.json({
+      success: true,
+      status: { isActive: false }
+    });
+  }
+});
+
+app.post('/api/dual-tenant/load-policies', async (req, res) => {
+  const { sessionId } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!dualTenantSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Dual-tenant session not found' });
+  }
+  
+  try {
+    const dualManager = dualTenantSessions.get(sessionId);
+    const policies = await dualManager.loadSourcePolicies();
+    
+    res.json({
+      success: true,
+      policies: dualManager.convertPoliciesToClientFormat(policies),
+      count: dualManager.getTotalPolicyCount(policies)
+    });
+    
+  } catch (error) {
+    console.error('Error loading source policies:', error);
+    res.status(500).json({ 
+      error: 'Failed to load source policies: ' + error.message 
+    });
+  }
+});
+
+app.post('/api/dual-tenant/clone-policy', async (req, res) => {
+  const { sessionId, policyId, policyType, customizations } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!dualTenantSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Dual-tenant session not found' });
+  }
+  
+  if (!policyId || !policyType) {
+    return res.status(400).json({ 
+      error: 'Policy ID and policy type are required' 
+    });
+  }
+  
+  try {
+    const dualManager = dualTenantSessions.get(sessionId);
+    const result = await dualManager.clonePolicy(policyId, policyType, customizations || {});
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('Error cloning policy:', error);
+    res.status(500).json({ 
+      error: 'Failed to clone policy: ' + error.message 
+    });
+  }
+});
+
+app.post('/api/dual-tenant/cleanup', async (req, res) => {
+  const { sessionId } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  try {
+    if (dualTenantSessions.has(sessionId)) {
+      const dualManager = dualTenantSessions.get(sessionId);
+      await dualManager.cleanup();
+      dualTenantSessions.delete(sessionId);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Dual-tenant session cleaned up successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error cleaning up dual-tenant session:', error);
+    res.status(500).json({ 
+      error: 'Failed to cleanup dual-tenant session: ' + error.message 
+    });
+  }
 });
 
 // Helper functions
