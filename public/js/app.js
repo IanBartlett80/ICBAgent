@@ -385,7 +385,13 @@ class ICBAgent {
 
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        messageContent.innerHTML = this.formatMessage(content);
+        
+        // Enhanced message rendering with insights and recommendations
+        if (type === 'assistant') {
+            messageContent.innerHTML = this.renderEnhancedResponse(content);
+        } else {
+            messageContent.innerHTML = this.formatMessage(content);
+        }
 
         messageDiv.appendChild(messageContent);
         chatMessages.appendChild(messageDiv);
@@ -401,6 +407,228 @@ class ICBAgent {
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/`(.*?)`/g, '<code>$1</code>')
             .replace(/\n/g, '<br>');
+    }
+
+    renderEnhancedResponse(content) {
+        // Enhanced markdown rendering with insights and recommendations
+        let html = this.parseMarkdown(content);
+        
+        // Add insights and recommendations if this looks like a data response
+        if (this.isDataResponse(content)) {
+            html += this.generateInsightsAndRecommendations(content);
+        }
+        
+        return html;
+    }
+
+    parseMarkdown(content) {
+        // Enhanced markdown parsing
+        let html = content;
+        
+        // Headers
+        html = html.replace(/^### (.*$)/gm, '<h3 class="response-header">$1</h3>');
+        html = html.replace(/^## (.*$)/gm, '<h2 class="response-title">$1</h2>');
+        html = html.replace(/^# (.*$)/gm, '<h1 class="response-main-title">$1</h1>');
+        
+        // Bold and italic
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="response-bold">$1</strong>');
+        html = html.replace(/\*(.*?)\*/g, '<em class="response-italic">$1</em>');
+        
+        // Code blocks
+        html = html.replace(/```json\n([\s\S]*?)\n```/g, '<div class="code-block json-block"><pre><code>$1</code></pre></div>');
+        html = html.replace(/```([\s\S]*?)```/g, '<div class="code-block"><pre><code>$1</code></pre></div>');
+        html = html.replace(/`(.*?)`/g, '<code class="inline-code">$1</code>');
+        
+        // Lists - Enhanced styling
+        html = html.replace(/^• (.*$)/gm, '<li class="response-list-item">$1</li>');
+        html = html.replace(/^- (.*$)/gm, '<li class="response-list-item">$1</li>');
+        html = html.replace(/(<li class="response-list-item">.*<\/li>)/s, '<ul class="response-list">$1</ul>');
+        
+        // Emojis and status indicators - Enhanced styling
+        html = html.replace(/(✅|🔒|📊|👥|📱|🖥️|🤖|💻|📈|🌐|👨‍👩‍👧‍👦|🏢|📋|👤|❌|⚠️|ℹ️|🔄|🎉)/g, '<span class="status-emoji">$1</span>');
+        
+        // Special sections
+        html = html.replace(/\*\*([^*]+):\*\*/g, '<div class="section-header"><strong>$1:</strong></div>');
+        
+        // Line breaks
+        html = html.replace(/\n\n/g, '</p><p class="response-paragraph">');
+        html = html.replace(/\n/g, '<br>');
+        
+        // Wrap in paragraph if not already wrapped
+        if (!html.includes('<p') && !html.includes('<h') && !html.includes('<ul') && !html.includes('<div')) {
+            html = `<p class="response-paragraph">${html}</p>`;
+        }
+        
+        return html;
+    }
+
+    isDataResponse(content) {
+        // Check if the response contains structured data that could benefit from insights
+        const dataIndicators = [
+            'total', 'showing first', 'devices', 'users', 'licenses', 'alerts',
+            'compliance', 'non-compliant', 'grace period', 'last sync', 'enrolled',
+            'sign-in', 'groups', 'applications', 'subscriptions', 'policies'
+        ];
+        
+        const lowerContent = content.toLowerCase();
+        return dataIndicators.some(indicator => lowerContent.includes(indicator));
+    }
+
+    generateInsightsAndRecommendations(content) {
+        const insights = this.extractInsights(content);
+        const recommendations = this.generateRecommendations(content);
+        
+        if (insights.length === 0 && recommendations.length === 0) {
+            return '';
+        }
+        
+        let html = '<div class="insights-recommendations-section">';
+        
+        if (insights.length > 0) {
+            html += '<div class="insights-section">';
+            html += '<h4 class="insights-title"><span class="insights-icon">💡</span> Key Insights</h4>';
+            html += '<ul class="insights-list">';
+            insights.forEach(insight => {
+                html += `<li class="insight-item">${insight}</li>`;
+            });
+            html += '</ul>';
+            html += '</div>';
+        }
+        
+        if (recommendations.length > 0) {
+            html += '<div class="recommendations-section">';
+            html += '<h4 class="recommendations-title"><span class="recommendations-icon">🎯</span> Recommendations</h4>';
+            html += '<ul class="recommendations-list">';
+            recommendations.forEach(recommendation => {
+                html += `<li class="recommendation-item">${recommendation}</li>`;
+            });
+            html += '</ul>';
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        return html;
+    }
+
+    extractInsights(content) {
+        const insights = [];
+        
+        // Device insights
+        if (content.includes('iOS Devices') || content.includes('Android Devices') || content.includes('Windows Devices')) {
+            const deviceCount = this.extractNumber(content, /\((\d+) total/);
+            if (deviceCount) {
+                insights.push(`You have ${deviceCount} managed devices in your environment`);
+            }
+        }
+        
+        // Compliance insights
+        if (content.includes('Compliance:')) {
+            const nonCompliantCount = (content.match(/❌ Compliance: noncompliant/g) || []).length;
+            const graceCount = (content.match(/⏳ Compliance: inGracePeriod/g) || []).length;
+            
+            if (nonCompliantCount > 0) {
+                insights.push(`${nonCompliantCount} devices are currently non-compliant and may need attention`);
+            }
+            if (graceCount > 0) {
+                insights.push(`${graceCount} devices are in compliance grace period - action needed soon`);
+            }
+        }
+        
+        // User insights
+        if (content.includes('Users in') && content.includes('total')) {
+            const userCount = this.extractNumber(content, /\((\d+) total/);
+            if (userCount) {
+                insights.push(`Your tenant has ${userCount} total users`);
+                
+                // Check for inactive users
+                const neverSignedIn = (content.match(/Last sign-in: Never/g) || []).length;
+                if (neverSignedIn > 0) {
+                    insights.push(`${neverSignedIn} users have never signed in - consider reviewing these accounts`);
+                }
+            }
+        }
+        
+        // License insights
+        if (content.includes('License Usage')) {
+            const licenseLines = content.match(/Used: (\d+)\/(\d+)/g);
+            if (licenseLines) {
+                licenseLines.forEach(line => {
+                    const [used, total] = line.match(/(\d+)/g);
+                    const utilization = Math.round((used / total) * 100);
+                    if (utilization > 90) {
+                        insights.push(`License utilization is ${utilization}% - consider purchasing additional licenses`);
+                    } else if (utilization < 50) {
+                        insights.push(`License utilization is only ${utilization}% - potential cost optimization opportunity`);
+                    }
+                });
+            }
+        }
+        
+        // Security insights
+        if (content.includes('Security Alerts')) {
+            if (content.includes('No active security alerts')) {
+                insights.push('Your tenant currently has no active security alerts - great security posture!');
+            } else {
+                const alertCount = this.extractNumber(content, /\((\d+) total\)/);
+                if (alertCount && alertCount > 0) {
+                    insights.push(`${alertCount} security alerts require your attention`);
+                }
+            }
+        }
+        
+        return insights;
+    }
+
+    generateRecommendations(content) {
+        const recommendations = [];
+        
+        // Device management recommendations
+        if (content.includes('non-compliant') || content.includes('grace period')) {
+            recommendations.push('Review and remediate non-compliant devices to improve security posture');
+            recommendations.push('Set up automated compliance policies to prevent future compliance issues');
+        }
+        
+        // User management recommendations
+        if (content.includes('Never')) {
+            recommendations.push('Review users who have never signed in and consider disabling unused accounts');
+            recommendations.push('Implement regular user access reviews to maintain good security hygiene');
+        }
+        
+        // License optimization recommendations
+        if (content.includes('License Usage')) {
+            recommendations.push('Monitor license usage regularly to optimize costs and ensure adequate capacity');
+            recommendations.push('Consider implementing license assignment policies based on job roles');
+        }
+        
+        // Security recommendations
+        if (content.includes('security alerts') && !content.includes('No active')) {
+            recommendations.push('Address security alerts promptly to minimize potential security risks');
+            recommendations.push('Enable additional security monitoring and alerting for proactive threat detection');
+        }
+        
+        // Device-specific recommendations
+        if (content.includes('Last Sync:')) {
+            recommendations.push('Ensure devices sync regularly with Intune for proper management and security');
+            recommendations.push('Consider implementing conditional access policies for better device control');
+        }
+        
+        // General recommendations based on data type
+        if (content.includes('Applications')) {
+            recommendations.push('Regularly review registered applications and remove unused ones');
+            recommendations.push('Implement app governance policies to control application permissions');
+        }
+        
+        if (content.includes('Groups')) {
+            recommendations.push('Use security groups for efficient permission management');
+            recommendations.push('Regularly review group memberships to ensure appropriate access');
+        }
+        
+        return recommendations;
+    }
+
+    extractNumber(content, regex) {
+        const match = content.match(regex);
+        return match ? parseInt(match[1]) : null;
     }
 
     showChatInterface() {
