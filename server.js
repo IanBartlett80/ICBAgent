@@ -257,7 +257,21 @@ class DualTenantManager {
         throw new Error('Failed to fetch source policy');
       }
 
-      const policyData = JSON.parse(sourcePolicy.content[0].text);
+      // Parse the response text with the same logic as loadSourcePolicies
+      let responseText = sourcePolicy.content[0].text;
+      console.log(`📝 Raw policy response text (first 200 chars):`, responseText.substring(0, 200));
+      
+      let policyData = null;
+      
+      // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        policyData = JSON.parse(jsonMatch[0]);
+      } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        policyData = JSON.parse(responseText.trim());
+      } else {
+        throw new Error(`Could not extract JSON from policy response: ${responseText.substring(0, 100)}`);
+      }
       
       this.migrations.get(migrationId).status = 'transforming';
       
@@ -284,7 +298,21 @@ class DualTenantManager {
         throw new Error('Failed to create policy in target tenant');
       }
 
-      const createdPolicy = JSON.parse(targetResponse.content[0].text);
+      // Parse the target response text with the same logic
+      let targetResponseText = targetResponse.content[0].text;
+      console.log(`📝 Raw target response text (first 200 chars):`, targetResponseText.substring(0, 200));
+      
+      let createdPolicy = null;
+      
+      // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+      const targetJsonMatch = targetResponseText.match(/\{[\s\S]*\}/);
+      if (targetJsonMatch) {
+        createdPolicy = JSON.parse(targetJsonMatch[0]);
+      } else if (targetResponseText.trim().startsWith('{') || targetResponseText.trim().startsWith('[')) {
+        createdPolicy = JSON.parse(targetResponseText.trim());
+      } else {
+        throw new Error(`Could not extract JSON from target response: ${targetResponseText.substring(0, 100)}`);
+      }
       
       this.migrations.get(migrationId).status = 'completed';
       this.migrations.get(migrationId).targetPolicyId = createdPolicy.id;
