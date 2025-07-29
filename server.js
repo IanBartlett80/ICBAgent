@@ -594,12 +594,12 @@ Once connected and authenticated, I'll be able to help you with:
       });
     }
 
-    // Enhanced device queries with proper compliance and OS filtering
+    // Enhanced device queries with essential fields only
     if (lowerMessage.includes('devices') || lowerMessage.includes('device') || lowerMessage.includes('managed devices') || 
         lowerMessage.includes('ios') || lowerMessage.includes('iphone') || lowerMessage.includes('ipad') ||
         lowerMessage.includes('android') || lowerMessage.includes('windows') || lowerMessage.includes('macos')) {
       let queryParams = {
-        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,complianceGracePeriodExpirationDateTime,serialNumber,manufacturer,model,deviceOwnerType,deviceRegistrationState,managementState,enrollmentType,azureADDeviceId,emailAddress,userId,userDisplayName,userPrincipalName,deviceCategoryDisplayName,exchangeLastSuccessfulSyncDateTime,freeStorageSpaceInBytes,totalStorageSpaceInBytes,partnerReportedThreatState,requireUserEnrollmentApproval,managementCertificateExpirationDate,iccid,udid,roleScopeTagIds,windowsActiveMalwareCount,windowsRemediatedMalwareCount,notes,configurationManagerClientEnabledFeatures,deviceHealthAttestationState,subscriberCarrier,meid,imei,cellularTechnology,wiFiMacAddress,phoneNumber,hardwareInformation,deviceActionResults'
+        '$select': 'deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managedDeviceOwnerType,userDisplayName,emailAddress,model,manufacturer,serialNumber'
       };
 
       let filterConditions = [];
