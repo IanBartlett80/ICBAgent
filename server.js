@@ -344,6 +344,8 @@ class DualTenantManager {
       
       // Step 3: Create policy in target tenant
       console.log(`🔄 Creating policy in target tenant...`);
+      console.log(`📋 Policy payload size: ${JSON.stringify(transformedPolicy).length} characters`);
+      console.log(`📋 Policy payload keys: ${Object.keys(transformedPolicy).join(', ')}`);
       
       let targetResponse;
       try {
@@ -358,6 +360,7 @@ class DualTenantManager {
           }
         });
       } catch (error) {
+        console.error(`❌ Request error during policy creation:`, error.message);
         // Check if this is a permission error
         if (this.isPermissionError(error.message)) {
           console.log('🔐 Permission error detected, requesting additional permissions...');
@@ -478,14 +481,59 @@ class DualTenantManager {
   }
 
   transformPolicyForTarget(sourcePolicy, customizations) {
-    // Remove source-specific properties
+    // Remove source-specific properties and read-only fields
     const transformed = { ...sourcePolicy };
+    
+    // Remove all Microsoft Graph metadata and read-only properties
     delete transformed.id;
     delete transformed.createdDateTime;
     delete transformed.lastModifiedDateTime;
+    delete transformed.supportsScopeTags;
+    delete transformed.roleScopeTagIds;
+    delete transformed.deviceStatuses;
+    delete transformed.userStatuses;
+    delete transformed.deviceStatusOverview;
+    delete transformed.userStatusOverview;
+    delete transformed.assignments;
+    delete transformed.scheduledActionsForRule;
+    delete transformed.deviceSettingStateSummaries;
+    delete transformed.complianceGracePeriodExpirationDateTime;
+    delete transformed.settingStates;
+    delete transformed.rootCertificateId;
+    delete transformed.trustedRootCertificate;
+    delete transformed.derivedCredentialSettings;
+    delete transformed.advancedThreatProtectionAutoEnableType;
+    delete transformed.advancedThreatProtectionOfficeKind;
+    delete transformed.advancedThreatProtectionOfficeDataSharing;
+    delete transformed.advancedThreatProtectionOfficeNetworkScanningType;
+    delete transformed.advancedThreatProtectionOfficeAntivirusType;
+    delete transformed.advancedThreatProtectionOfficeRealtimeProtectionType;
+    delete transformed.advancedThreatProtectionOfficeSignatureUpdateIntervalInHours;
+    
+    // Remove OData specific properties
     delete transformed['@odata.type'];
     delete transformed['@odata.context'];
-
+    delete transformed['@odata.id'];
+    delete transformed['@odata.etag'];
+    delete transformed['@odata.editLink'];
+    delete transformed['@odata.nextLink'];
+    
+    // Handle specific policy type transformations
+    if (sourcePolicy['@odata.type']) {
+      const odataType = sourcePolicy['@odata.type'];
+      
+      // For device compliance policies, ensure the correct OData type
+      if (odataType.includes('deviceCompliancePolicy')) {
+        // Don't include @odata.type for creation - let Graph API determine it
+        // based on the policy content and endpoint
+      }
+      
+      // For device configuration policies
+      if (odataType.includes('deviceConfiguration')) {
+        // Similar handling for device configurations
+      }
+    }
+    
     // Apply customizations
     if (customizations.displayName) {
       transformed.displayName = customizations.displayName;
@@ -501,6 +549,20 @@ class DualTenantManager {
     if (transformed.version) {
       transformed.version = 1;
     }
+    
+    // Remove any null or undefined values that might cause issues
+    Object.keys(transformed).forEach(key => {
+      if (transformed[key] === null || transformed[key] === undefined) {
+        delete transformed[key];
+      }
+    });
+    
+    // Log the cleaned policy for debugging
+    console.log(`🧹 Cleaned policy for creation:`, {
+      displayName: transformed.displayName,
+      keys: Object.keys(transformed),
+      removedODataType: !!sourcePolicy['@odata.type']
+    });
 
     return transformed;
   }
