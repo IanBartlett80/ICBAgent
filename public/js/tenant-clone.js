@@ -565,8 +565,17 @@ class TenantCloneManager {
     }
 
     updateTenantStatus(tenantType, status) {
+        // Don't override a successful authentication status
+        if (this.authStatus[tenantType] === 'success' && status === 'connecting') {
+            console.log(`Not overriding successful auth status for ${tenantType} tenant`);
+            return;
+        }
+        
         this.authStatus[tenantType] = status;
         this.updateTenantCards();
+        
+        // Check if both tenants are authenticated after any status update
+        this.checkBothTenantsAuthenticated();
     }
 
     updateAuthStatus(tenantType, status) {
@@ -1113,11 +1122,20 @@ class TenantCloneManager {
             return;
         }
         
-        const btnText = button.querySelector('.btn-text');
-        const btnLoader = button.querySelector('.btn-loader');
+        // First try generic selectors
+        let btnText = button.querySelector('.btn-text');
+        let btnLoader = button.querySelector('.btn-loader');
+        
+        // If not found, try specific connect button selectors
+        if (!btnText || !btnLoader) {
+            if (button.id === 'connectTenantsBtn') {
+                btnText = button.querySelector('#connectBtnText');
+                btnLoader = button.querySelector('#connectBtnSpinner');
+            }
+        }
         
         if (!btnText || !btnLoader) {
-            console.error('setButtonLoading: missing .btn-text or .btn-loader elements in button:', button.id);
+            console.error('setButtonLoading: missing text or loader elements in button:', button.id);
             // Fallback: just disable/enable the button
             button.disabled = loading;
             return;
