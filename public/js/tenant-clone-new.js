@@ -246,6 +246,60 @@ class PolicyMigrationDashboard {
                 this.closeJsonPanel();
             });
         }
+
+        // Empty state load button
+        const emptyStateLoadBtn = document.getElementById('emptyStateLoadBtn');
+        if (emptyStateLoadBtn) {
+            emptyStateLoadBtn.addEventListener('click', () => {
+                const loadPoliciesBtn = document.getElementById('loadPoliciesBtn');
+                if (loadPoliciesBtn) loadPoliciesBtn.click();
+            });
+        }
+
+        // Event delegation for dynamically created elements
+        this.setupEventDelegation();
+    }
+
+    setupEventDelegation() {
+        // Delegate events for policy action buttons
+        document.addEventListener('click', (e) => {
+            // JSON editor button
+            if (e.target.closest('.json-editor-btn')) {
+                const btn = e.target.closest('.json-editor-btn');
+                const policyId = btn.dataset.policyId;
+                if (policyId) {
+                    this.openJsonEditor(policyId);
+                }
+            }
+
+            // Migrate policy button
+            if (e.target.closest('.migrate-policy-btn')) {
+                const btn = e.target.closest('.migrate-policy-btn');
+                const policyId = btn.dataset.policyId;
+                const policyType = btn.dataset.policyType;
+                if (policyId && policyType) {
+                    this.clonePolicy(policyId, policyType);
+                }
+            }
+
+            // Error retry button
+            if (e.target.closest('.error-retry-btn')) {
+                const btn = e.target.closest('.error-retry-btn');
+                const errorId = btn.dataset.errorId;
+                if (errorId) {
+                    this.retryError(errorId);
+                }
+            }
+
+            // Error dismiss button
+            if (e.target.closest('.error-dismiss-btn')) {
+                const btn = e.target.closest('.error-dismiss-btn');
+                const errorId = btn.dataset.errorId;
+                if (errorId) {
+                    this.removeError(errorId);
+                }
+            }
+        });
     }
 
     // ===== VIEW MANAGEMENT =====
@@ -491,10 +545,10 @@ class PolicyMigrationDashboard {
             </td>
             <td class="actions-column">
                 <div class="policy-actions">
-                    <button class="policy-action-btn" onclick="dashboard.openJsonEditor('${policy.id}')" title="Edit JSON">
+                    <button class="policy-action-btn json-editor-btn" data-policy-id="${policy.id}" title="Edit JSON">
                         <i class="fas fa-code"></i>
                     </button>
-                    <button class="policy-action-btn primary" onclick="dashboard.clonePolicy('${policy.id}', '${policy.policyType}')" title="Migrate">
+                    <button class="policy-action-btn primary migrate-policy-btn" data-policy-id="${policy.id}" data-policy-type="${policy.policyType}" title="Migrate">
                         <i class="fas fa-rocket"></i>
                     </button>
                 </div>
@@ -841,10 +895,10 @@ class PolicyMigrationDashboard {
                 <div class="error-details">${error.message}</div>
                 <div class="error-technical">${error.technical || ''}</div>
                 <div class="error-actions">
-                    <button class="error-retry-btn" onclick="dashboard.retryError('${errorId}')">
+                    <button class="error-retry-btn" data-error-id="${errorId}">
                         <i class="fas fa-redo"></i> Retry
                     </button>
-                    <button class="error-dismiss-btn" onclick="dashboard.removeError('${errorId}')">
+                    <button class="error-dismiss-btn" data-error-id="${errorId}">
                         <i class="fas fa-times"></i> Dismiss
                     </button>
                 </div>
@@ -1183,10 +1237,8 @@ class PolicyMigrationDashboard {
 }
 
 // Initialize the dashboard when the page loads
+// Initialize dashboard when DOM is ready
 let dashboard;
 document.addEventListener('DOMContentLoaded', () => {
     dashboard = new PolicyMigrationDashboard();
-    
-    // Make dashboard available globally for onclick handlers
-    window.dashboard = dashboard;
 });
