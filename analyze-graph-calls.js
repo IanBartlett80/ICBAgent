@@ -29,6 +29,9 @@ class ZeroTrustAnalyzer {
             console.log(`📝 Analyzing transcript: ${transcriptFile}`);
             const transcript = fs.readFileSync(path.join(outputDir, transcriptFile), 'utf8');
             
+            // Analyze execution summary if available
+            this.analyzeExecutionSummary(outputDir);
+            
             // Analyze different aspects
             this.extractGraphAPICalls(transcript);
             this.extractAuthenticationFlow(transcript);
@@ -50,7 +53,32 @@ class ZeroTrustAnalyzer {
 
     findTranscriptFile(outputDir) {
         const files = fs.readdirSync(outputDir);
-        return files.find(f => f.includes('Complete_Session') && f.endsWith('.log'));
+        return files.find(f => (f.includes('Complete_Session') || f.includes('InvokeZT_Session')) && f.endsWith('.log'));
+    }
+
+    analyzeExecutionSummary(outputDir) {
+        console.log('\n📊 Analyzing Execution Summary...');
+        
+        try {
+            const summaryPath = path.join(outputDir, 'ExecutionSummary.json');
+            if (fs.existsSync(summaryPath)) {
+                const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+                console.log(`   Cmdlet: ${summary.Cmdlet || 'Unknown'}`);
+                console.log(`   Duration: ${summary.Duration || 'Unknown'}`);
+                console.log(`   Files Generated: ${summary.FilesFound || 0}`);
+                
+                if (summary.NewXLSXFiles) {
+                    console.log(`   Excel Report: ${summary.NewXLSXFiles.Name}`);
+                    console.log(`   Report Size: ${(summary.NewXLSXFiles.Length / 1024).toFixed(1)} KB`);
+                }
+                
+                this.dataStructures.executionSummary = summary;
+            } else {
+                console.log('   No execution summary found');
+            }
+        } catch (error) {
+            console.log(`   Error reading execution summary: ${error.message}`);
+        }
     }
 
     extractGraphAPICalls(content) {
@@ -361,7 +389,7 @@ if (require.main === module) {
     const dirs = fs.readdirSync('.')
         .filter(item => {
             try {
-                return fs.statSync(item).isDirectory() && item.startsWith('ZeroTrust_Analysis_');
+                return fs.statSync(item).isDirectory() && (item.startsWith('ZeroTrust_Analysis_') || item.startsWith('ZeroTrust_InvokeZT_'));
             } catch (e) {
                 return false;
             }

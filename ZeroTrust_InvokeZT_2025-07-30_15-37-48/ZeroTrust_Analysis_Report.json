@@ -1,0 +1,89 @@
+{
+  "timestamp": "2025-07-30T05:44:56.190Z",
+  "summary": {
+    "graphAPICalls": 0,
+    "uniquePermissions": 0,
+    "authenticationSteps": 0,
+    "errors": 0,
+    "assessmentCategories": 0
+  },
+  "analysis": {
+    "graphEndpoints": [],
+    "requiredPermissions": [],
+    "authenticationFlow": [],
+    "assessmentFlow": [],
+    "errors": [],
+    "dataStructures": {
+      "executionSummary": {
+        "UserDirectory": "C:\\Users\\ianbart",
+        "LocalFiles": {
+          "Name": "ZeroTrustAssessment-2025-07-30T153821.xlsx",
+          "Length": 936419,
+          "CreationTime": "2025-07-30T15:38:28.0139484+10:00",
+          "LastWriteTime": "2025-07-30T15:38:22.3079495+10:00"
+        },
+        "NewXLSXFiles": {
+          "Name": "ZeroTrustAssessment-2025-07-30T153821.xlsx",
+          "Length": 936419,
+          "CreationTime": "2025-07-30T15:38:21.8440233+10:00",
+          "LastWriteTime": "2025-07-30T15:38:22.3079495+10:00"
+        },
+        "EndTime": "2025-07-30T15:38:27.832562+10:00",
+        "Duration": "00:00:39.3845215",
+        "Cmdlet": "Invoke-ZTAssessment",
+        "StartTime": "2025-07-30T15:37:48.4480405+10:00",
+        "FilesFound": 2
+      },
+      "ExecutionSummary.json": {
+        "keys": [
+          "UserDirectory",
+          "LocalFiles",
+          "NewXLSXFiles",
+          "EndTime",
+          "Duration",
+          "Cmdlet",
+          "StartTime",
+          "FilesFound"
+        ],
+        "structure": {
+          "UserDirectory": "string",
+          "LocalFiles": {
+            "Name": "string",
+            "Length": "number",
+            "CreationTime": "string",
+            "LastWriteTime": "string"
+          },
+          "NewXLSXFiles": {
+            "Name": "string",
+            "Length": "number",
+            "CreationTime": "string",
+            "LastWriteTime": "string"
+          },
+          "EndTime": "string",
+          "Duration": "string"
+        }
+      }
+    }
+  },
+  "recommendations": {
+    "implementation": [
+      "Create ZeroTrustAssessment class in server.js",
+      "Implement Graph API permission checking",
+      "Build assessment data collection methods",
+      "Create HTML report generation with Excel-like layout",
+      "Add administrator notes functionality"
+    ],
+    "graphAPI": [
+      "Use Microsoft Graph SDK for Node.js",
+      "Implement proper OAuth2 flow with required scopes",
+      "Add retry logic for rate limiting",
+      "Cache assessment data for better performance"
+    ],
+    "security": [
+      "Store assessment results server-side only",
+      "Implement proper access controls",
+      "Add audit logging for assessments",
+      "Ensure sensitive data is not logged"
+    ]
+  }
+}
