@@ -326,21 +326,6 @@ class ICBAgent {
         emailReportBtn.addEventListener('click', () => {
             this.emailReport();
         });
-
-        // Zero Trust Assessment buttons
-        const zeroTrustAssessmentBtn = document.getElementById('zeroTrustAssessmentBtn');
-        if (zeroTrustAssessmentBtn) {
-            zeroTrustAssessmentBtn.addEventListener('click', () => {
-                this.startZeroTrustAssessment();
-            });
-        }
-
-        const ztAssessmentQuickBtn = document.getElementById('ztAssessmentQuickBtn');
-        if (ztAssessmentQuickBtn) {
-            ztAssessmentQuickBtn.addEventListener('click', () => {
-                this.startZeroTrustAssessment();
-            });
-        }
     }
 
     async handleGetStarted() {
@@ -488,16 +473,6 @@ class ICBAgent {
             console.error('Error generating report:', error);
             this.showError('Failed to generate health check report');
         }
-    }
-
-    async startZeroTrustAssessment() {
-        if (!this.sessionId) {
-            this.showError('No active session. Please connect to a tenant first.');
-            return;
-        }
-
-        // For button clicks within the same page, redirect to dedicated Zero Trust Assessment page
-        this.redirectToZeroTrustAssessment();
     }
 
     redirectToZeroTrustAssessment() {
