@@ -4229,7 +4229,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
 
     // Execute the MCP request
     const response = await mcpClient.sendMCPRequest('tools/call', {
-      name: 'mcp_lokka-microso_Lokka-Microsoft',
+      name: 'Lokka-Microsoft',
       arguments: mcpRequest
     });
     
