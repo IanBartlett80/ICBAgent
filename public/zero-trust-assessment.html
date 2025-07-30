@@ -33,7 +33,9 @@
                         <span>Home</span>
                     </button>
                     <button id="disconnectBtn" class="btn-danger disconnect-button" style="display: none;">
-                        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' viewBox='0 0 16 16'%3E%3Cpath d='M6 1a1 1 0 0 0-1 1v1H3.5A1.5 1.5 0 0 0 2 4.5v7A1.5 1.5 0 0 0 3.5 13h9a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 12.5 3H11V2a1 1 0 0 0-1-1H6z'/%3E%3C/svg%3E" alt="Disconnect">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M6 1a1 1 0 0 0-1 1v1H3.5A1.5 1.5 0 0 0 2 4.5v7A1.5 1.5 0 0 0 3.5 13h9a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 12.5 3H11V2a1 1 0 0 0-1-1H6z"/>
+                        </svg>
                         <span>Disconnect</span>
                     </button>
                 </div>
@@ -61,7 +63,7 @@
     </div>
 
     <!-- Success/Error Notifications -->
-    <div id="notification" class="notification"></div>
+    <div id="notification" class="notification" style="display: none;"></div>
 
     <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script>
@@ -331,9 +333,13 @@
                 
                 notification.textContent = message;
                 notification.className = `notification ${type} show`;
+                notification.style.display = 'block';
                 
                 setTimeout(() => {
                     notification.classList.remove('show');
+                    setTimeout(() => {
+                        notification.style.display = 'none';
+                    }, 300); // Wait for fade out animation
                 }, duration);
             }
 

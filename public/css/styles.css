@@ -3929,19 +3929,106 @@ body::before {
 
 /* ==================== ZERO TRUST ASSESSMENT PAGE SPECIFIC STYLES ==================== */
 
-/* Logo adjustments for Zero Trust Assessment page to match main page */
-.zero-trust-page .logo,
-.zero-trust-page .logo-image {
-  width: 48px !important;
-  height: 48px !important;
-  max-height: 48px !important;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
+/* Ensure Zero Trust page header maintains the beautiful gradient background */
+.zero-trust-page .header {
+  background: var(--gradient-hero) !important;
+  color: white !important;
 }
 
-/* Ensure logo section layout is consistent */
+/* Logo adjustments for Zero Trust Assessment page - make it bigger and fully visible */
+.zero-trust-page .logo,
+.zero-trust-page .logo-image {
+  width: 120px !important;
+  height: auto !important;
+  max-height: 60px !important;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Ensure logo section layout is consistent and remove any red borders */
 .zero-trust-page .logo-section {
   gap: var(--spacing-3);
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Header text styling for Zero Trust Assessment page - make text white */
+.zero-trust-page .header-text h1 {
+  color: white !important;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.zero-trust-page .header-text p {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 0;
+  opacity: 0.9;
+}
+
+/* Ensure header text container has no red elements */
+.zero-trust-page .header-text {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: none !important;
+}
+
+/* Hide notifications that might be causing red boxes */
+.zero-trust-page .notification {
+  display: none !important;
+}
+
+/* Remove any potential red status indicators on the Zero Trust page header */
+.zero-trust-page .status-indicator {
+  border: none !important;
+  outline: none !important;
+}
+
+/* Specifically override status indicator states on Zero Trust page to avoid red flash */
+.zero-trust-page .status-indicator.disconnected {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  animation: none !important;
+  opacity: 0 !important;
+}
+
+.zero-trust-page .status-indicator.disconnected::before {
+  display: none !important;
+}
+
+/* Only show status indicators when connected on Zero Trust page */
+.zero-trust-page .status-indicator.connected {
+  background-color: #10b981 !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5) !important;
+  animation: statusPulseGreen 2s infinite !important;
+  opacity: 1 !important;
+}
+
+/* Ensure disconnect button is properly hidden when not needed */
+.zero-trust-page .disconnect-button[style*="display: none"] {
+  display: none !important;
+  position: static !important;
+}
+
+/* Remove any red error states or borders from all elements in Zero Trust page header */
+.zero-trust-page .header *,
+.zero-trust-page .header *::before,
+.zero-trust-page .header *::after {
+  border-color: transparent !important;
+}
+
+.zero-trust-page .header .error,
+.zero-trust-page .header .danger {
+  display: none !important;
 }
 
 /* Enhanced home button styling for Zero Trust Assessment page */
