@@ -3926,3 +3926,88 @@ body::before {
     transform: translateY(0);
   }
 }
+
+/* ==================== ZERO TRUST ASSESSMENT PAGE SPECIFIC STYLES ==================== */
+
+/* Logo adjustments for Zero Trust Assessment page to match main page */
+.zero-trust-page .logo,
+.zero-trust-page .logo-image {
+  width: 48px !important;
+  height: 48px !important;
+  max-height: 48px !important;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+/* Ensure logo section layout is consistent */
+.zero-trust-page .logo-section {
+  gap: var(--spacing-3);
+}
+
+/* Enhanced home button styling for Zero Trust Assessment page */
+.home-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--animation-medium);
+  box-shadow: 0 2px 8px rgba(62, 138, 180, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.home-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left var(--animation-medium);
+}
+
+.home-button:hover::before {
+  left: 100%;
+}
+
+.home-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(62, 138, 180, 0.4);
+  background: linear-gradient(135deg, var(--primary-600) 0%, var(--primary-700) 100%);
+}
+
+.home-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(62, 138, 180, 0.2);
+}
+
+.home-button svg {
+  width: 20px;
+  height: 20px;
+  transition: transform var(--animation-medium);
+}
+
+.home-button:hover svg {
+  transform: translateX(-2px);
+}
+
+/* Responsive adjustments for Zero Trust Assessment page */
+@media (max-width: 768px) {
+  .home-button span {
+    display: none;
+  }
+  
+  .home-button {
+    padding: var(--spacing-2);
+    min-width: 44px;
+    justify-content: center;
+  }
+}
