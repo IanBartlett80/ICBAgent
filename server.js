@@ -4234,11 +4234,29 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
     });
     
     if (response && response.content && response.content[0] && response.content[0].text) {
-      const data = JSON.parse(response.content[0].text);
+      let responseText = response.content[0].text;
+      console.log(`📝 Raw Zero Trust response for ${dataType} (first 200 chars):`, responseText.substring(0, 200));
+      
+      // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
+      let jsonData = null;
+      
+      // Try to extract JSON from response that might have prefixes
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonData = JSON.parse(jsonMatch[0]);
+      } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+        jsonData = JSON.parse(responseText.trim());
+      } else {
+        console.log(`⚠️ Could not extract JSON from ${dataType} response:`, responseText.substring(0, 100));
+        return res.status(500).json({ 
+          error: `Could not parse JSON from ${dataType} response` 
+        });
+      }
+      
       res.json({
         success: true,
         dataType: dataType,
-        data: data,
+        data: jsonData,
         timestamp: new Date().toISOString()
       });
     } else {
