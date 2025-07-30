@@ -1,0 +1,110 @@
+{
+  "timestamp": "2025-07-30T05:47:51.940Z",
+  "analysis": "Zero Trust Assessment Excel Structure",
+  "worksheets": [
+    {
+      "index": 1,
+      "name": "Sheet1",
+      "sheetId": 1,
+      "relationshipId": null
+    },
+    {
+      "index": 2,
+      "name": "Device Config",
+      "sheetId": "2",
+      "relationshipId": "rId1"
+    },
+    {
+      "index": 3,
+      "name": "Identity Assessment",
+      "sheetId": "5",
+      "relationshipId": "rId2"
+    },
+    {
+      "index": 4,
+      "name": "Device Assessment",
+      "sheetId": "3",
+      "relationshipId": "rId3"
+    }
+  ],
+  "content": {
+    "totalSharedStrings": 180,
+    "zeroTrustTerms": [
+      "Data protection",
+      "ConfigDevice",
+      "Enrollment device platform restrictions",
+      "Compliance policies",
+      "Rooted / Jailbroken  devices",
+      "Max Device Threat Level",
+      "Action for noncompliance (days)",
+      "Action for noncompliance (days) ",
+      "Conditional launch - Device conditions",
+      "Backup org data to iCloud or Google",
+      "Send org data to other apps",
+      "Save copies of org data",
+      "Transfer telecommunication data to",
+      "Receive data from other apps",
+      "Open data into Org documents",
+      "Allow users to open data from selected services",
+      "Encrypt org data",
+      "Sync policy managed app data with native apps or add-ins",
+      "Printing org data",
+      "Org data notifications"
+    ],
+    "assessmentCategories": [
+      "Compliance policies",
+      "AssessmentIdentity",
+      "Assessment check",
+      "AssessmentDevice",
+      "Compliance policies for iOS / iPadOS",
+      "Compliance policies for macOS",
+      "Compliance policies for Windows 10 and later",
+      "SylviaP iOS Compliance Policy",
+      "Sylvia P MacOS Compliance Policy",
+      "Windows 10 Compliance Policy"
+    ]
+  },
+  "implementation": {
+    "htmlStructure": {
+      "suggested": "Multi-tab HTML interface matching Excel worksheets",
+      "worksheets": [
+        {
+          "name": "Sheet1",
+          "htmlEquivalent": "sheet1-tab"
+        },
+        {
+          "name": "Device Config",
+          "htmlEquivalent": "device-config-tab"
+        },
+        {
+          "name": "Identity Assessment",
+          "htmlEquivalent": "identity-assessment-tab"
+        },
+        {
+          "name": "Device Assessment",
+          "htmlEquivalent": "device-assessment-tab"
+        }
+      ],
+      "navigation": "Tab-based navigation system",
+      "responsiveDesign": "Mobile-first approach with collapsible sections"
+    },
+    "requiredComponents": [
+      "Tab navigation system",
+      "Chart/visualization components",
+      "Data table components",
+      "Score/rating display components",
+      "Interactive assessment forms",
+      "Export functionality",
+      "Administrator notes section"
+    ],
+    "dataRequirements": [
+      "Microsoft Graph API integration",
+      "Security compliance data collection",
+      "Identity and access management metrics",
+      "Device compliance status",
+      "Network security configurations",
+      "Application security policies",
+      "Data protection settings"
+    ]
+  }
+}
