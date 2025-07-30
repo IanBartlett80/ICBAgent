@@ -139,18 +139,29 @@ class ICBAgent {
     }
 
     initializeZeroTrustAssessment() {
-        console.log('Initializing Zero Trust Assessment...');
+        console.log('🔧 Initializing Zero Trust Assessment...');
+        
+        // Check if all required classes are available
+        console.log('🔍 Checking class availability:');
+        console.log('  - ZeroTrustAssessment:', typeof ZeroTrustAssessment);
+        console.log('  - ZeroTrustGraphService:', typeof ZeroTrustGraphService);
+        console.log('  - ZeroTrustAssessmentEngine:', typeof ZeroTrustAssessmentEngine);
         
         // Check if Zero Trust Assessment classes are available
         if (typeof ZeroTrustAssessment !== 'undefined') {
             try {
+                console.log('🚀 Creating ZeroTrustAssessment instance...');
                 this.zeroTrustAssessment = new ZeroTrustAssessment(this);
-                console.log('✅ Zero Trust Assessment initialized successfully');
+                console.log('✅ Zero Trust Assessment initialized successfully:', this.zeroTrustAssessment);
             } catch (error) {
                 console.error('❌ Failed to initialize Zero Trust Assessment:', error);
             }
         } else {
-            console.warn('⚠️ Zero Trust Assessment classes not loaded');
+            console.warn('⚠️ Zero Trust Assessment classes not loaded - checking scripts...');
+            
+            // Check if scripts are loaded
+            const scripts = Array.from(document.querySelectorAll('script[src*="zero-trust"]'));
+            console.log('📜 Zero Trust scripts found:', scripts.map(s => s.src));
         }
     }
 

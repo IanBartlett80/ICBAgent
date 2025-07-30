@@ -3,18 +3,41 @@
 
 class ZeroTrustAssessment {
     constructor(icbAgent) {
+        console.log('🔧 ZeroTrustAssessment constructor called with:', icbAgent);
+        
         this.icbAgent = icbAgent;
-        this.graphService = new ZeroTrustGraphService();
-        this.assessmentEngine = new ZeroTrustAssessmentEngine();
+        
+        // Check if required classes are available
+        console.log('🔍 ZeroTrustAssessment constructor - checking dependencies:');
+        console.log('  - ZeroTrustGraphService:', typeof ZeroTrustGraphService);
+        console.log('  - ZeroTrustAssessmentEngine:', typeof ZeroTrustAssessmentEngine);
+        
+        try {
+            this.graphService = new ZeroTrustGraphService();
+            console.log('✅ ZeroTrustGraphService created successfully');
+        } catch (error) {
+            console.error('❌ Failed to create ZeroTrustGraphService:', error);
+            throw error;
+        }
+        
+        try {
+            this.assessmentEngine = new ZeroTrustAssessmentEngine();
+            console.log('✅ ZeroTrustAssessmentEngine created successfully');
+        } catch (error) {
+            console.error('❌ Failed to create ZeroTrustAssessmentEngine:', error);
+            throw error;
+        }
         
         this.currentAssessment = null;
         this.assessmentHistory = [];
         this.isRunning = false;
         
+        console.log('🔧 ZeroTrustAssessment: Initializing UI...');
         this.initializeUI();
+        console.log('🔧 ZeroTrustAssessment: Binding events...');
         this.bindEvents();
         
-        console.log('Zero Trust Assessment component initialized');
+        console.log('✅ Zero Trust Assessment component initialized successfully');
     }
 
     initializeUI() {
@@ -149,22 +172,23 @@ class ZeroTrustAssessment {
             this.isRunning = true;
             this.showProgress();
             
-            // Check if we have a Graph token
-            if (!this.icbAgent.graphToken) {
-                this.updateProgress(0, 'Requesting Microsoft Graph access...');
-                await this.requestGraphAccess();
+            // Verify session is available
+            if (!this.icbAgent.sessionId) {
+                throw new Error('No active session. Please connect to a tenant first.');
             }
 
-            // Initialize Graph service
+            // Initialize Graph service with session ID (already done in app.js)
             this.updateProgress(5, 'Initializing Graph API service...');
-            this.graphService.initialize(this.icbAgent.graphToken);
+            if (!this.graphService.sessionId) {
+                this.graphService.initialize(this.icbAgent.sessionId);
+            }
 
-            // Validate permissions
-            this.updateProgress(10, 'Validating permissions...');
-            const permissionCheck = await this.graphService.validatePermissions();
-            
-            if (!permissionCheck.allPermissionsValid) {
-                throw new Error('Insufficient permissions for comprehensive assessment');
+            // Test connectivity by making a simple API call
+            this.updateProgress(10, 'Verifying Microsoft Graph connectivity...');
+            try {
+                await this.graphService.makeGraphRequest('organization');
+            } catch (error) {
+                throw new Error('Failed to connect to Microsoft Graph. Please ensure you are properly authenticated.');
             }
 
             // Collect data
@@ -211,41 +235,9 @@ class ZeroTrustAssessment {
         }
     }
 
-    async requestGraphAccess() {
-        return new Promise((resolve, reject) => {
-            // Request Graph token from ICB Agent
-            this.icbAgent.socket.emit('request-graph-token', {
-                scopes: this.graphService.requiredScopes
-            });
-
-            // Set timeout for token request
-            const timeout = setTimeout(() => {
-                reject(new Error('Graph token request timeout'));
-            }, 30000);
-
-            // Handle token response
-            const tokenHandler = (token) => {
-                clearTimeout(timeout);
-                this.icbAgent.socket.off('graph-token-received', tokenHandler);
-                this.icbAgent.socket.off('graph-token-error', errorHandler);
-                resolve(token);
-            };
-
-            const errorHandler = (error) => {
-                clearTimeout(timeout);
-                this.icbAgent.socket.off('graph-token-received', tokenHandler);
-                this.icbAgent.socket.off('graph-token-error', errorHandler);
-                reject(new Error(error.message));
-            };
-
-            this.icbAgent.socket.on('graph-token-received', tokenHandler);
-            this.icbAgent.socket.on('graph-token-error', errorHandler);
-        });
-    }
-
     handleGraphToken(token) {
-        this.icbAgent.graphToken = token;
-        console.log('Graph token received for Zero Trust Assessment');
+        // This method is no longer needed as we use session-based authentication
+        console.log('Graph token handling is managed by ICB Agent MCP client');
     }
 
     showProgress() {
