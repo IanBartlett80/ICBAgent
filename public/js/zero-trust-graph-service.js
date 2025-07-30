@@ -78,9 +78,15 @@ class ZeroTrustGraphService {
 
             if (!response.ok) {
                 const errorData = await response.json();
+                console.log('🔍 API Error Response Details:', {
+                    status: response.status,
+                    errorData: errorData,
+                    dataType: dataType
+                });
                 
                 // Handle permission errors specifically
                 if (response.status === 403 && errorData.requiresPermissions) {
+                    console.log('🔒 Creating permission error with scopes:', errorData.requiredScopes);
                     const permissionError = new Error(errorData.error || `Insufficient permissions for ${dataType}`);
                     permissionError.isPermissionError = true;
                     permissionError.dataType = dataType;
@@ -294,6 +300,20 @@ class ZeroTrustGraphService {
                 results[task.name] = await task.method();
             } catch (error) {
                 console.error(`Failed to collect ${task.name}:`, error);
+                console.log('🔍 Task error details:', {
+                    taskName: task.name,
+                    isPermissionError: error.isPermissionError,
+                    dataType: error.dataType,
+                    message: error.message
+                });
+                
+                // If this is a permission error, propagate it up instead of continuing
+                if (error.isPermissionError) {
+                    console.log(`🔒 Permission error in collectIdentityData for ${task.name}, propagating...`);
+                    throw error;
+                }
+                
+                // For other errors, set empty result and continue
                 results[task.name] = [];
             }
         }
@@ -323,6 +343,14 @@ class ZeroTrustGraphService {
                 results[task.name] = await task.method();
             } catch (error) {
                 console.error(`Failed to collect ${task.name}:`, error);
+                
+                // If this is a permission error, propagate it up instead of continuing
+                if (error.isPermissionError) {
+                    console.log(`🔒 Permission error in collectDeviceData for ${task.name}, propagating...`);
+                    throw error;
+                }
+                
+                // For other errors, set empty result and continue
                 results[task.name] = [];
             }
         }
@@ -351,6 +379,14 @@ class ZeroTrustGraphService {
                 results[task.name] = await task.method();
             } catch (error) {
                 console.error(`Failed to collect ${task.name}:`, error);
+                
+                // If this is a permission error, propagate it up instead of continuing
+                if (error.isPermissionError) {
+                    console.log(`🔒 Permission error in collectApplicationData for ${task.name}, propagating...`);
+                    throw error;
+                }
+                
+                // For other errors, set empty result and continue
                 results[task.name] = [];
             }
         }
@@ -379,6 +415,14 @@ class ZeroTrustGraphService {
                 results[task.name] = await task.method();
             } catch (error) {
                 console.error(`Failed to collect ${task.name}:`, error);
+                
+                // If this is a permission error, propagate it up instead of continuing
+                if (error.isPermissionError) {
+                    console.log(`🔒 Permission error in collectInfrastructureData for ${task.name}, propagating...`);
+                    throw error;
+                }
+                
+                // For other errors, set empty result and continue
                 results[task.name] = [];
             }
         }

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero Trust Permission Debug - ICB Agent</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Zero Trust Permission Debug Test</h1>
+        <p>Testing permission error handling and approval dialog.</p>
+        
+        <div id="debug-output" style="background: #f5f5f5; padding: 20px; margin: 20px 0; border-radius: 8px; max-height: 400px; overflow-y: auto;">
+            <h3>Debug Output:</h3>
+            <div id="debug-log"></div>
+        </div>
+        
+        <button id="test-conditional-access" class="primary-button">
+            Test Conditional Access Permission Error
+        </button>
+        
+        <button id="clear-debug" class="secondary-button">
+            Clear Debug Log
+        </button>
+    </div>
+
+    <script src="/js/zero-trust-graph-service.js"></script>
+    <script src="/js/zero-trust-assessment-engine.js"></script>
+    <script src="/js/zero-trust-assessment.js"></script>
+    
+    <script>
+        // Debug logging function
+        function debugLog(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('debug-log');
+            const logEntry = document.createElement('div');
+            logEntry.style.marginBottom = '10px';
+            logEntry.style.padding = '8px';
+            logEntry.style.backgroundColor = '#fff';
+            logEntry.style.borderRadius = '4px';
+            logEntry.style.border = '1px solid #ddd';
+            
+            let content = `<strong>${timestamp}:</strong> ${message}`;
+            if (data) {
+                content += `<br><pre style="margin-top: 5px; font-size: 12px; color: #666;">${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            logEntry.innerHTML = content;
+            logDiv.insertBefore(logEntry, logDiv.firstChild);
+        }
+
+        // Mock ICB Agent
+        const mockIcbAgent = {
+            sessionId: 'debug-session-123',
+            showError: (message) => debugLog('❌ ICB Agent Error', { message }),
+            addMessage: (message, type) => debugLog(`📝 ICB Agent Message (${type})`, { message }),
+            showNotification: (message, type) => debugLog(`🔔 Notification (${type})`, { message })
+        };
+
+        // Initialize services
+        const graphService = new ZeroTrustGraphService();
+        graphService.initialize(mockIcbAgent.sessionId);
+
+        const assessment = new ZeroTrustAssessment(mockIcbAgent);
+
+        // Override console methods to capture debug info
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        
+        console.log = function(...args) {
+            if (args[0] && args[0].includes && (args[0].includes('🔍') || args[0].includes('🔒'))) {
+                debugLog('Console Log', args);
+            }
+            originalConsoleLog.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            if (args[0] && (typeof args[0] === 'string' || args[0].message)) {
+                debugLog('Console Error', args[0].message || args[0]);
+            }
+            originalConsoleError.apply(console, args);
+        };
+
+        // Test conditional access permission error
+        document.getElementById('test-conditional-access').addEventListener('click', async () => {
+            debugLog('🧪 Starting conditional access permission test...');
+            
+            try {
+                await graphService.getConditionalAccessPolicies();
+                debugLog('✅ Conditional access call succeeded (unexpected)');
+            } catch (error) {
+                debugLog('⚠️ Conditional access call failed', {
+                    message: error.message,
+                    isPermissionError: error.isPermissionError,
+                    dataType: error.dataType,
+                    requiredScopes: error.requiredScopes,
+                    requiresPermissions: error.requiresPermissions
+                });
+                
+                if (error.isPermissionError) {
+                    debugLog('🔒 Permission error detected, testing dialog...');
+                    try {
+                        const approved = await assessment.showPermissionDialog(
+                            error.dataType,
+                            error.requiredScopes || ['Policy.Read.All'],
+                            error.rawError
+                        );
+                        debugLog('📊 Permission dialog result', { approved });
+                    } catch (dialogError) {
+                        debugLog('❌ Permission dialog error', dialogError);
+                    }
+                } else {
+                    debugLog('⚠️ Error was not recognized as permission error');
+                }
+            }
+        });
+
+        // Clear debug log
+        document.getElementById('clear-debug').addEventListener('click', () => {
+            document.getElementById('debug-log').innerHTML = '';
+        });
+
+        // Initial debug message
+        debugLog('🔧 Debug page initialized', {
+            graphServiceInitialized: !!graphService,
+            assessmentInitialized: !!assessment,
+            sessionId: mockIcbAgent.sessionId
+        });
+    </script>
+</body>
+</html>

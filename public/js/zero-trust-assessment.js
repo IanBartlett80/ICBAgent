@@ -208,8 +208,17 @@ class ZeroTrustAssessment {
                     }
                 );
             } catch (error) {
+                console.log('🔍 Data collection error details:', {
+                    message: error.message,
+                    isPermissionError: error.isPermissionError,
+                    dataType: error.dataType,
+                    requiredScopes: error.requiredScopes,
+                    stack: error.stack
+                });
+                
                 // Handle permission errors during data collection
                 if (error.isPermissionError) {
+                    console.log('🔒 Handling permission error for data type:', error.dataType);
                     this.hideProgress();
                     await this.handlePermissionError(error, error.dataType, () => this.startAssessment());
                     return;
