@@ -4059,6 +4059,199 @@ app.post('/api/dual-tenant/clone-policy', async (req, res) => {
   }
 });
 
+// Zero Trust Assessment API endpoint
+app.post('/api/zero-trust-assessment', async (req, res) => {
+  const { sessionId } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  try {
+    const mcpClient = mcpConnections.get(sessionId);
+    
+    if (!mcpClient) {
+      return res.status(404).json({ error: 'MCP client not found for session' });
+    }
+
+    if (!mcpClient.isConnected) {
+      return res.status(400).json({ error: 'MCP client not connected' });
+    }
+
+    // Check if we have a valid access token
+    const token = await mcpClient.getAccessToken();
+    if (!token) {
+      return res.status(401).json({ 
+        error: 'No valid access token available',
+        requiresAuth: true 
+      });
+    }
+
+    // Return success response - the client-side code will handle the actual assessment
+    res.json({
+      success: true,
+      message: 'Zero Trust Assessment ready to start',
+      hasValidToken: true,
+      sessionId: sessionId
+    });
+    
+  } catch (error) {
+    console.error('Error preparing Zero Trust Assessment:', error);
+    res.status(500).json({ 
+      error: 'Failed to prepare Zero Trust Assessment: ' + error.message 
+    });
+  }
+});
+
+// Zero Trust Assessment data collection endpoint
+app.post('/api/zero-trust-assessment/collect', async (req, res) => {
+  const { sessionId, dataType, options } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!dataType) {
+    return res.status(400).json({ error: 'Data type is required' });
+  }
+  
+  try {
+    const mcpClient = mcpConnections.get(sessionId);
+    
+    if (!mcpClient || !mcpClient.isConnected) {
+      return res.status(400).json({ error: 'MCP client not available' });
+    }
+
+    // Map data collection requests to MCP commands
+    let mcpRequest;
+    
+    switch (dataType) {
+      case 'users':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/users',
+          queryParams: {
+            '$select': 'id,displayName,userPrincipalName,mail,accountEnabled,signInActivity,lastSignInDateTime,createdDateTime,assignedLicenses,assignedPlans,mfaDetail',
+            '$top': options?.limit || '999'
+          },
+          fetchAll: true,
+          consistencyLevel: 'eventual'
+        };
+        break;
+        
+      case 'devices':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/deviceManagement/managedDevices',
+          queryParams: {
+            '$select': 'id,deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managementAgent,ownerType,userPrincipalName',
+            '$top': options?.limit || '999'
+          },
+          fetchAll: true
+        };
+        break;
+        
+      case 'conditionalAccess':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/identity/conditionalAccess/policies',
+          queryParams: {
+            '$select': 'id,displayName,state,conditions,grantControls,sessionControls,createdDateTime,modifiedDateTime'
+          },
+          fetchAll: true
+        };
+        break;
+        
+      case 'applications':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/applications',
+          queryParams: {
+            '$select': 'id,displayName,appId,createdDateTime,signInAudience,requiredResourceAccess,keyCredentials,passwordCredentials'
+          },
+          fetchAll: true
+        };
+        break;
+        
+      case 'groups':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/groups',
+          queryParams: {
+            '$select': 'id,displayName,groupTypes,securityEnabled,mailEnabled,createdDateTime,membershipRule,membershipRuleProcessingState'
+          },
+          fetchAll: true,
+          consistencyLevel: 'eventual'
+        };
+        break;
+        
+      case 'directoryRoles':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/directoryRoles',
+          queryParams: {
+            '$select': 'id,displayName,description,roleTemplateId'
+          }
+        };
+        break;
+        
+      case 'domains':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/domains',
+          queryParams: {
+            '$select': 'id,authenticationType,availabilityStatus,isDefault,isInitial,isRoot,isVerified,supportedServices'
+          }
+        };
+        break;
+        
+      case 'organization':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/organization',
+          queryParams: {
+            '$select': 'id,displayName,verifiedDomains,assignedPlans,securityComplianceNotificationMails,securityComplianceNotificationPhones'
+          }
+        };
+        break;
+        
+      default:
+        return res.status(400).json({ error: 'Unsupported data type: ' + dataType });
+    }
+
+    // Execute the MCP request
+    const response = await mcpClient.callTool('mcp_lokka-microso_Lokka-Microsoft', mcpRequest);
+    
+    if (response && response.content && response.content[0] && response.content[0].text) {
+      const data = JSON.parse(response.content[0].text);
+      res.json({
+        success: true,
+        dataType: dataType,
+        data: data,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Unexpected response format from Microsoft Graph API' 
+      });
+    }
+    
+  } catch (error) {
+    console.error(`Error collecting ${dataType} data:`, error);
+    res.status(500).json({ 
+      error: `Failed to collect ${dataType} data: ` + error.message 
+    });
+  }
+});
+
 app.post('/api/dual-tenant/cleanup', async (req, res) => {
   const { sessionId } = req.body;
   

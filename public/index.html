@@ -111,20 +111,20 @@
                         </div>
                     </a>
 
-                    <a href="https://aka.ms/ztworkshop-new" target="_blank" class="feature-card zero-trust-link" title="Access Zero Trust Assessment Tool">
+                    <div class="feature-card zero-trust-link" id="zeroTrustCard" title="Launch Zero Trust Assessment">
                         <div class="feature-icon">
                             <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 6h2v2h-2V7zm0 4h2v6h-2v-6z"/>
                             </svg>
                         </div>
                         <h3>Zero Trust Assessment</h3>
-                        <p>Evaluate your organization's security posture with Microsoft's comprehensive Zero Trust assessment and implementation guidance.</p>
+                        <p>Evaluate your organization's security posture with a comprehensive Zero Trust assessment directly within ICB Agent.</p>
                         <div class="feature-link-indicator">
                             <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
                             </svg>
                         </div>
-                    </a>
+                    </div>
                 </div>
 
                 <!-- Enhanced Tenant Setup -->
@@ -194,6 +194,7 @@
                             <h3>Managing: <span id="currentTenant">-</span></h3>
                             <div class="session-controls">
                                 <button class="btn-secondary" id="generateReportBtn">Generate Health Report</button>
+                                <button class="btn-primary" id="zeroTrustAssessmentBtn">Zero Trust Assessment</button>
                                 <button class="btn-danger" id="disconnectBtn">Disconnect</button>
                             </div>
                         </div>
@@ -232,6 +233,7 @@
                             <button class="quick-action-btn" data-message="What is the current license usage?">📊 License Usage</button>
                             <button class="quick-action-btn" data-message="Check security alerts and policies">🔒 Security Status</button>
                             <button class="quick-action-btn" data-message="Show me recent sign-in activity">📈 Sign-in Activity</button>
+                            <button class="quick-action-btn" id="ztAssessmentQuickBtn">🛡️ Zero Trust Assessment</button>
                         </div>
                     </div>
                 </div>
@@ -270,6 +272,10 @@
 
     <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script>
+    <!-- Zero Trust Assessment Scripts -->
+    <script src="js/zero-trust-graph-service.js?v=1722191000"></script>
+    <script src="js/zero-trust-assessment-engine.js?v=1722191000"></script>
+    <script src="js/zero-trust-assessment.js?v=1722191000"></script>
     <script src="js/app.js?v=1722191000"></script>
 </body>
 </html>

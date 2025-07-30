@@ -4,6 +4,10 @@ class ICBAgent {
         this.sessionId = null;
         this.currentTenant = null;
         this.isConnected = false;
+        this.graphToken = null;
+        
+        // Initialize Zero Trust Assessment
+        this.zeroTrustAssessment = null;
         
         this.init();
     }
@@ -14,6 +18,7 @@ class ICBAgent {
         this.bindEvents();
         this.updateConnectionStatus('disconnected');
         this.setupAuthenticationListener();
+        this.initializeZeroTrustAssessment();
         this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
     }
@@ -133,6 +138,22 @@ class ICBAgent {
         });
     }
 
+    initializeZeroTrustAssessment() {
+        console.log('Initializing Zero Trust Assessment...');
+        
+        // Check if Zero Trust Assessment classes are available
+        if (typeof ZeroTrustAssessment !== 'undefined') {
+            try {
+                this.zeroTrustAssessment = new ZeroTrustAssessment(this);
+                console.log('✅ Zero Trust Assessment initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to initialize Zero Trust Assessment:', error);
+            }
+        } else {
+            console.warn('⚠️ Zero Trust Assessment classes not loaded');
+        }
+    }
+
     bindEvents() {
         // Get Started button
         const getStartedBtn = document.getElementById('getStartedBtn');
@@ -205,6 +226,14 @@ class ICBAgent {
             });
         }
 
+        // Zero Trust Assessment feature card click handler
+        const zeroTrustCard = document.getElementById('zeroTrustCard');
+        if (zeroTrustCard) {
+            zeroTrustCard.addEventListener('click', () => {
+                this.handleZeroTrustFeatureClick();
+            });
+        }
+
         // Report generation
         const generateReportBtn = document.getElementById('generateReportBtn');
         generateReportBtn.addEventListener('click', () => {
@@ -247,6 +276,21 @@ class ICBAgent {
         emailReportBtn.addEventListener('click', () => {
             this.emailReport();
         });
+
+        // Zero Trust Assessment buttons
+        const zeroTrustAssessmentBtn = document.getElementById('zeroTrustAssessmentBtn');
+        if (zeroTrustAssessmentBtn) {
+            zeroTrustAssessmentBtn.addEventListener('click', () => {
+                this.startZeroTrustAssessment();
+            });
+        }
+
+        const ztAssessmentQuickBtn = document.getElementById('ztAssessmentQuickBtn');
+        if (ztAssessmentQuickBtn) {
+            ztAssessmentQuickBtn.addEventListener('click', () => {
+                this.startZeroTrustAssessment();
+            });
+        }
     }
 
     async handleGetStarted() {
@@ -393,6 +437,48 @@ class ICBAgent {
         } catch (error) {
             console.error('Error generating report:', error);
             this.showError('Failed to generate health check report');
+        }
+    }
+
+    async startZeroTrustAssessment() {
+        if (!this.sessionId) {
+            this.showError('No active session. Please connect to a tenant first.');
+            return;
+        }
+
+        try {
+            // Check if Zero Trust Assessment is available
+            const response = await fetch('/api/zero-trust-assessment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ sessionId: this.sessionId }),
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+                if (data.requiresAuth) {
+                    this.showError('Authentication required. Please ensure you are properly authenticated with Microsoft Graph.');
+                    return;
+                }
+                throw new Error(data.error || 'Failed to start Zero Trust Assessment');
+            }
+
+            // Initialize and show the Zero Trust Assessment
+            if (this.zeroTrustAssessment) {
+                // Initialize the graph service with session ID
+                this.zeroTrustAssessment.graphService.initialize(this.sessionId);
+                // Show the assessment interface
+                this.zeroTrustAssessment.show();
+            } else {
+                this.showError('Zero Trust Assessment not initialized. Please refresh the page and try again.');
+            }
+
+        } catch (error) {
+            console.error('Error starting Zero Trust Assessment:', error);
+            this.showError(`Failed to start Zero Trust Assessment: ${error.message}`);
         }
     }
 
@@ -826,6 +912,42 @@ class ICBAgent {
         }
     }
 
+    handleZeroTrustFeatureClick() {
+        // Check if user is already connected to a tenant
+        if (this.isConnected && this.currentTenant) {
+            // If connected, launch Zero Trust Assessment directly
+            this.startZeroTrustAssessment();
+            this.showSuccess(`🔒 Starting Zero Trust Assessment for ${this.currentTenant}...`);
+        } else {
+            // If not connected, prompt them to connect first
+            this.showInfo(`🔒 To run the Zero Trust Assessment, please connect to your Microsoft 365 tenant first. Enter your tenant domain below and click "Connect".`);
+            
+            // Scroll to the tenant setup form
+            const setupForm = document.querySelector('.tenant-setup');
+            if (setupForm) {
+                setupForm.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+                
+                // Add a subtle highlight to the form with security theme
+                setupForm.style.transition = 'box-shadow 0.3s ease';
+                setupForm.style.boxShadow = '0 0 20px rgba(16, 185, 129, 0.3)'; // Green security theme
+                setTimeout(() => {
+                    setupForm.style.boxShadow = '';
+                }, 3000);
+                
+                // Focus on the domain input for better UX
+                const domainInput = document.getElementById('tenantDomain');
+                if (domainInput) {
+                    setTimeout(() => {
+                        domainInput.focus();
+                    }, 500);
+                }
+            }
+        }
+    }
+
     showReportModal(report) {
         const modal = document.getElementById('reportModal');
         const content = document.getElementById('reportContent');
@@ -1243,6 +1365,93 @@ Once you complete the permission process, your query will be automatically proce
                 }
             }, 300);
         }, duration);
+    }
+
+    // ==================== ZERO TRUST ASSESSMENT METHODS ====================
+
+    showZeroTrustAssessment() {
+        if (this.zeroTrustAssessment) {
+            this.zeroTrustAssessment.show();
+        } else {
+            this.showError('Zero Trust Assessment not available');
+        }
+    }
+
+    hideZeroTrustAssessment() {
+        if (this.zeroTrustAssessment) {
+            this.zeroTrustAssessment.hide();
+        }
+    }
+
+    showModal(title, content) {
+        // Create modal backdrop
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop';
+        Object.assign(backdrop.style, {
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: '10000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: '0',
+            transition: 'opacity 0.3s ease'
+        });
+
+        // Create modal content
+        const modal = document.createElement('div');
+        modal.className = 'modal-content';
+        Object.assign(modal.style, {
+            background: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '600px',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+            transform: 'scale(0.9)',
+            transition: 'transform 0.3s ease'
+        });
+
+        modal.innerHTML = `
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #e5e7eb; padding-bottom: 16px;">
+                <h3 style="margin: 0; color: var(--primary-700); font-size: 1.25rem;">${title}</h3>
+                <button class="modal-close" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #6b7280;">×</button>
+            </div>
+            <div class="modal-body">
+                ${content}
+            </div>
+        `;
+
+        backdrop.appendChild(modal);
+        document.body.appendChild(backdrop);
+
+        // Animate in
+        setTimeout(() => {
+            backdrop.style.opacity = '1';
+            modal.style.transform = 'scale(1)';
+        }, 10);
+
+        // Close handlers
+        const closeModal = () => {
+            backdrop.style.opacity = '0';
+            modal.style.transform = 'scale(0.9)';
+            setTimeout(() => {
+                if (backdrop.parentNode) {
+                    backdrop.parentNode.removeChild(backdrop);
+                }
+            }, 300);
+        };
+
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) closeModal();
+        });
+
+        modal.querySelector('.modal-close').addEventListener('click', closeModal);
     }
 }
 
