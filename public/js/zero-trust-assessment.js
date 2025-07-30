@@ -193,7 +193,7 @@ class ZeroTrustAssessment {
 
             // Collect data
             this.updateProgress(15, 'Collecting assessment data...');
-            const assessmentData = await this.graphService.collectAssessmentData(
+            const assessmentData = await this.graphService.collectAllAssessmentData(
                 (progress) => {
                     const percentage = 15 + (progress.percentage * 0.6); // 15-75%
                     this.updateProgress(percentage, `Collecting ${progress.currentTask}...`);
