@@ -191,8 +191,26 @@ class ZeroTrustAssessment {
                 // Handle permission errors in the connectivity test
                 if (error.isPermissionError) {
                     this.hideProgress();
-                    await this.handlePermissionError(error, 'organization', () => this.startAssessment());
-                    return;
+                    
+                    // Show permission error message instead of attempting retry
+                    this.icbAgent.addMessage(`🔐 **Permission Required for Zero Trust Assessment**
+
+**Cannot connect to Microsoft Graph - missing permissions**
+
+The Zero Trust Assessment requires basic Microsoft Graph permissions to access organization information.
+
+**Required permissions:**
+${(error.requiredScopes || ['Organization.Read.All']).map(p => `• **${p}**`).join('\n')}
+
+**To resolve this:**
+1. Please send a message requesting these permissions
+2. The system will open Microsoft consent window
+3. Approve the requested permissions
+4. Run the assessment again
+
+**Example message:** "Please approve Microsoft Graph permissions: ${(error.requiredScopes || ['Organization.Read.All']).join(', ')}"`, 'system');
+                    
+                    return; // Don't retry automatically
                 }
                 throw new Error('Failed to connect to Microsoft Graph. Please ensure you are properly authenticated.');
             }
@@ -216,14 +234,58 @@ class ZeroTrustAssessment {
                     stack: error.stack
                 });
                 
-                // Handle permission errors during data collection
+                // Handle catastrophic permission errors (should be rare now)
                 if (error.isPermissionError) {
-                    console.log('🔒 Handling permission error for data type:', error.dataType);
+                    console.log('🔒 Handling critical permission error for data type:', error.dataType);
                     this.hideProgress();
-                    await this.handlePermissionError(error, error.dataType, () => this.startAssessment());
-                    return;
+                    
+                    // Show permission error message instead of attempting retry
+                    this.icbAgent.addMessage(`🔐 **Critical Permission Required for Zero Trust Assessment**
+
+**Missing permissions for ${error.dataType} data collection**
+
+The Zero Trust Assessment requires additional Microsoft Graph permissions to access ${error.dataType} information.
+
+**Required permissions:**
+${(error.requiredScopes || []).map(p => `• **${p}**`).join('\n')}
+
+**To resolve this:**
+1. Please send a message requesting these permissions
+2. The system will open Microsoft consent window
+3. Approve the requested permissions
+4. Run the assessment again
+
+**Example message:** "Please approve Microsoft Graph permissions: ${(error.requiredScopes || []).join(', ')}"`, 'system');
+                    
+                    return; // Don't retry automatically
                 }
                 throw error;
+            }
+
+            // Check for permission errors in the collected data
+            if (assessmentData.metadata && assessmentData.metadata.permissionErrors && assessmentData.metadata.permissionErrors.length > 0) {
+                const permissionErrors = assessmentData.metadata.permissionErrors;
+                const uniqueScopes = [...new Set(permissionErrors.flatMap(e => e.requiredScopes || []))];
+                const missingDataTypes = permissionErrors.map(e => e.dataType || e.taskName).join(', ');
+                
+                console.log('🔒 Permission errors found in assessment data:', permissionErrors);
+                
+                // Show warning but continue with partial assessment
+                this.icbAgent.addMessage(`⚠️ **Partial Zero Trust Assessment - Some Permissions Missing**
+
+**Missing data for:** ${missingDataTypes}
+
+Some Microsoft Graph permissions are required to collect complete assessment data. The assessment will continue with available data, but results may be incomplete.
+
+**Missing permissions:**
+${uniqueScopes.map(p => `• **${p}**`).join('\n')}
+
+**To get complete results:**
+1. Send a message: "Please approve Microsoft Graph permissions: ${uniqueScopes.join(', ')}"
+2. Approve the requested permissions in the consent window
+3. Run the assessment again
+
+**Continuing with partial assessment...**`, 'system');
             }
 
             // Perform assessment
@@ -571,7 +633,7 @@ class ZeroTrustAssessment {
     }
 
     /**
-     * Handle permission errors by showing approval dialog
+     * Handle permission errors by using ICB Agent's built-in permission system
      * @param {Error} error - The permission error
      * @param {string} dataType - The data type that requires permissions
      * @param {Function} retryCallback - Function to call after permission approval
@@ -582,119 +644,134 @@ class ZeroTrustAssessment {
         // Get required permissions from error or fallback to service method
         const requiredPermissions = error.requiredScopes || this.graphService.getRequiredPermissions(dataType);
         
-        // Show permission approval dialog
-        const approved = await this.showPermissionDialog(dataType, requiredPermissions, error.rawError);
+        console.log('🔐 Required permissions for', dataType, ':', requiredPermissions);
         
-        if (approved) {
-            // User approved, initiate permission request
-            await this.requestPermissions(requiredPermissions, retryCallback);
-        } else {
-            // User declined, show error message
-            this.icbAgent.showError(`Zero Trust Assessment requires additional permissions to access ${dataType} data. Assessment cannot continue without proper permissions.`);
+        // Use ICB Agent's built-in permission approval system
+        await this.requestPermissionsViaICB(requiredPermissions, dataType, retryCallback);
+    }
+
+    /**
+     * Request permissions using ICB Agent's built-in system
+     * @param {Array<string>} permissions - Required permission scopes
+     * @param {string} dataType - The data type requiring permissions
+     * @param {Function} retryCallback - Function to call after approval
+     */
+    async requestPermissionsViaICB(permissions, dataType, retryCallback) {
+        console.log('🔑 Requesting permissions via ICB Agent system:', permissions);
+        
+        // Show user-friendly message about the permission request
+        const dataTypeDisplay = dataType.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+        
+        this.icbAgent.addMessage(`🔐 **Additional Permissions Required**
+
+**Zero Trust Assessment needs access to ${dataTypeDisplay} data**
+
+The following Microsoft Graph permissions are required:
+${permissions.map(p => `• **${p}**`).join('\n')}
+
+**🚀 Opening Microsoft consent window...**
+
+Please review and approve the permissions to continue the assessment.`, 'system');
+
+        // Store the retry callback for after permission approval
+        if (retryCallback) {
+            this.pendingAssessmentRetry = retryCallback;
+            this.monitorZeroTrustPermissionApproval(retryCallback);
+        }
+
+        // Use ICB Agent's permission request system
+        try {
+            // Send message to trigger the existing permission flow
+            await this.icbAgent.sendMessage(`Please approve the following Microsoft Graph permissions for Zero Trust Assessment: ${permissions.join(', ')}`);
+            
+        } catch (error) {
+            console.error('❌ Error requesting permissions via ICB Agent:', error);
+            this.icbAgent.showError('Failed to request permissions. Please try again.');
         }
     }
 
     /**
-     * Show permission approval dialog to IT professional
-     * @param {string} dataType - The type of data requiring permissions
-     * @param {Array<string>} permissions - Required permission scopes
-     * @param {string} rawError - Raw error message from API
-     * @returns {Promise<boolean>} Whether user approved the permission request
+     * Monitor for permission approval and retry assessment (Zero Trust specific)
+     * @param {Function} retryCallback - Function to call after approval
      */
-    async showPermissionDialog(dataType, permissions, rawError) {
-        return new Promise((resolve) => {
-            // Create modal dialog
-            const modal = document.createElement('div');
-            modal.className = 'permission-modal';
-            modal.innerHTML = `
-                <div class="permission-modal-overlay">
-                    <div class="permission-modal-content">
-                        <div class="permission-modal-header">
-                            <h3>🔐 Additional Permissions Required</h3>
-                            <p>Zero Trust Assessment needs additional Microsoft Graph permissions</p>
-                        </div>
-                        
-                        <div class="permission-modal-body">
-                            <div class="permission-request-info">
-                                <h4>📊 Data Collection Request</h4>
-                                <p><strong>Resource:</strong> ${this.getDataTypeDisplayName(dataType)}</p>
-                                <p><strong>Purpose:</strong> Security posture assessment and compliance evaluation</p>
-                            </div>
-                            
-                            <div class="permission-list">
-                                <h4>🔑 Required Permissions</h4>
-                                <ul class="permissions-list">
-                                    ${permissions.map(permission => `
-                                        <li class="permission-item">
-                                            <span class="permission-scope">${permission}</span>
-                                            <span class="permission-description">${this.getPermissionDescription(permission)}</span>
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            </div>
-                            
-                            <div class="permission-impact">
-                                <h4>ℹ️ What This Means</h4>
-                                <p>These permissions allow the ICB Agent to read ${this.getDataTypeDisplayName(dataType)} information from your Microsoft 365 tenant for security assessment purposes. <strong>No data will be modified or deleted.</strong></p>
-                            </div>
-                            
-                            <div class="permission-process">
-                                <h4>🚀 Approval Process</h4>
-                                <ol>
-                                    <li>Click "Approve Permissions" below</li>
-                                    <li>A new browser window will open for Microsoft consent</li>
-                                    <li>Review and approve the requested permissions</li>
-                                    <li>Return to this page - assessment will continue automatically</li>
-                                </ol>
-                            </div>
-                            
-                            ${rawError ? `
-                                <details class="error-details">
-                                    <summary>🔍 Technical Details</summary>
-                                    <pre class="error-text">${rawError}</pre>
-                                </details>
-                            ` : ''}
-                        </div>
-                        
-                        <div class="permission-modal-footer">
-                            <button id="approve-permissions-btn" class="primary-button">
-                                <span class="button-icon">✅</span>
-                                Approve Permissions
-                            </button>
-                            <button id="cancel-permissions-btn" class="secondary-button">
-                                <span class="button-icon">❌</span>
-                                Cancel Assessment
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
+    monitorZeroTrustPermissionApproval(retryCallback) {
+        console.log('🔍 Starting Zero Trust permission approval monitoring...');
+        
+        // Listen for ICB Agent's permission approval completion
+        if (this.icbAgent.socket) {
+            const handlePermissionApproval = () => {
+                console.log('✅ Zero Trust permission approval detected!');
+                
+                // Clear pending retry
+                this.pendingAssessmentRetry = null;
+                
+                // Show success message
+                this.icbAgent.addMessage('✅ **Permissions Approved!** \n\nResuming Zero Trust Assessment with the newly granted permissions...', 'system');
+                
+                // Small delay to ensure permissions are fully propagated
+                setTimeout(() => {
+                    if (retryCallback) {
+                        console.log('🔄 Retrying Zero Trust Assessment after permission approval...');
+                        retryCallback();
+                    }
+                }, 2000);
+                
+                // Remove the listener to prevent duplicate calls
+                this.icbAgent.socket.off('query_rerun_complete', handlePermissionApproval);
+            };
             
-            // Add to document
-            document.body.appendChild(modal);
-            
-            // Bind events
-            const approveBtn = modal.querySelector('#approve-permissions-btn');
-            const cancelBtn = modal.querySelector('#cancel-permissions-btn');
-            
-            approveBtn.addEventListener('click', () => {
-                document.body.removeChild(modal);
-                resolve(true);
-            });
-            
-            cancelBtn.addEventListener('click', () => {
-                document.body.removeChild(modal);
-                resolve(false);
-            });
-            
-            // Close on overlay click
-            modal.querySelector('.permission-modal-overlay').addEventListener('click', (e) => {
-                if (e.target.classList.contains('permission-modal-overlay')) {
-                    document.body.removeChild(modal);
-                    resolve(false);
+            // Listen for query rerun completion (indicates permissions were approved)
+            this.icbAgent.socket.on('query_rerun_complete', handlePermissionApproval);
+        }
+        
+        // Also monitor authentication status changes as fallback
+        const checkInterval = setInterval(async () => {
+            try {
+                if (!this.pendingAssessmentRetry) {
+                    clearInterval(checkInterval);
+                    return;
                 }
-            });
-        });
+                
+                // Check authentication status  
+                const response = await fetch(`/api/auth/status/${this.icbAgent.sessionId}`);
+                if (response.ok) {
+                    const authStatus = await response.json();
+                    
+                    if (authStatus.isAuthenticated && authStatus.hasToken) {
+                        clearInterval(checkInterval);
+                        
+                        console.log('✅ Zero Trust permission approval detected via polling!');
+                        
+                        // Clear pending retry
+                        this.pendingAssessmentRetry = null;
+                        
+                        // Show success message
+                        this.icbAgent.addMessage('✅ **Permissions Approved!** \n\nResuming Zero Trust Assessment with the newly granted permissions...', 'system');
+                        
+                        // Small delay to ensure permissions are fully propagated
+                        setTimeout(() => {
+                            if (retryCallback) {
+                                console.log('🔄 Retrying Zero Trust Assessment after permission approval...');
+                                retryCallback();
+                            }
+                        }, 2000);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking permission status:', error);
+            }
+        }, 3000);
+
+        // Timeout after 10 minutes
+        setTimeout(() => {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
+            if (this.pendingAssessmentRetry) {
+                this.pendingAssessmentRetry = null;
+                this.icbAgent.addMessage('⏰ **Permission Request Timeout**\n\nThe permission approval process timed out. Please try starting the assessment again.', 'system');
+            }
+        }, 600000);
     }
 
     /**
@@ -739,126 +816,6 @@ class ZeroTrustAssessment {
             'Organization.Read.All': 'Read organization profile and tenant information'
         };
         return descriptions[permission] || 'Microsoft Graph permission for tenant access';
-    }
-
-    /**
-     * Request permissions and handle the approval workflow
-     * @param {Array<string>} permissions - Required permission scopes
-     * @param {Function} retryCallback - Function to call after approval
-     */
-    async requestPermissions(permissions, retryCallback) {
-        try {
-            console.log('🔑 Requesting permissions for Zero Trust Assessment:', permissions);
-            
-            // Show status message
-            this.icbAgent.addMessage(`🔐 **Requesting Additional Permissions**
-
-**Zero Trust Assessment Permission Request**
-
-The assessment requires additional Microsoft Graph permissions to collect security data:
-
-${permissions.map(p => `• **${p}** - ${this.getPermissionDescription(p)}`).join('\n')}
-
-**🚀 Next Steps:**
-1. A new browser window will open for Microsoft consent
-2. Please review and approve the requested permissions
-3. Return to this page - the assessment will continue automatically
-
-**⏳ Opening permission consent window...**`, 'system');
-
-            // Use ICB Agent's permission request mechanism
-            const permissionData = {
-                scopes: permissions,
-                originalMessage: 'Zero Trust Assessment - Permission Request',
-                timestamp: new Date().toISOString(),
-                context: 'zero-trust-assessment'
-            };
-
-            // Store the retry callback for later use
-            this.pendingAssessmentRetry = retryCallback;
-
-            // Trigger permission request through ICB Agent
-            if (this.icbAgent.handlePermissionRequest) {
-                this.icbAgent.handlePermissionRequest(permissionData);
-            } else {
-                // Fallback: direct MCP permission request
-                await this.requestPermissionsDirectly(permissions, retryCallback);
-            }
-
-        } catch (error) {
-            console.error('Error requesting permissions:', error);
-            this.icbAgent.showError('Failed to request permissions: ' + error.message);
-        }
-    }
-
-    /**
-     * Direct permission request to MCP server
-     * @param {Array<string>} permissions - Required permission scopes
-     * @param {Function} retryCallback - Function to call after approval
-     */
-    async requestPermissionsDirectly(permissions, retryCallback) {
-        try {
-            const response = await fetch('/api/mcp/request-permissions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    sessionId: this.icbAgent.sessionId,
-                    scopes: permissions,
-                    context: 'zero-trust-assessment'
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to request permissions from server');
-            }
-
-            const result = await response.json();
-            console.log('Permission request result:', result);
-
-            // Start monitoring for permission approval
-            this.monitorPermissionApproval(retryCallback);
-
-        } catch (error) {
-            console.error('Direct permission request failed:', error);
-            this.icbAgent.showError('Permission request failed: ' + error.message);
-        }
-    }
-
-    /**
-     * Monitor for permission approval and retry assessment
-     * @param {Function} retryCallback - Function to call after approval
-     */
-    monitorPermissionApproval(retryCallback) {
-        const checkInterval = setInterval(async () => {
-            try {
-                // Check authentication status
-                const response = await fetch(`/api/auth/status/${this.icbAgent.sessionId}`);
-                const authStatus = await response.json();
-                
-                if (authStatus.isAuthenticated && authStatus.hasToken) {
-                    clearInterval(checkInterval);
-                    
-                    this.icbAgent.addMessage('✅ **Permissions Approved!** \n\nResuming Zero Trust Assessment with the newly granted permissions...', 'system');
-                    
-                    // Small delay to ensure permissions are fully propagated
-                    setTimeout(() => {
-                        if (retryCallback) {
-                            retryCallback();
-                        }
-                    }, 2000);
-                }
-            } catch (error) {
-                console.error('Error checking permission status:', error);
-            }
-        }, 3000);
-
-        // Timeout after 10 minutes
-        setTimeout(() => {
-            clearInterval(checkInterval);
-            this.icbAgent.addMessage('⏰ **Permission Request Timeout**\n\nThe permission approval process timed out. Please try starting the assessment again.', 'system');
-        }, 600000);
     }
 
     // Utility method for delays
