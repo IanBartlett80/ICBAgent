@@ -4204,7 +4204,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,state,conditions,grantControls,sessionControls,createdDateTime,modifiedDateTime',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4244,7 +4244,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,description,roleTemplateId',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4257,7 +4257,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,authenticationType,availabilityStatus,isDefault,isInitial,isRoot,isVerified,supportedServices',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4270,7 +4270,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,verifiedDomains,assignedPlans,securityComplianceNotificationMails,securityComplianceNotificationPhones',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
