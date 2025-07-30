@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero Trust Permission Test - ICB Agent</title>
+    <link rel="stylesheet" href="public/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Zero Trust Assessment Permission Test</h1>
+        <p>This page tests the permission approval flow for the Zero Trust Assessment feature.</p>
+        
+        <div id="test-results">
+            <h2>Test Results</h2>
+            <div id="test-output"></div>
+        </div>
+        
+        <button id="test-permission-dialog" class="primary-button">
+            Test Permission Dialog
+        </button>
+        
+        <div id="test-modal-container"></div>
+    </div>
+
+    <script>
+        // Mock ICB Agent for testing
+        const mockIcbAgent = {
+            showError: (message) => {
+                const output = document.getElementById('test-output');
+                output.innerHTML += `<div class="error">❌ Error: ${message}</div>`;
+            },
+            addMessage: (message, type) => {
+                const output = document.getElementById('test-output');
+                output.innerHTML += `<div class="${type}">📝 ${message}</div>`;
+            },
+            sessionId: 'test-session-123'
+        };
+
+        // Mock ZeroTrustGraphService
+        class MockZeroTrustGraphService {
+            getRequiredPermissions(dataType) {
+                const permissions = {
+                    'users': ['User.Read.All', 'Directory.Read.All'],
+                    'conditionalAccess': ['Policy.Read.All', 'Policy.ReadWrite.ConditionalAccess', 'Directory.Read.All']
+                };
+                return permissions[dataType] || ['Directory.Read.All'];
+            }
+        }
+
+        // Simplified ZeroTrustAssessment for testing
+        class TestZeroTrustAssessment {
+            constructor() {
+                this.icbAgent = mockIcbAgent;
+                this.graphService = new MockZeroTrustGraphService();
+            }
+
+            async showPermissionDialog(dataType, permissions, rawError) {
+                return new Promise((resolve) => {
+                    const modal = document.createElement('div');
+                    modal.className = 'permission-modal';
+                    modal.innerHTML = `
+                        <div class="permission-modal-overlay">
+                            <div class="permission-modal-content">
+                                <div class="permission-modal-header">
+                                    <h3>🔐 Additional Permissions Required</h3>
+                                    <p>Zero Trust Assessment needs additional Microsoft Graph permissions</p>
+                                </div>
+                                
+                                <div class="permission-modal-body">
+                                    <div class="permission-request-info">
+                                        <h4>📊 Data Collection Request</h4>
+                                        <p><strong>Resource:</strong> ${this.getDataTypeDisplayName(dataType)}</p>
+                                        <p><strong>Purpose:</strong> Security posture assessment and compliance evaluation</p>
+                                    </div>
+                                    
+                                    <div class="permission-list">
+                                        <h4>🔑 Required Permissions</h4>
+                                        <ul class="permissions-list">
+                                            ${permissions.map(permission => `
+                                                <li class="permission-item">
+                                                    <span class="permission-scope">${permission}</span>
+                                                    <span class="permission-description">${this.getPermissionDescription(permission)}</span>
+                                                </li>
+                                            `).join('')}
+                                        </ul>
+                                    </div>
+                                    
+                                    <div class="permission-impact">
+                                        <h4>ℹ️ What This Means</h4>
+                                        <p>These permissions allow the ICB Agent to read ${this.getDataTypeDisplayName(dataType)} information from your Microsoft 365 tenant for security assessment purposes. <strong>No data will be modified or deleted.</strong></p>
+                                    </div>
+                                    
+                                    <div class="permission-process">
+                                        <h4>🚀 Approval Process</h4>
+                                        <ol>
+                                            <li>Click "Approve Permissions" below</li>
+                                            <li>A new browser window will open for Microsoft consent</li>
+                                            <li>Review and approve the requested permissions</li>
+                                            <li>Return to this page - assessment will continue automatically</li>
+                                        </ol>
+                                    </div>
+                                    
+                                    ${rawError ? `
+                                        <details class="error-details">
+                                            <summary>🔍 Technical Details</summary>
+                                            <pre class="error-text">${rawError}</pre>
+                                        </details>
+                                    ` : ''}
+                                </div>
+                                
+                                <div class="permission-modal-footer">
+                                    <button id="approve-permissions-btn" class="primary-button">
+                                        <span class="button-icon">✅</span>
+                                        Approve Permissions
+                                    </button>
+                                    <button id="cancel-permissions-btn" class="secondary-button">
+                                        <span class="button-icon">❌</span>
+                                        Cancel Assessment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(modal);
+                    
+                    const approveBtn = modal.querySelector('#approve-permissions-btn');
+                    const cancelBtn = modal.querySelector('#cancel-permissions-btn');
+                    
+                    approveBtn.addEventListener('click', () => {
+                        document.body.removeChild(modal);
+                        const output = document.getElementById('test-output');
+                        output.innerHTML += `<div class="success">✅ User approved permissions for ${dataType}</div>`;
+                        resolve(true);
+                    });
+                    
+                    cancelBtn.addEventListener('click', () => {
+                        document.body.removeChild(modal);
+                        const output = document.getElementById('test-output');
+                        output.innerHTML += `<div class="error">❌ User canceled permission request for ${dataType}</div>`;
+                        resolve(false);
+                    });
+                    
+                    modal.querySelector('.permission-modal-overlay').addEventListener('click', (e) => {
+                        if (e.target.classList.contains('permission-modal-overlay')) {
+                            document.body.removeChild(modal);
+                            resolve(false);
+                        }
+                    });
+                });
+            }
+
+            getDataTypeDisplayName(dataType) {
+                const displayNames = {
+                    'users': 'User Accounts',
+                    'conditionalAccess': 'Conditional Access Policies'
+                };
+                return displayNames[dataType] || dataType;
+            }
+
+            getPermissionDescription(permission) {
+                const descriptions = {
+                    'User.Read.All': 'Read all user profiles and account information',
+                    'Directory.Read.All': 'Read directory data including users, groups, and organizational settings',
+                    'Policy.Read.All': 'Read conditional access and other security policies',
+                    'Policy.ReadWrite.ConditionalAccess': 'Read conditional access policies and their configurations'
+                };
+                return descriptions[permission] || 'Microsoft Graph permission for tenant access';
+            }
+        }
+
+        // Initialize test
+        const testAssessment = new TestZeroTrustAssessment();
+        
+        document.getElementById('test-permission-dialog').addEventListener('click', async () => {
+            const output = document.getElementById('test-output');
+            output.innerHTML += `<div class="info">🧪 Testing permission dialog for conditional access...</div>`;
+            
+            const mockError = {
+                rawError: '{"code":"AccessDenied","message":"You cannot perform the requested operation, required scopes are missing in the token."}'
+            };
+            
+            const approved = await testAssessment.showPermissionDialog(
+                'conditionalAccess',
+                ['Policy.Read.All', 'Policy.ReadWrite.ConditionalAccess', 'Directory.Read.All'],
+                mockError.rawError
+            );
+            
+            if (approved) {
+                output.innerHTML += `<div class="success">🎉 Permission dialog test completed successfully!</div>`;
+            } else {
+                output.innerHTML += `<div class="warning">⚠️ Permission dialog test canceled by user</div>`;
+            }
+        });
+    </script>
+</body>
+</html>

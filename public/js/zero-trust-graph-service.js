@@ -13,7 +13,32 @@ class ZeroTrustGraphService {
             'User.Read.All',
             'Group.Read.All'
         ];
+        
+        // Map data types to specific required permissions
+        this.dataTypePermissions = {
+            'users': ['User.Read.All', 'Directory.Read.All'],
+            'devices': ['DeviceManagementManagedDevices.Read.All'],
+            'compliancePolicies': ['DeviceManagementConfiguration.Read.All'],
+            'configurationPolicies': ['DeviceManagementConfiguration.Read.All'],
+            'servicePrincipals': ['Application.Read.All', 'Directory.Read.All'],
+            'conditionalAccess': ['Policy.Read.All', 'Policy.ReadWrite.ConditionalAccess', 'Directory.Read.All'],
+            'applications': ['Application.Read.All', 'Directory.Read.All'],
+            'groups': ['Group.Read.All', 'Directory.Read.All'],
+            'directoryRoles': ['RoleManagement.Read.Directory', 'Directory.Read.All'],
+            'domains': ['Domain.Read.All', 'Directory.Read.All'],
+            'organization': ['Organization.Read.All']
+        };
+        
         console.log('🔧 ZeroTrustGraphService constructor completed');
+    }
+
+    /**
+     * Get required permissions for a specific data type
+     * @param {string} dataType - The data type to get permissions for
+     * @returns {Array<string>} Array of required permission scopes
+     */
+    getRequiredPermissions(dataType) {
+        return this.dataTypePermissions[dataType] || ['Directory.Read.All'];
     }
 
     /**
@@ -53,6 +78,18 @@ class ZeroTrustGraphService {
 
             if (!response.ok) {
                 const errorData = await response.json();
+                
+                // Handle permission errors specifically
+                if (response.status === 403 && errorData.requiresPermissions) {
+                    const permissionError = new Error(errorData.error || `Insufficient permissions for ${dataType}`);
+                    permissionError.isPermissionError = true;
+                    permissionError.dataType = dataType;
+                    permissionError.requiresPermissions = true;
+                    permissionError.requiredScopes = errorData.requiredScopes || this.getRequiredPermissions(dataType);
+                    permissionError.rawError = errorData.rawError;
+                    throw permissionError;
+                }
+                
                 throw new Error(errorData.error || `HTTP ${response.status}`);
             }
 

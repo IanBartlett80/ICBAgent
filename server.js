@@ -3933,6 +3933,61 @@ app.get('/auth/success', async (req, res) => {
   `);
 });
 
+// MCP Permission request endpoint for Zero Trust Assessment
+app.post('/api/mcp/request-permissions', async (req, res) => {
+  const { sessionId, scopes, context } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!scopes || !Array.isArray(scopes)) {
+    return res.status(400).json({ error: 'Scopes array is required' });
+  }
+  
+  try {
+    const mcpClient = mcpConnections.get(sessionId);
+    
+    if (!mcpClient) {
+      return res.status(404).json({ error: 'MCP client not found for session' });
+    }
+
+    console.log(`🔑 Requesting MCP permissions for session ${sessionId}:`, scopes);
+    
+    // Request additional permissions via Lokka MCP
+    const permissionResponse = await mcpClient.sendMCPRequest('tools/call', {
+      name: 'add-graph-permission',
+      arguments: {
+        scopes: scopes
+      }
+    });
+    
+    console.log('MCP permission request response:', permissionResponse);
+    
+    // Emit permission request to the frontend for UI updates
+    if (context === 'zero-trust-assessment') {
+      io.to(sessionId).emit('zero_trust_permission_request', {
+        scopes: scopes,
+        context: context,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Permission request sent successfully',
+      scopes: scopes,
+      response: permissionResponse
+    });
+    
+  } catch (error) {
+    console.error('Error requesting MCP permissions:', error);
+    res.status(500).json({ 
+      error: 'Failed to request permissions: ' + error.message 
+    });
+  }
+});
+
 // Dual-Tenant API Endpoints for Tenant Clone Feature
 app.post('/api/dual-tenant/initialize', async (req, res) => {
   const { sessionId, sourceTenant, targetTenant } = req.body;
@@ -4304,11 +4359,14 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           responseText.toLowerCase().includes('accessdenied')) {
         
         console.log(`🔒 Permission error detected for ${dataType}`);
+        const requiredPermissions = getZeroTrustDataTypePermissions(dataType);
+        
         return res.status(403).json({
           success: false,
           error: `Insufficient permissions to access ${dataType}`,
           dataType: dataType,
           requiresPermissions: true,
+          requiredScopes: requiredPermissions,
           rawError: responseText
         });
       }
@@ -4433,6 +4491,25 @@ function isValidTenantDomain(domain) {
   ];
   
   return !invalidPatterns.some(pattern => pattern.test(domain));
+}
+
+// Helper function to get required permissions for Zero Trust data types
+function getZeroTrustDataTypePermissions(dataType) {
+  const permissionMap = {
+    'users': ['User.Read.All', 'Directory.Read.All'],
+    'devices': ['DeviceManagementManagedDevices.Read.All'],
+    'compliancePolicies': ['DeviceManagementConfiguration.Read.All'],
+    'configurationPolicies': ['DeviceManagementConfiguration.Read.All'],
+    'servicePrincipals': ['Application.Read.All', 'Directory.Read.All'],
+    'conditionalAccess': ['Policy.Read.All', 'Policy.ReadWrite.ConditionalAccess', 'Directory.Read.All'],
+    'applications': ['Application.Read.All', 'Directory.Read.All'],
+    'groups': ['Group.Read.All', 'Directory.Read.All'],
+    'directoryRoles': ['RoleManagement.Read.Directory', 'Directory.Read.All'],
+    'domains': ['Domain.Read.All', 'Directory.Read.All'],
+    'organization': ['Organization.Read.All']
+  };
+  
+  return permissionMap[dataType] || ['Directory.Read.All'];
 }
 
 async function processAIMessage(sessionId, message) {

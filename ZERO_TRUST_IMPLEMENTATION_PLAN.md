@@ -1,5 +1,24 @@
 # Zero Trust Assessment Implementation Plan
-# Based on Invoke-ZTAssessment Excel Analysis
+# Based on Invoke-ZTAssessment Excel Analysis - UPDATED with Permission Approval System
+
+## 🎉 NEW FEATURE: Intelligent Permission Approval System
+
+### Overview
+The Zero Trust Assessment now includes an intelligent permission approval system that seamlessly handles Microsoft Graph permission requirements during security assessments.
+
+### Key Features Implemented:
+- ✅ **Automatic Permission Detection** - Detects missing permissions during data collection
+- ✅ **User-Friendly Approval Dialog** - Clear, professional permission request interface
+- ✅ **Contextual Permission Mapping** - Specific permissions for each data type
+- ✅ **Seamless Assessment Continuation** - Automatic retry after permission approval
+- ✅ **Read-Only Security Model** - All permissions are read-only for security assessments
+- ✅ **Comprehensive Documentation** - Full guide for IT professionals
+
+### Permission Categories:
+- **Identity Assessment**: `User.Read.All`, `Directory.Read.All`, `Policy.Read.All`
+- **Device Management**: `DeviceManagementManagedDevices.Read.All`, `DeviceManagementConfiguration.Read.All`
+- **Applications**: `Application.Read.All`, `Group.Read.All`
+- **Infrastructure**: `RoleManagement.Read.Directory`, `Domain.Read.All`, `Organization.Read.All`
 
 ## Excel Structure Analysis Summary
 
