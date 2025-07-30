@@ -48,10 +48,12 @@ function Capture-GraphModuleInfo {
             } else {
                 Write-Host "`n🔗 Not currently connected to Graph" -ForegroundColor Yellow
             }
-        } catch {
+        }
+        catch {
             Write-Host "`n🔗 Graph context not available" -ForegroundColor Yellow
         }
-    } catch {
+    }
+    catch {
         Write-Host "Error capturing Graph module info: $_" -ForegroundColor Red
     }
 }
@@ -102,7 +104,8 @@ function Start-ExecutionMonitor {
             
             Write-Host "✅ Completed in $($Duration.TotalSeconds) seconds" -ForegroundColor Green
             return $Result
-        } catch {
+        }
+        catch {
             $EndTime = Get-Date
             $Duration = $EndTime - $StartTime
             Write-Host "❌ Failed after $($Duration.TotalSeconds) seconds: $_" -ForegroundColor Red
@@ -147,8 +150,8 @@ function Capture-PostExecution {
                 Copy-Item $_.FullName $OutputDir -Force
             }
         }
-        
-    } catch {
+    }
+    catch {
         Write-Host "Error in post-execution capture: $_" -ForegroundColor Red
     }
 }
@@ -184,14 +187,16 @@ try {
     Write-Host "`n✅ MONITORING COMPLETE!" -ForegroundColor Green
     Write-Host "📁 All captured data is in: $OutputDir" -ForegroundColor Yellow
     Write-Host "📝 Complete session log: $TranscriptPath" -ForegroundColor Yellow
-    
-} catch {
+}
+catch {
     Write-Host "`n❌ MONITORING ERROR: $_" -ForegroundColor Red
-} finally {
+}
+finally {
     # Always stop transcript
     try {
         Stop-Transcript
-    } catch {
+    }
+    catch {
         # Transcript might not be active
     }
     
