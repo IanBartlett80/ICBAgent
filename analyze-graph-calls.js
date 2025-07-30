@@ -56,16 +56,28 @@ class ZeroTrustAnalyzer {
     extractGraphAPICalls(content) {
         console.log('\n📡 Extracting Graph API Calls...');
         
-        // Patterns for different Graph API call formats
+        // Patterns for different Graph API call formats - enhanced for Invoke-ZTAssessment
         const patterns = [
             // Direct URLs
             /https:\/\/graph\.microsoft\.com\/[^\s\)'"]+/gi,
             // PowerShell cmdlets
             /Invoke-MgGraphRequest[^\n]+/gi,
+            /Invoke-RestMethod[^\n]*graph\.microsoft\.com[^\n]*/gi,
             // SDK calls
             /Get-Mg\w+[^\n]+/gi,
             /New-Mg\w+[^\n]+/gi,
             /Set-Mg\w+[^\n]+/gi,
+            // Zero Trust Assessment specific patterns
+            /Invoke-ZTAssessment[^\n]+/gi,
+            // Authentication patterns
+            /Connect-MgGraph[^\n]+/gi,
+            /Connect-AzAccount[^\n]+/gi,
+            // API calls in verbose output
+            /GET\s+https:\/\/[^\s]+/gi,
+            /POST\s+https:\/\/[^\s]+/gi,
+            // OAuth and token patterns
+            /oauth[^\n]+/gi,
+            /token[^\n]+/gi,
         ];
         
         patterns.forEach(pattern => {
