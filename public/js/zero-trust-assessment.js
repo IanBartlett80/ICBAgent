@@ -159,6 +159,9 @@ class ZeroTrustAssessment {
             this.icbAgent.socket.on('graph-token-received', (token) => {
                 this.handleGraphToken(token);
             });
+            
+            // Set up permission event listeners
+            this.setupPermissionEventListeners();
         }
     }
 
@@ -269,23 +272,37 @@ ${(error.requiredScopes || []).map(p => `• **${p}**`).join('\n')}
                 const missingDataTypes = permissionErrors.map(e => e.dataType || e.taskName).join(', ');
                 
                 console.log('🔒 Permission errors found in assessment data:', permissionErrors);
+                console.log('🔒 Unique scopes needed:', uniqueScopes);
                 
-                // Show warning but continue with partial assessment
-                this.icbAgent.addMessage(`⚠️ **Partial Zero Trust Assessment - Some Permissions Missing**
+                // Stop the assessment and request permissions
+                this.hideProgress();
+                
+                this.icbAgent.addMessage(`🔐 **Additional Permissions Required for Complete Zero Trust Assessment**
 
 **Missing data for:** ${missingDataTypes}
 
-Some Microsoft Graph permissions are required to collect complete assessment data. The assessment will continue with available data, but results may be incomplete.
+The Zero Trust Assessment requires additional Microsoft Graph permissions to collect complete security data.
 
 **Missing permissions:**
 ${uniqueScopes.map(p => `• **${p}**`).join('\n')}
 
-**To get complete results:**
-1. Send a message: "Please approve Microsoft Graph permissions: ${uniqueScopes.join(', ')}"
-2. Approve the requested permissions in the consent window
-3. Run the assessment again
+**Requesting permissions now...**
 
-**Continuing with partial assessment...**`, 'system');
+A browser window will open for you to approve these permissions. Once approved, the assessment will automatically restart with complete data collection.`, 'system');
+
+                // Request the missing permissions
+                try {
+                    await this.requestMissingPermissions(uniqueScopes);
+                } catch (error) {
+                    console.error('Failed to request permissions:', error);
+                    this.icbAgent.addMessage(`❌ **Permission Request Failed**
+
+Unable to request the required permissions: ${error.message}
+
+Please try running the assessment again or contact your administrator.`, 'system');
+                }
+                
+                return; // Stop the current assessment
             }
 
             // Perform assessment
@@ -326,6 +343,103 @@ ${uniqueScopes.map(p => `• **${p}**`).join('\n')}
     handleGraphToken(token) {
         // This method is no longer needed as we use session-based authentication
         console.log('Graph token handling is managed by ICB Agent MCP client');
+    }
+
+    /**
+     * Request missing permissions for Zero Trust Assessment
+     * @param {Array} requiredScopes - Array of required Graph API scopes
+     */
+    async requestMissingPermissions(requiredScopes) {
+        try {
+            console.log('🔐 Requesting missing permissions:', requiredScopes);
+            
+            // Set up socket event listeners before making the request
+            this.setupPermissionEventListeners();
+            
+            const response = await fetch('/api/zero-trust-assessment/request-permissions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    sessionId: this.icbAgent.sessionId,
+                    requiredScopes: requiredScopes
+                })
+            });
+
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to request permissions');
+            }
+
+            console.log('✅ Permission request initiated successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to request permissions:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Set up socket event listeners for permission flow
+     */
+    setupPermissionEventListeners() {
+        if (!this.icbAgent.socket) {
+            console.error('Socket not available for permission events');
+            return;
+        }
+
+        // Remove any existing listeners to avoid duplicates
+        this.icbAgent.socket.off('zero_trust_permissions_requested');
+        this.icbAgent.socket.off('zero_trust_permission_request_failed');
+        this.icbAgent.socket.off('zero_trust_permissions_granted');
+
+        // Handle permission request initiated
+        this.icbAgent.socket.on('zero_trust_permissions_requested', (data) => {
+            console.log('🔐 Permission request initiated:', data);
+            this.icbAgent.addMessage(`🔐 **Permission Consent Window Opened**
+
+A new browser window has been opened for you to approve the required Microsoft Graph permissions:
+
+${data.requiredScopes.map(p => `• **${p}**`).join('\n')}
+
+**Please:**
+1. Switch to the new browser window
+2. Review the requested permissions
+3. Click "Accept" to approve them
+4. Return to this window
+
+Once you approve the permissions, the Zero Trust Assessment will automatically restart with complete data collection.
+
+*Waiting for permission approval...*`, 'system');
+        });
+
+        // Handle permission request failure
+        this.icbAgent.socket.on('zero_trust_permission_request_failed', (data) => {
+            console.error('❌ Permission request failed:', data);
+            this.icbAgent.addMessage(`❌ **Permission Request Failed**
+
+Failed to initiate permission request: ${data.error}
+
+Please try running the assessment again or contact your administrator.`, 'system');
+        });
+
+        // Handle successful permission grant (this should trigger assessment restart)
+        this.icbAgent.socket.on('zero_trust_permissions_granted', (data) => {
+            console.log('✅ Permissions granted, restarting assessment:', data);
+            this.icbAgent.addMessage(`✅ **Permissions Approved Successfully**
+
+The required Microsoft Graph permissions have been approved. Restarting the Zero Trust Assessment with complete data collection...`, 'system');
+            
+            // Clear any previous partial results and restart assessment
+            this.currentAssessment = null;
+            
+            // Restart the assessment after a brief delay
+            setTimeout(() => {
+                this.startAssessment();
+            }, 2000);
+        });
     }
 
     showProgress() {
