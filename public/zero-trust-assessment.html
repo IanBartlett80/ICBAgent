@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero Trust Assessment - ICB Agent</title>
+    <link rel="stylesheet" href="css/styles.css?v=1753867551">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header with navigation back to landing page -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <img src="images/icblogo.jpg" alt="ICB Solutions Logo" class="logo">
+                    <div class="header-text">
+                        <h1>ICB Agent</h1>
+                        <p>Zero Trust Assessment</p>
+                    </div>
+                </div>
+                <div class="nav-section">
+                    <div id="connectionStatus" class="connection-status">
+                        <div class="status-indicator"></div>
+                        <span id="statusText" class="status-text">Checking connection...</span>
+                    </div>
+                    <button id="backToLandingBtn" class="btn-secondary back-button">
+                        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z'/%3E%3C/svg%3E" alt="Back">
+                        <span>Back to Landing Page</span>
+                    </button>
+                    <button id="disconnectBtn" class="btn-danger disconnect-button" style="display: none;">
+                        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' viewBox='0 0 16 16'%3E%3Cpath d='M6 1a1 1 0 0 0-1 1v1H3.5A1.5 1.5 0 0 0 2 4.5v7A1.5 1.5 0 0 0 3.5 13h9a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 12.5 3H11V2a1 1 0 0 0-1-1H6z'/%3E%3C/svg%3E" alt="Disconnect">
+                        <span>Disconnect</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main content area for Zero Trust Assessment -->
+        <main class="main-content">
+            <div class="assessment-page-wrapper">
+                <!-- Assessment content will be dynamically inserted here -->
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; 2024 ICB Solutions. All rights reserved.</p>
+                <div class="footer-links">
+                    <a href="#privacy">Privacy Policy</a>
+                    <a href="#terms">Terms of Service</a>
+                    <a href="#support">Support</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Success/Error Notifications -->
+    <div id="notification" class="notification"></div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <!-- Zero Trust Assessment Scripts -->
+    <script src="js/zero-trust-graph-service.js?v=1753867551"></script>
+    <script src="js/zero-trust-assessment-engine.js?v=1753867551"></script>
+    <script src="js/zero-trust-assessment.js?v=1753867551"></script>
+    
+    <!-- Main app script with Zero Trust Assessment page initialization -->
+    <script>
+        // Initialize Zero Trust Assessment page
+        class ZeroTrustAssessmentPage {
+            constructor() {
+                this.socket = null;
+                this.sessionId = null;
+                this.currentTenant = null;
+                this.isConnected = false;
+                this.zeroTrustAssessment = null;
+                
+                this.init();
+            }
+
+            init() {
+                console.log('🛡️ Initializing Zero Trust Assessment Page...');
+                
+                // Get session info from URL parameters or localStorage
+                this.restoreSession();
+                
+                // Initialize socket connection
+                this.initializeSocket();
+                
+                // Bind navigation events
+                this.bindNavigationEvents();
+                
+                // Initialize Zero Trust Assessment
+                this.initializeZeroTrustAssessment();
+                
+                // Update connection status
+                this.updateConnectionStatus();
+                
+                console.log('✅ Zero Trust Assessment Page initialized');
+            }
+
+            restoreSession() {
+                // Try to get session info from URL parameters first
+                const urlParams = new URLSearchParams(window.location.search);
+                const sessionFromURL = urlParams.get('session');
+                const tenantFromURL = urlParams.get('tenant');
+                
+                if (sessionFromURL && tenantFromURL) {
+                    this.sessionId = sessionFromURL;
+                    this.currentTenant = tenantFromURL;
+                    this.isConnected = true;
+                    console.log('📋 Session restored from URL:', { sessionId: this.sessionId, tenant: this.currentTenant });
+                    return;
+                }
+                
+                // Fallback to localStorage
+                try {
+                    const savedSession = localStorage.getItem('icb_session');
+                    const savedTenant = localStorage.getItem('icb_tenant');
+                    
+                    if (savedSession && savedTenant) {
+                        this.sessionId = savedSession;
+                        this.currentTenant = savedTenant;
+                        this.isConnected = true;
+                        console.log('📋 Session restored from localStorage:', { sessionId: this.sessionId, tenant: this.currentTenant });
+                    } else {
+                        console.warn('⚠️ No active session found - redirecting to landing page');
+                        this.redirectToLandingPage();
+                    }
+                } catch (error) {
+                    console.error('❌ Error restoring session:', error);
+                    this.redirectToLandingPage();
+                }
+            }
+
+            initializeSocket() {
+                this.socket = io();
+                
+                this.socket.on('connect', () => {
+                    console.log('🔗 Socket connected to Zero Trust Assessment page');
+                    if (this.sessionId) {
+                        this.socket.emit('join_session', this.sessionId);
+                    }
+                });
+
+                this.socket.on('disconnect', () => {
+                    console.log('🔌 Socket disconnected');
+                    this.updateConnectionStatus('disconnected');
+                });
+
+                this.socket.on('auth_status_changed', (data) => {
+                    console.log('🔐 Auth status changed:', data);
+                    this.handleAuthStatusChanged(data);
+                });
+            }
+
+            bindNavigationEvents() {
+                // Back to landing page button
+                const backBtn = document.getElementById('backToLandingBtn');
+                if (backBtn) {
+                    backBtn.addEventListener('click', () => {
+                        this.redirectToLandingPage();
+                    });
+                }
+
+                // Disconnect button
+                const disconnectBtn = document.getElementById('disconnectBtn');
+                if (disconnectBtn) {
+                    disconnectBtn.addEventListener('click', () => {
+                        this.disconnect();
+                    });
+                }
+            }
+
+            initializeZeroTrustAssessment() {
+                console.log('🔧 Initializing Zero Trust Assessment on dedicated page...');
+                
+                // Check if all required classes are available
+                if (typeof ZeroTrustAssessment !== 'undefined') {
+                    try {
+                        this.zeroTrustAssessment = new ZeroTrustAssessment(this);
+                        
+                        // Initialize the graph service with session ID
+                        if (this.sessionId) {
+                            this.zeroTrustAssessment.graphService.initialize(this.sessionId);
+                        }
+                        
+                        // Show the assessment interface immediately
+                        this.zeroTrustAssessment.show();
+                        
+                        console.log('✅ Zero Trust Assessment initialized on dedicated page');
+                    } catch (error) {
+                        console.error('❌ Failed to initialize Zero Trust Assessment:', error);
+                        this.showError('Failed to initialize Zero Trust Assessment. Please try again.');
+                    }
+                } else {
+                    console.error('❌ Zero Trust Assessment classes not loaded');
+                    this.showError('Zero Trust Assessment components not available. Please refresh the page.');
+                }
+            }
+
+            handleAuthStatusChanged(data) {
+                console.log('🔐 Auth status changed on Zero Trust page:', data);
+                
+                switch (data.status) {
+                    case 'authenticated':
+                        this.isConnected = true;
+                        this.updateConnectionStatus('connected', data.tenantDomain);
+                        break;
+                    case 'authentication_error':
+                        this.isConnected = false;
+                        this.updateConnectionStatus('disconnected');
+                        this.showError(`Authentication failed: ${data.message}`);
+                        break;
+                }
+            }
+
+            updateConnectionStatus(status = null, tenantDomain = null) {
+                const indicator = document.querySelector('.status-indicator');
+                const text = document.querySelector('#statusText');
+                const connectionStatus = document.querySelector('#connectionStatus');
+                const disconnectBtn = document.querySelector('#disconnectBtn');
+                
+                // Determine current status
+                const currentStatus = status || (this.isConnected ? 'connected' : 'disconnected');
+                const displayTenant = tenantDomain || this.currentTenant || 'Unknown Tenant';
+                
+                if (indicator) {
+                    indicator.className = `status-indicator ${currentStatus}`;
+                }
+                
+                if (text && connectionStatus) {
+                    switch (currentStatus) {
+                        case 'connected':
+                            text.innerHTML = `Connected to <strong>${displayTenant}</strong>`;
+                            text.className = 'status-text';
+                            connectionStatus.className = 'connection-status';
+                            if (disconnectBtn) {
+                                disconnectBtn.style.display = 'flex';
+                            }
+                            break;
+                        case 'connecting':
+                            text.innerHTML = `Connecting to <strong>${displayTenant}</strong>...`;
+                            text.className = 'status-text';
+                            connectionStatus.className = 'connection-status';
+                            if (disconnectBtn) {
+                                disconnectBtn.style.display = 'none';
+                            }
+                            break;
+                        default:
+                            text.textContent = 'Disconnected';
+                            text.className = 'status-text';
+                            connectionStatus.className = 'connection-status';
+                            if (disconnectBtn) {
+                                disconnectBtn.style.display = 'none';
+                            }
+                    }
+                }
+            }
+
+            async disconnect() {
+                if (this.sessionId) {
+                    try {
+                        await fetch('/api/session/disconnect', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ sessionId: this.sessionId }),
+                        });
+                    } catch (error) {
+                        console.error('Error disconnecting session:', error);
+                    }
+                }
+                
+                // Clear session data
+                this.sessionId = null;
+                this.currentTenant = null;
+                this.isConnected = false;
+                
+                // Clear localStorage
+                localStorage.removeItem('icb_session');
+                localStorage.removeItem('icb_tenant');
+                
+                // Redirect to landing page
+                this.redirectToLandingPage();
+            }
+
+            redirectToLandingPage() {
+                console.log('🏠 Redirecting to landing page...');
+                window.location.href = '/';
+            }
+
+            showError(message) {
+                this.showNotification(message, 'error');
+            }
+
+            showSuccess(message) {
+                this.showNotification(message, 'success');
+            }
+
+            showNotification(message, type = 'info', duration = 5000) {
+                const notification = document.getElementById('notification');
+                if (!notification) return;
+                
+                notification.textContent = message;
+                notification.className = `notification ${type} show`;
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, duration);
+            }
+
+            // Add methods that Zero Trust Assessment might call
+            addMessage(content, type, isError = false) {
+                // For Zero Trust Assessment page, we can show notifications instead
+                if (isError || type === 'system') {
+                    this.showNotification(content, isError ? 'error' : 'info');
+                }
+            }
+        }
+
+        // Initialize the Zero Trust Assessment page when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            window.zeroTrustPage = new ZeroTrustAssessmentPage();
+        });
+    </script>
+</body>
+</html>

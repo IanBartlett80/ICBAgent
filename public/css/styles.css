@@ -3689,3 +3689,240 @@ body::before {
     min-width: auto;
   }
 }
+
+/* ==========================================
+   ZERO TRUST ASSESSMENT PAGE STYLES
+   ========================================== */
+
+/* Zero Trust Assessment Page Layout */
+.assessment-page-wrapper {
+  min-height: calc(100vh - 200px);
+  padding: var(--spacing-4) 0;
+}
+
+/* Back to Landing Page Button */
+.back-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius);
+  color: var(--primary-600);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+}
+
+.back-button:hover {
+  background: rgba(62, 138, 180, 0.1);
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(62, 138, 180, 0.15);
+}
+
+.back-button img {
+  width: 16px;
+  height: 16px;
+  opacity: 0.8;
+  transition: opacity 0.3s ease;
+}
+
+.back-button:hover img {
+  opacity: 1;
+}
+
+/* Header adjustments for Zero Trust page */
+.header .nav-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.header .header-text p {
+  color: var(--primary-600);
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Connection status in header */
+.header .connection-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  font-size: var(--font-size-sm);
+}
+
+.header .status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gray-400);
+  transition: background-color 0.3s ease;
+}
+
+.header .status-indicator.connected {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+
+.header .status-indicator.connecting {
+  background: var(--warning);
+  animation: pulse 2s infinite;
+}
+
+.header .status-indicator.disconnected {
+  background: var(--error);
+}
+
+/* Disconnect button in header */
+.disconnect-button {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--border-radius);
+  color: var(--error);
+  font-weight: 500;
+  font-size: var(--font-size-sm);
+  transition: all 0.3s ease;
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+}
+
+.disconnect-button:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+}
+
+.disconnect-button img {
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+}
+
+.disconnect-button:hover img {
+  opacity: 1;
+}
+
+/* Zero Trust Assessment integration adjustments */
+.assessment-page-wrapper #zero-trust-assessment {
+  display: block !important;
+  margin: 0;
+  padding: 0;
+}
+
+.assessment-page-wrapper .section-header {
+  text-align: center;
+  margin-bottom: var(--spacing-6);
+}
+
+.assessment-page-wrapper .section-header h2 {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--primary-900);
+  margin-bottom: var(--spacing-2);
+}
+
+.assessment-page-wrapper .section-header p {
+  font-size: var(--font-size-lg);
+  color: var(--gray-600);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Notification for Zero Trust page */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--border-radius);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  color: var(--gray-800);
+  font-weight: 500;
+  max-width: 400px;
+  transform: translateX(100%);
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.notification.show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.notification.success {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+
+.notification.error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+}
+
+.notification.info {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+  color: var(--info);
+}
+
+/* Responsive adjustments for Zero Trust page */
+@media (max-width: 768px) {
+  .header .nav-section {
+    flex-direction: column;
+    gap: var(--spacing-2);
+    align-items: stretch;
+  }
+  
+  .back-button,
+  .disconnect-button {
+    justify-content: center;
+    min-width: 120px;
+  }
+  
+  .header .connection-status {
+    justify-content: center;
+  }
+  
+  .assessment-page-wrapper {
+    padding: var(--spacing-3) 0;
+  }
+  
+  .assessment-page-wrapper .section-header h2 {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .notification {
+    left: 20px;
+    right: 20px;
+    max-width: none;
+    transform: translateY(-100%);
+  }
+  
+  .notification.show {
+    transform: translateY(0);
+  }
+}

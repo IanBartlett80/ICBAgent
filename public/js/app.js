@@ -462,39 +462,34 @@ class ICBAgent {
             return;
         }
 
+        // For button clicks within the same page, redirect to dedicated Zero Trust Assessment page
+        this.redirectToZeroTrustAssessment();
+    }
+
+    redirectToZeroTrustAssessment() {
+        if (!this.sessionId || !this.currentTenant) {
+            this.showError('No active session. Please connect to a tenant first.');
+            return;
+        }
+
         try {
-            // Check if Zero Trust Assessment is available
-            const response = await fetch('/api/zero-trust-assessment', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ sessionId: this.sessionId }),
-            });
-
-            const data = await response.json();
+            // Save session data to localStorage for the new page
+            localStorage.setItem('icb_session', this.sessionId);
+            localStorage.setItem('icb_tenant', this.currentTenant);
             
-            if (!response.ok) {
-                if (data.requiresAuth) {
-                    this.showError('Authentication required. Please ensure you are properly authenticated with Microsoft Graph.');
-                    return;
-                }
-                throw new Error(data.error || 'Failed to start Zero Trust Assessment');
-            }
-
-            // Initialize and show the Zero Trust Assessment
-            if (this.zeroTrustAssessment) {
-                // Initialize the graph service with session ID
-                this.zeroTrustAssessment.graphService.initialize(this.sessionId);
-                // Show the assessment interface
-                this.zeroTrustAssessment.show();
-            } else {
-                this.showError('Zero Trust Assessment not initialized. Please refresh the page and try again.');
-            }
-
+            // Show loading message
+            this.showSuccess(`🔒 Opening Zero Trust Assessment for ${this.currentTenant}...`);
+            
+            // Redirect to dedicated Zero Trust Assessment page with session parameters
+            const assessmentUrl = `/zero-trust-assessment.html?session=${encodeURIComponent(this.sessionId)}&tenant=${encodeURIComponent(this.currentTenant)}`;
+            
+            setTimeout(() => {
+                window.location.href = assessmentUrl;
+            }, 500); // Small delay to show the success message
+            
         } catch (error) {
-            console.error('Error starting Zero Trust Assessment:', error);
-            this.showError(`Failed to start Zero Trust Assessment: ${error.message}`);
+            console.error('Error redirecting to Zero Trust Assessment:', error);
+            this.showError('Failed to open Zero Trust Assessment. Please try again.');
         }
     }
 
@@ -931,9 +926,8 @@ class ICBAgent {
     handleZeroTrustFeatureClick() {
         // Check if user is already connected to a tenant
         if (this.isConnected && this.currentTenant) {
-            // If connected, launch Zero Trust Assessment directly
-            this.startZeroTrustAssessment();
-            this.showSuccess(`🔒 Starting Zero Trust Assessment for ${this.currentTenant}...`);
+            // If connected, redirect to dedicated Zero Trust Assessment page
+            this.redirectToZeroTrustAssessment();
         } else {
             // If not connected, prompt them to connect first
             this.showInfo(`🔒 To run the Zero Trust Assessment, please connect to your Microsoft 365 tenant first. Enter your tenant domain below and click "Connect".`);
@@ -1026,6 +1020,15 @@ class ICBAgent {
         this.sessionId = null;
         this.currentTenant = null;
         this.isConnected = false;
+        
+        // Clear localStorage
+        try {
+            localStorage.removeItem('icb_session');
+            localStorage.removeItem('icb_tenant');
+            console.log('🧹 Session data cleared from localStorage');
+        } catch (error) {
+            console.warn('⚠️ Could not clear localStorage:', error);
+        }
         
         // Clear chat messages
         document.getElementById('chatMessages').innerHTML = `
@@ -1182,6 +1185,18 @@ class ICBAgent {
                         this.updateConnectionStatus('connected', data.tenantDomain);
                         console.log('🔍 DEBUG - updateConnectionStatus completed successfully');
                     }, 100);
+                    
+                    // Save session data to localStorage for cross-page functionality
+                    if (this.sessionId && data.tenantDomain) {
+                        try {
+                            localStorage.setItem('icb_session', this.sessionId);
+                            localStorage.setItem('icb_tenant', data.tenantDomain);
+                            console.log('💾 Session data saved to localStorage');
+                        } catch (error) {
+                            console.warn('⚠️ Could not save session to localStorage:', error);
+                        }
+                    }
+                    
                     this.showSuccess(`🎉 Authentication successful for ${data.tenantDomain}! You can now query your Microsoft 365 environment.`);
                     
                     // Show a system message in chat if chat interface is visible

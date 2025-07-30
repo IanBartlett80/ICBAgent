@@ -116,8 +116,8 @@ class ZeroTrustAssessment {
             </div>
         `;
 
-        // Insert into the main content area
-        const mainContent = document.querySelector('.main-content') || document.body;
+        // Insert into the main content area or assessment page wrapper
+        const mainContent = document.querySelector('.assessment-page-wrapper') || document.querySelector('.main-content') || document.body;
         console.log('ZeroTrustAssessment: Inserting UI into:', mainContent);
         mainContent.insertAdjacentHTML('beforeend', assessmentHTML);
         console.log('ZeroTrustAssessment: Assessment interface HTML inserted');
