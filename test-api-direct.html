@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct API Test - ICB Agent</title>
+</head>
+<body>
+    <h1>Direct API Permission Test</h1>
+    <button id="test-api">Test API Call</button>
+    <pre id="output"></pre>
+
+    <script>
+        document.getElementById('test-api').addEventListener('click', async () => {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing API call...\n';
+            
+            try {
+                const response = await fetch('/api/zero-trust-assessment/collect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sessionId: 'test-session-123',
+                        dataType: 'conditionalAccess',
+                        options: {}
+                    })
+                });
+                
+                output.textContent += `Response status: ${response.status}\n`;
+                output.textContent += `Response ok: ${response.ok}\n`;
+                
+                const data = await response.json();
+                output.textContent += `Response data:\n${JSON.stringify(data, null, 2)}\n`;
+                
+                if (response.status === 403 && data.requiresPermissions) {
+                    output.textContent += '\n✅ Permission error detected correctly!\n';
+                    output.textContent += `Required scopes: ${JSON.stringify(data.requiredScopes)}\n`;
+                } else {
+                    output.textContent += '\n❌ Expected permission error not detected\n';
+                }
+                
+            } catch (error) {
+                output.textContent += `Error: ${error.message}\n`;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -365,9 +365,9 @@ class ICBAgent {
                 throw new Error(mcpData.error || 'Failed to start MCP server');
             }
 
-            // Switch to chat interface
-            this.showChatInterface();
-            this.updateConnectionStatus('connected', this.currentTenant);
+            // Stay on landing page but update connection status
+            // Note: Authentication may still be pending, final connected status will be set by auth_status_changed event
+            this.updateConnectionStatus('connecting', this.currentTenant);
 
         } catch (error) {
             console.error('Error during startup:', error);
