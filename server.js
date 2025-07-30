@@ -4125,6 +4125,9 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
     // Map data collection requests to MCP commands
     let mcpRequest;
     
+    // Debug logging for options
+    console.log(`📊 Zero Trust collect request - dataType: ${dataType}, options:`, options);
+    
     switch (dataType) {
       case 'users':
         mcpRequest = {
@@ -4135,7 +4138,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,userPrincipalName,mail,accountEnabled,signInActivity,lastSignInDateTime,createdDateTime,assignedLicenses,assignedPlans,mfaDetail',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false,
+          fetchAll: false, // Disable fetchAll to avoid array length issues
           consistencyLevel: 'eventual'
         };
         break;
@@ -4149,7 +4152,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managementAgent,ownerType,userPrincipalName',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4162,7 +4165,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,description,createdDateTime,lastModifiedDateTime,version,scheduledActionsForRule',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4175,7 +4178,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,description,createdDateTime,lastModifiedDateTime,version,deviceManagementApplicabilityRuleOsEdition,deviceManagementApplicabilityRuleOsVersion',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4188,7 +4191,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,appId,servicePrincipalType,accountEnabled,createdDateTime,tags,appRoles,oauth2PermissionScopes',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4214,7 +4217,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,appId,createdDateTime,signInAudience,requiredResourceAccess,keyCredentials,passwordCredentials',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false
+          fetchAll: false // Disable fetchAll to avoid array length issues
         };
         break;
         
@@ -4227,7 +4230,7 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
             '$select': 'id,displayName,groupTypes,securityEnabled,mailEnabled,createdDateTime,membershipRule,membershipRuleProcessingState',
             '$top': String(options?.limit || 100)
           },
-          fetchAll: options?.fetchAll !== false,
+          fetchAll: false, // Disable fetchAll to avoid array length issues
           consistencyLevel: 'eventual'
         };
         break;
@@ -4238,8 +4241,10 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/directoryRoles',
           queryParams: {
-            '$select': 'id,displayName,description,roleTemplateId'
-          }
+            '$select': 'id,displayName,description,roleTemplateId',
+            '$top': String(options?.limit || 100)
+          },
+          fetchAll: options?.fetchAll !== false
         };
         break;
         
@@ -4249,8 +4254,10 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/domains',
           queryParams: {
-            '$select': 'id,authenticationType,availabilityStatus,isDefault,isInitial,isRoot,isVerified,supportedServices'
-          }
+            '$select': 'id,authenticationType,availabilityStatus,isDefault,isInitial,isRoot,isVerified,supportedServices',
+            '$top': String(options?.limit || 100)
+          },
+          fetchAll: options?.fetchAll !== false
         };
         break;
         
@@ -4260,8 +4267,10 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/organization',
           queryParams: {
-            '$select': 'id,displayName,verifiedDomains,assignedPlans,securityComplianceNotificationMails,securityComplianceNotificationPhones'
-          }
+            '$select': 'id,displayName,verifiedDomains,assignedPlans,securityComplianceNotificationMails,securityComplianceNotificationPhones',
+            '$top': String(options?.limit || 100)
+          },
+          fetchAll: options?.fetchAll !== false
         };
         break;
         

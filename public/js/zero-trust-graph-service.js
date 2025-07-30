@@ -78,7 +78,7 @@ class ZeroTrustGraphService {
      */
     async getManagedDevices() {
         try {
-            const data = await this.makeGraphRequest('devices', { limit: 999 });
+            const data = await this.makeGraphRequest('devices', { limit: 100 });
             return data.value || [];
         } catch (error) {
             console.error('Error fetching managed devices:', error);
@@ -122,7 +122,7 @@ class ZeroTrustGraphService {
      */
     async getUsers() {
         try {
-            const data = await this.makeGraphRequest('users', { limit: 999 });
+            const data = await this.makeGraphRequest('users', { limit: 100 });
             return data.value || [];
         } catch (error) {
             console.error('Error fetching users:', error);
@@ -150,7 +150,7 @@ class ZeroTrustGraphService {
      */
     async getGroups() {
         try {
-            const data = await this.makeGraphRequest('groups', { limit: 999 });
+            const data = await this.makeGraphRequest('groups', { limit: 100 });
             return data.value || [];
         } catch (error) {
             console.error('Error fetching groups:', error);
@@ -355,6 +355,7 @@ class ZeroTrustGraphService {
      * @returns {Promise<Object>} Complete dataset for assessment
      */
     async collectAllAssessmentData(progressCallback) {
+        const startTime = new Date();
         const results = {};
         
         try {
@@ -386,12 +387,55 @@ class ZeroTrustGraphService {
 
             if (progressCallback) progressCallback('Data collection completed!', 100);
 
+            // Add metadata for assessment engine
+            const endTime = new Date();
+            results.metadata = {
+                collectionStartTime: startTime.toISOString(),
+                collectionEndTime: endTime.toISOString(),
+                dataPoints: this.calculateDataPoints(results),
+                sessionId: this.sessionId
+            };
+
             return results;
 
         } catch (error) {
             console.error('Error during complete data collection:', error);
             throw error;
         }
+    }
+
+    /**
+     * Calculate total data points collected
+     * @param {Object} results - Collection results
+     * @returns {number} Total data points
+     */
+    calculateDataPoints(results) {
+        let total = 0;
+        
+        if (results.identity) {
+            total += (results.identity.users?.length || 0);
+            total += (results.identity.groups?.length || 0);
+            total += (results.identity.directoryRoles?.length || 0);
+            total += (results.identity.conditionalAccessPolicies?.length || 0);
+        }
+        
+        if (results.devices) {
+            total += (results.devices.managedDevices?.length || 0);
+            total += (results.devices.compliancePolicies?.length || 0);
+            total += (results.devices.configurationPolicies?.length || 0);
+        }
+        
+        if (results.applications) {
+            total += (results.applications.applications?.length || 0);
+            total += (results.applications.servicePrincipals?.length || 0);
+        }
+        
+        if (results.infrastructure) {
+            total += (results.infrastructure.organization?.length || 0);
+            total += (results.infrastructure.domains?.length || 0);
+        }
+        
+        return total;
     }
 }
 
