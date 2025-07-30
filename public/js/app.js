@@ -121,7 +121,12 @@ class ICBAgent {
         });
 
         this.socket.on('auth_status_changed', (data) => {
-            this.handleAuthStatusChanged(data);
+            console.log('🔍 DEBUG - auth_status_changed socket event received:', JSON.stringify(data, null, 2));
+            try {
+                this.handleAuthStatusChanged(data);
+            } catch (error) {
+                console.error('❌ Error in handleAuthStatusChanged:', error);
+            }
         });
 
         this.socket.on('chat_response', (data) => {
@@ -1165,28 +1170,43 @@ class ICBAgent {
     }
 
     handleAuthStatusChanged(data) {
+        console.log('🔍 DEBUG - handleAuthStatusChanged called with data:', JSON.stringify(data, null, 2));
         console.log('Auth Status Changed:', data);
         
-        switch (data.status) {
-            case 'authenticated':
-                this.updateConnectionStatus('connected', data.tenantDomain);
-                this.showSuccess(`🎉 Authentication successful for ${data.tenantDomain}! You can now query your Microsoft 365 environment.`);
-                
-                // Show a system message in chat if chat interface is visible
-                if (document.getElementById('chatSection').style.display !== 'none') {
-                    this.addMessage(`✅ **Authentication Complete!**\n\nYou're now connected to **${data.tenantDomain}** and can ask questions about your Microsoft 365 environment.\n\n🔐 **Access token received and stored securely.**`, 'system');
-                }
-                break;
-                
-            case 'needs_authentication':
-                this.updateConnectionStatus('connecting', data.tenantDomain || this.currentTenant);
-                this.showAuthenticationNotice(data);
-                break;
-                
-            case 'authentication_error':
-                this.updateConnectionStatus('disconnected');
-                this.showError(`Authentication failed: ${data.message}`);
-                break;
+        try {
+            switch (data.status) {
+                case 'authenticated':
+                    console.log('🔍 DEBUG - Processing authenticated status for tenant:', data.tenantDomain);
+                    // Use setTimeout to ensure DOM updates from any previous calls complete
+                    setTimeout(() => {
+                        this.updateConnectionStatus('connected', data.tenantDomain);
+                        console.log('🔍 DEBUG - updateConnectionStatus completed successfully');
+                    }, 100);
+                    this.showSuccess(`🎉 Authentication successful for ${data.tenantDomain}! You can now query your Microsoft 365 environment.`);
+                    
+                    // Show a system message in chat if chat interface is visible
+                    if (document.getElementById('chatSection').style.display !== 'none') {
+                        this.addMessage(`✅ **Authentication Complete!**\n\nYou're now connected to **${data.tenantDomain}** and can ask questions about your Microsoft 365 environment.\n\n🔐 **Access token received and stored securely.**`, 'system');
+                    }
+                    break;
+                    
+                case 'needs_authentication':
+                    console.log('🔍 DEBUG - Processing needs_authentication status');
+                    this.updateConnectionStatus('connecting', data.tenantDomain || this.currentTenant);
+                    this.showAuthenticationNotice(data);
+                    break;
+                    
+                case 'authentication_error':
+                    console.log('🔍 DEBUG - Processing authentication_error status');
+                    this.updateConnectionStatus('disconnected');
+                    this.showError(`Authentication failed: ${data.message}`);
+                    break;
+                    
+                default:
+                    console.warn('🔍 DEBUG - Unknown auth status:', data.status);
+            }
+        } catch (error) {
+            console.error('❌ Error in handleAuthStatusChanged switch statement:', error);
         }
     }
 
