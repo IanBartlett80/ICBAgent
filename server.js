@@ -3248,7 +3248,13 @@ ${requiredScopes.map(scope => `• ${scope}`).join('\n')}
       '/organization': ['Organization.Read.All'],
       '/deviceManagement/managedDevices': ['DeviceManagementManagedDevices.Read.All'],
       '/applications': ['Application.Read.All', 'Directory.Read.All'],
-      '/contacts': ['Contacts.Read']
+      '/contacts': ['Contacts.Read'],
+      '/identity/conditionalAccess/policies': ['Policy.Read.All', 'Policy.ReadWrite.ConditionalAccess', 'Directory.Read.All'],
+      '/directoryRoles': ['RoleManagement.Read.Directory', 'Directory.Read.All'],
+      '/servicePrincipals': ['Application.Read.All', 'Directory.Read.All'],
+      '/domains': ['Domain.Read.All', 'Directory.Read.All'],
+      '/deviceManagement/deviceCompliancePolicies': ['DeviceManagementConfiguration.Read.All'],
+      '/deviceManagement/deviceConfigurations': ['DeviceManagementConfiguration.Read.All']
     };
     
     // Find matching scope requirements
@@ -4241,8 +4247,8 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/directoryRoles',
           queryParams: {
-            '$select': 'id,displayName,description,roleTemplateId',
-            '$top': String(options?.limit || 100)
+            '$select': 'id,displayName,description,roleTemplateId'
+            // Note: directoryRoles endpoint does not support $top parameter
           },
           fetchAll: false // Disable fetchAll to avoid array length issues
         };
