@@ -4133,9 +4133,9 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           path: '/users',
           queryParams: {
             '$select': 'id,displayName,userPrincipalName,mail,accountEnabled,signInActivity,lastSignInDateTime,createdDateTime,assignedLicenses,assignedPlans,mfaDetail',
-            '$top': options?.limit || '999'
+            '$top': String(options?.limit || 100)
           },
-          fetchAll: true,
+          fetchAll: options?.fetchAll !== false,
           consistencyLevel: 'eventual'
         };
         break;
@@ -4147,9 +4147,48 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           path: '/deviceManagement/managedDevices',
           queryParams: {
             '$select': 'id,deviceName,operatingSystem,osVersion,complianceState,lastSyncDateTime,enrolledDateTime,managementAgent,ownerType,userPrincipalName',
-            '$top': options?.limit || '999'
+            '$top': String(options?.limit || 100)
           },
-          fetchAll: true
+          fetchAll: options?.fetchAll !== false
+        };
+        break;
+        
+      case 'compliancePolicies':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/deviceManagement/deviceCompliancePolicies',
+          queryParams: {
+            '$select': 'id,displayName,description,createdDateTime,lastModifiedDateTime,version,scheduledActionsForRule',
+            '$top': String(options?.limit || 100)
+          },
+          fetchAll: options?.fetchAll !== false
+        };
+        break;
+        
+      case 'configurationPolicies':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/deviceManagement/deviceConfigurations',
+          queryParams: {
+            '$select': 'id,displayName,description,createdDateTime,lastModifiedDateTime,version,deviceManagementApplicabilityRuleOsEdition,deviceManagementApplicabilityRuleOsVersion',
+            '$top': String(options?.limit || 100)
+          },
+          fetchAll: options?.fetchAll !== false
+        };
+        break;
+        
+      case 'servicePrincipals':
+        mcpRequest = {
+          apiType: 'graph',
+          method: 'get',
+          path: '/servicePrincipals',
+          queryParams: {
+            '$select': 'id,displayName,appId,servicePrincipalType,accountEnabled,createdDateTime,tags,appRoles,oauth2PermissionScopes',
+            '$top': String(options?.limit || 100)
+          },
+          fetchAll: options?.fetchAll !== false
         };
         break;
         
@@ -4159,9 +4198,10 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/identity/conditionalAccess/policies',
           queryParams: {
-            '$select': 'id,displayName,state,conditions,grantControls,sessionControls,createdDateTime,modifiedDateTime'
+            '$select': 'id,displayName,state,conditions,grantControls,sessionControls,createdDateTime,modifiedDateTime',
+            '$top': String(options?.limit || 100)
           },
-          fetchAll: true
+          fetchAll: options?.fetchAll !== false
         };
         break;
         
@@ -4171,9 +4211,10 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/applications',
           queryParams: {
-            '$select': 'id,displayName,appId,createdDateTime,signInAudience,requiredResourceAccess,keyCredentials,passwordCredentials'
+            '$select': 'id,displayName,appId,createdDateTime,signInAudience,requiredResourceAccess,keyCredentials,passwordCredentials',
+            '$top': String(options?.limit || 100)
           },
-          fetchAll: true
+          fetchAll: options?.fetchAll !== false
         };
         break;
         
@@ -4183,9 +4224,10 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
           method: 'get',
           path: '/groups',
           queryParams: {
-            '$select': 'id,displayName,groupTypes,securityEnabled,mailEnabled,createdDateTime,membershipRule,membershipRuleProcessingState'
+            '$select': 'id,displayName,groupTypes,securityEnabled,mailEnabled,createdDateTime,membershipRule,membershipRuleProcessingState',
+            '$top': String(options?.limit || 100)
           },
-          fetchAll: true,
+          fetchAll: options?.fetchAll !== false,
           consistencyLevel: 'eventual'
         };
         break;
@@ -4240,16 +4282,74 @@ app.post('/api/zero-trust-assessment/collect', async (req, res) => {
       // Handle Lokka MCP response format which might have prefixes like "Result for xyz: {json}"
       let jsonData = null;
       
+      // Check for permission/access errors first
+      if (responseText.toLowerCase().includes('access denied') || 
+          responseText.toLowerCase().includes('forbidden') || 
+          responseText.toLowerCase().includes('required scopes are missing') ||
+          responseText.toLowerCase().includes('accessdenied')) {
+        
+        console.log(`🔒 Permission error detected for ${dataType}`);
+        return res.status(403).json({
+          success: false,
+          error: `Insufficient permissions to access ${dataType}`,
+          dataType: dataType,
+          requiresPermissions: true,
+          rawError: responseText
+        });
+      }
+      
+      // Check for other API errors
+      if (responseText.toLowerCase().includes('error') && 
+          (responseText.includes('statusCode') || responseText.includes('"error":'))) {
+        
+        console.log(`❌ API error detected for ${dataType}:`, responseText.substring(0, 300));
+        
+        try {
+          const errorData = JSON.parse(responseText);
+          return res.status(400).json({
+            success: false,
+            error: errorData.error || `API error occurred while collecting ${dataType}`,
+            dataType: dataType,
+            statusCode: errorData.statusCode,
+            rawError: responseText
+          });
+        } catch (parseError) {
+          return res.status(400).json({
+            success: false,
+            error: `API error occurred while collecting ${dataType}`,
+            dataType: dataType,
+            rawError: responseText
+          });
+        }
+      }
+      
       // Try to extract JSON from response that might have prefixes
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        jsonData = JSON.parse(jsonMatch[0]);
+        try {
+          jsonData = JSON.parse(jsonMatch[0]);
+        } catch (parseError) {
+          console.log(`⚠️ JSON parse error for ${dataType}:`, parseError.message);
+          return res.status(500).json({ 
+            error: `Could not parse JSON response for ${dataType}`,
+            rawError: responseText.substring(0, 200)
+          });
+        }
       } else if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-        jsonData = JSON.parse(responseText.trim());
+        try {
+          jsonData = JSON.parse(responseText.trim());
+        } catch (parseError) {
+          console.log(`⚠️ JSON parse error for ${dataType}:`, parseError.message);
+          return res.status(500).json({ 
+            error: `Could not parse JSON response for ${dataType}`,
+            rawError: responseText.substring(0, 200)
+          });
+        }
       } else {
-        console.log(`⚠️ Could not extract JSON from ${dataType} response:`, responseText.substring(0, 100));
+        console.log(`⚠️ Could not extract JSON from ${dataType} response:`, responseText.substring(0, 200));
         return res.status(500).json({ 
-          error: `Could not parse JSON from ${dataType} response` 
+          error: `Could not parse response format for ${dataType}`,
+          rawError: responseText.substring(0, 200)
         });
       }
       
