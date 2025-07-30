@@ -31,6 +31,7 @@ class ZeroTrustAssessment {
         this.currentAssessment = null;
         this.assessmentHistory = [];
         this.isRunning = false;
+        this.permissionPollingInterval = null;
         
         console.log('🔧 ZeroTrustAssessment: Initializing UI...');
         this.initializeUI();
@@ -413,11 +414,21 @@ ${data.requiredScopes.map(p => `• **${p}**`).join('\n')}
 Once you approve the permissions, the Zero Trust Assessment will automatically restart with complete data collection.
 
 *Waiting for permission approval...*`, 'system');
+            
+            // Start polling to check if permissions were granted
+            this.startPermissionPolling(data.requiredScopes);
         });
 
         // Handle permission request failure
         this.icbAgent.socket.on('zero_trust_permission_request_failed', (data) => {
             console.error('❌ Permission request failed:', data);
+            
+            // Clear any polling that might be running
+            if (this.permissionPollingInterval) {
+                clearInterval(this.permissionPollingInterval);
+                this.permissionPollingInterval = null;
+            }
+            
             this.icbAgent.addMessage(`❌ **Permission Request Failed**
 
 Failed to initiate permission request: ${data.error}
@@ -428,6 +439,13 @@ Please try running the assessment again or contact your administrator.`, 'system
         // Handle successful permission grant (this should trigger assessment restart)
         this.icbAgent.socket.on('zero_trust_permissions_granted', (data) => {
             console.log('✅ Permissions granted, restarting assessment:', data);
+            
+            // Clear any polling that might be running
+            if (this.permissionPollingInterval) {
+                clearInterval(this.permissionPollingInterval);
+                this.permissionPollingInterval = null;
+            }
+            
             this.icbAgent.addMessage(`✅ **Permissions Approved Successfully**
 
 The required Microsoft Graph permissions have been approved. Restarting the Zero Trust Assessment with complete data collection...`, 'system');
@@ -435,11 +453,82 @@ The required Microsoft Graph permissions have been approved. Restarting the Zero
             // Clear any previous partial results and restart assessment
             this.currentAssessment = null;
             
-            // Restart the assessment after a brief delay
+            // Restart the assessment after a brief delay to allow token refresh
             setTimeout(() => {
                 this.startAssessment();
-            }, 2000);
+            }, 3000); // Increased delay to 3 seconds for token refresh
         });
+    }
+
+    /**
+     * Start polling to check if permissions were granted
+     * @param {Array} requiredScopes - Required permission scopes
+     */
+    startPermissionPolling(requiredScopes) {
+        // Clear any existing polling interval
+        if (this.permissionPollingInterval) {
+            clearInterval(this.permissionPollingInterval);
+        }
+
+        console.log('🔍 Starting permission polling for scopes:', requiredScopes);
+        
+        let attempts = 0;
+        const maxAttempts = 60; // Poll for up to 5 minutes (60 * 5 seconds)
+        
+        this.permissionPollingInterval = setInterval(async () => {
+            attempts++;
+            console.log(`🔍 Permission check attempt ${attempts}/${maxAttempts}`);
+            
+            try {
+                const response = await fetch('/api/zero-trust-assessment/check-permissions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        sessionId: this.icbAgent.sessionId,
+                        requiredScopes: requiredScopes
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.permissionsGranted) {
+                    console.log('✅ Permissions polling detected approval!');
+                    clearInterval(this.permissionPollingInterval);
+                    this.permissionPollingInterval = null;
+                    
+                    // The server will emit the zero_trust_permissions_granted event
+                    // which will be handled by the existing socket listener
+                    return;
+                }
+                
+                // Stop polling after max attempts
+                if (attempts >= maxAttempts) {
+                    console.log('⏰ Permission polling timeout reached');
+                    clearInterval(this.permissionPollingInterval);
+                    this.permissionPollingInterval = null;
+                    
+                    this.icbAgent.addMessage(`⏰ **Permission Approval Timeout**
+
+The system has been waiting for permission approval for 5 minutes. 
+
+**To continue:**
+1. If you haven't approved the permissions yet, please check for any open browser windows
+2. If you have approved them, please try running the assessment again
+3. If you're having issues, try disconnecting and reconnecting to refresh the session`, 'system');
+                }
+                
+            } catch (error) {
+                console.error('Error checking permissions:', error);
+                
+                // Don't stop polling on temporary errors, but log them
+                if (attempts >= maxAttempts) {
+                    clearInterval(this.permissionPollingInterval);
+                    this.permissionPollingInterval = null;
+                }
+            }
+        }, 5000); // Check every 5 seconds
     }
 
     showProgress() {

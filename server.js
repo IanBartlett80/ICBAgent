@@ -4477,54 +4477,24 @@ app.post('/api/zero-trust-assessment/request-permissions', async (req, res) => {
 
     console.log('✅ Zero Trust permission request completed:', permissionResponse);
 
-    // Parse the MCP response to check if permissions were granted
-    let permissionsGranted = false;
-    if (permissionResponse && permissionResponse.content && permissionResponse.content[0]) {
-      const responseText = permissionResponse.content[0].text || '';
-      console.log('🔍 Permission response text:', responseText);
-      
-      // Check for success indicators in the response
-      if (responseText.toLowerCase().includes('successfully') || 
-          responseText.toLowerCase().includes('granted') ||
-          responseText.toLowerCase().includes('approved') ||
-          responseText.toLowerCase().includes('access token updated')) {
-        permissionsGranted = true;
-      }
-    }
+    // The MCP add-graph-permission command opens a browser window and returns immediately
+    // It does not wait for user approval, so we should always treat this as "pending"
+    console.log('🔐 Permission consent window opened, waiting for user approval...');
+    
+    // Always emit the "permissions requested" event since user action is required
+    io.to(sessionId).emit('zero_trust_permissions_requested', {
+      requiredScopes,
+      message: 'Additional Microsoft Graph permissions required for complete Zero Trust Assessment. Please complete the authentication flow in your browser.',
+      timestamp: new Date().toISOString()
+    });
 
-    if (permissionsGranted) {
-      console.log('✅ Permissions successfully granted');
-      
-      // Emit success event to frontend
-      io.to(sessionId).emit('zero_trust_permissions_granted', {
-        requiredScopes,
-        message: 'Microsoft Graph permissions successfully granted. The Zero Trust Assessment will now restart with complete data access.',
-        timestamp: new Date().toISOString()
-      });
-      
-      res.json({
-        success: true,
-        message: 'Permissions successfully granted',
-        requiredScopes,
-        permissionsGranted: true,
-        timestamp: new Date().toISOString()  
-      });
-    } else {
-      // Emit event to frontend to inform about permission request (awaiting user action)
-      io.to(sessionId).emit('zero_trust_permissions_requested', {
-        requiredScopes,
-        message: 'Additional Microsoft Graph permissions required for complete Zero Trust Assessment. Please complete the authentication flow in your browser.',
-        timestamp: new Date().toISOString()
-      });
-
-      res.json({
-        success: true,
-        message: 'Permission request initiated successfully',
-        requiredScopes,
-        permissionsGranted: false,
-        timestamp: new Date().toISOString()  
-      });
-    }
+    res.json({
+      success: true,
+      message: 'Permission request initiated successfully - please approve in browser window',
+      requiredScopes,
+      permissionsGranted: false, // Always false initially
+      timestamp: new Date().toISOString()  
+    });
     
   } catch (error) {
     console.error('❌ Failed to request Zero Trust permissions:', error);
@@ -4538,6 +4508,104 @@ app.post('/api/zero-trust-assessment/request-permissions', async (req, res) => {
     
     res.status(500).json({ 
       error: `Failed to request permissions: ${error.message}` 
+    });
+  }
+});
+
+// Check if permissions were granted and restart assessment
+app.post('/api/zero-trust-assessment/check-permissions', async (req, res) => {
+  const { sessionId, requiredScopes } = req.body;
+  
+  if (!sessionId || !activeSessions.has(sessionId)) {
+    return res.status(400).json({ error: 'Invalid session ID' });
+  }
+  
+  if (!requiredScopes || !Array.isArray(requiredScopes)) {
+    return res.status(400).json({ error: 'Required scopes array is required' });
+  }
+  
+  try {
+    const mcpClient = mcpConnections.get(sessionId);
+    
+    if (!mcpClient || !mcpClient.isConnected) {
+      return res.status(400).json({ error: 'MCP client not available' });
+    }
+
+    console.log(`🔍 Checking if permissions were granted for session ${sessionId}`);
+
+    // Try to make a test call to see if permissions are now available
+    // We'll test the conditional access endpoint specifically
+    const testResponse = await mcpClient.sendMCPRequest('tools/call', {
+      name: 'Lokka-Microsoft',
+      arguments: {
+        apiType: 'graph',
+        method: 'get',
+        path: '/identity/conditionalAccess/policies',
+        queryParams: {
+          '$select': 'id,displayName',
+          '$top': '1'
+        }
+      }
+    });
+
+    console.log('🔍 Test permission response:', testResponse);
+
+    // Check if the test call was successful
+    let permissionsGranted = false;
+    if (testResponse && testResponse.content && testResponse.content[0]) {
+      const responseText = testResponse.content[0].text || '';
+      
+      // If we get valid JSON response or success indicators, permissions were granted
+      if (!responseText.toLowerCase().includes('access denied') && 
+          !responseText.toLowerCase().includes('forbidden') && 
+          !responseText.toLowerCase().includes('required scopes are missing')) {
+        
+        // Try to parse as JSON to confirm it's a valid response
+        try {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            JSON.parse(jsonMatch[0]);
+            permissionsGranted = true;
+          }
+        } catch (parseError) {
+          // If it's not JSON, check for other success indicators
+          if (responseText.toLowerCase().includes('successfully') || 
+              responseText.toLowerCase().includes('policies')) {
+            permissionsGranted = true;
+          }
+        }
+      }
+    }
+
+    if (permissionsGranted) {
+      console.log('✅ Permissions confirmed as granted, emitting restart event');
+      
+      // Emit success event to frontend to restart assessment
+      io.to(sessionId).emit('zero_trust_permissions_granted', {
+        requiredScopes,
+        message: 'Microsoft Graph permissions successfully granted. The Zero Trust Assessment will now restart with complete data access.',
+        timestamp: new Date().toISOString()
+      });
+      
+      res.json({
+        success: true,
+        message: 'Permissions granted - assessment will restart automatically',
+        permissionsGranted: true,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.json({
+        success: true,
+        message: 'Permissions still pending - please complete browser authentication',
+        permissionsGranted: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Error checking permissions:', error);
+    res.status(500).json({ 
+      error: `Failed to check permissions: ${error.message}` 
     });
   }
 });
