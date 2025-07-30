@@ -14,13 +14,40 @@ class ICBAgent {
 
     init() {
         console.log('ICBAgent initializing...'); // Debug log
+        this.restoreSessionFromStorage(); // Add session restoration
         this.initializeSocket();
         this.bindEvents();
-        this.updateConnectionStatus('disconnected');
+        this.updateConnectionStatus(this.isConnected ? 'connected' : 'disconnected', this.currentTenant);
         this.setupAuthenticationListener();
         this.initializeZeroTrustAssessment();
         this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
+    }
+
+    restoreSessionFromStorage() {
+        try {
+            const savedSession = localStorage.getItem('icb_session');
+            const savedTenant = localStorage.getItem('icb_tenant');
+            
+            if (savedSession && savedTenant) {
+                this.sessionId = savedSession;
+                this.currentTenant = savedTenant;
+                this.isConnected = true;
+                console.log('🔄 Session restored from localStorage:', { 
+                    sessionId: this.sessionId, 
+                    tenant: this.currentTenant 
+                });
+                
+                // Join the existing socket room when socket connects
+                if (this.socket && this.socket.connected) {
+                    this.socket.emit('join_session', this.sessionId);
+                }
+            } else {
+                console.log('ℹ️ No previous session found in localStorage');
+            }
+        } catch (error) {
+            console.warn('⚠️ Error restoring session from localStorage:', error);
+        }
     }
 
     testEnhancedRendering() {
@@ -105,6 +132,13 @@ class ICBAgent {
         
         this.socket.on('connect', () => {
             console.log('Socket connected');
+            
+            // Join session if we have one from restoration
+            if (this.sessionId) {
+                console.log('🔄 Rejoining session:', this.sessionId);
+                this.socket.emit('join_session', this.sessionId);
+            }
+            
             // Don't automatically set connected status - only when actually connected to a tenant
             if (this.currentTenant && this.sessionId) {
                 this.updateConnectionStatus('connected', this.currentTenant);

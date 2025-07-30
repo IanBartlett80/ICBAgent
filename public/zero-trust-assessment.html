@@ -131,12 +131,13 @@
                         this.isConnected = true;
                         console.log('📋 Session restored from localStorage:', { sessionId: this.sessionId, tenant: this.currentTenant });
                     } else {
-                        console.warn('⚠️ No active session found - redirecting to landing page');
-                        this.redirectToLandingPage();
+                        console.warn('⚠️ No active session found - user will need to connect');
+                        // Don't automatically redirect - let user manually navigate if needed
+                        this.showNotification('No active session found. Please connect to a tenant first.', 'info', 8000);
                     }
                 } catch (error) {
                     console.error('❌ Error restoring session:', error);
-                    this.redirectToLandingPage();
+                    this.showNotification('Error restoring session. Please try connecting again.', 'error');
                 }
             }
 
@@ -166,7 +167,7 @@
                 const backBtn = document.getElementById('backToLandingBtn');
                 if (backBtn) {
                     backBtn.addEventListener('click', () => {
-                        this.redirectToLandingPage();
+                        this.navigateToLandingPageWithSession();
                     });
                 }
 
@@ -291,6 +292,24 @@
                 
                 // Redirect to landing page
                 this.redirectToLandingPage();
+            }
+
+            navigateToLandingPageWithSession() {
+                console.log('🏠 Navigating to landing page while preserving session...');
+                
+                // Ensure session data is saved to localStorage for the main page to use
+                if (this.sessionId && this.currentTenant) {
+                    try {
+                        localStorage.setItem('icb_session', this.sessionId);
+                        localStorage.setItem('icb_tenant', this.currentTenant);
+                        console.log('💾 Session data preserved for main page');
+                    } catch (error) {
+                        console.warn('⚠️ Could not save session to localStorage:', error);
+                    }
+                }
+                
+                // Navigate to landing page without disconnecting
+                window.location.href = '/';
             }
 
             redirectToLandingPage() {
