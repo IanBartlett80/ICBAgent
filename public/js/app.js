@@ -223,6 +223,13 @@ class ICBAgent {
     }
 
     bindEvents() {
+        // Authentication success event listener (fallback)
+        window.addEventListener('icbAuthSuccess', (event) => {
+            console.log('📡 Received custom authentication success event:', event.detail);
+            const { authResponse, tenantDomain } = event.detail;
+            this.onAuthenticationSuccess(authResponse, tenantDomain);
+        });
+
         // Sign In button
         const signinBtn = document.getElementById('signinBtn');
         if (signinBtn) {

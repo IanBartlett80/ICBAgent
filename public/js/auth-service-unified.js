@@ -78,7 +78,8 @@ class ICBUnifiedAuthService {
             const hasAuthParams = window.location.hash.includes('code=') || window.location.search.includes('code=');
             if (hasAuthParams) {
                 console.log('🔍 Auth parameters detected during initialization, scheduling redirect processing...');
-                setTimeout(() => this.handleRedirectResponse(), 100);
+                // Give the main app more time to initialize before processing auth
+                setTimeout(() => this.handleRedirectResponse(), 500);
             }
         } catch (error) {
             console.error('❌ Error during auth service initialization:', error);
@@ -364,9 +365,67 @@ class ICBUnifiedAuthService {
             // Save authentication state
             this.saveAuthState();
 
-            // Notify the main application
-            if (window.icbAgent && typeof window.icbAgent.onAuthenticationSuccess === 'function') {
-                window.icbAgent.onAuthenticationSuccess(response, this.tenantDomain);
+            console.log('🔗 Attempting to notify main application...');
+            console.log('🔍 window.icbAgent available:', !!window.icbAgent);
+            console.log('🔍 onAuthenticationSuccess method available:', 
+                window.icbAgent && typeof window.icbAgent.onAuthenticationSuccess === 'function');
+
+            // Notify the main application with retry mechanism
+            let notificationAttempts = 0;
+            const maxAttempts = 10;
+            
+            const attemptNotification = async () => {
+                if (window.icbAgent && typeof window.icbAgent.onAuthenticationSuccess === 'function') {
+                    console.log('📢 Calling main app authentication success handler...');
+                    try {
+                        await window.icbAgent.onAuthenticationSuccess(response, this.tenantDomain);
+                        console.log('✅ Main app notified successfully');
+                        return true;
+                    } catch (error) {
+                        console.error('❌ Error calling main app handler:', error);
+                    }
+                }
+                return false;
+            };
+
+            // Try immediate notification
+            const immediateSuccess = await attemptNotification();
+            
+            if (!immediateSuccess) {
+                console.warn('⚠️ Main app not ready - setting up retry mechanism...');
+                
+                // Retry mechanism with polling
+                const retryInterval = setInterval(async () => {
+                    notificationAttempts++;
+                    console.log(`🔄 Retry attempt ${notificationAttempts}/${maxAttempts} to notify main app...`);
+                    
+                    const success = await attemptNotification();
+                    
+                    if (success || notificationAttempts >= maxAttempts) {
+                        clearInterval(retryInterval);
+                        
+                        if (!success) {
+                            console.warn('⚠️ Max notification attempts reached - using fallback methods...');
+                            
+                            // Alternative: Dispatch custom event
+                            const authEvent = new CustomEvent('icbAuthSuccess', {
+                                detail: {
+                                    authResponse: response,
+                                    tenantDomain: this.tenantDomain,
+                                    sessionId: this.sessionId
+                                }
+                            });
+                            window.dispatchEvent(authEvent);
+                            console.log('📡 Dispatched custom authentication event as fallback');
+                            
+                            // Also try to update connection status directly if possible
+                            if (window.icbAgent && typeof window.icbAgent.updateConnectionStatus === 'function') {
+                                console.log('🔄 Updating connection status directly...');
+                                window.icbAgent.updateConnectionStatus('connected', this.tenantDomain);
+                            }
+                        }
+                    }
+                }, 200); // Check every 200ms
             }
 
             // Clean URL from auth parameters
