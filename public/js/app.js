@@ -18,15 +18,332 @@ class ICBAgent {
 
     init() {
         console.log('ICBAgent initializing...'); // Debug log
+        
+        // Only handle popup if we have clear authentication response AND opener
+        // This prevents interference with MSAL's native popup handling
+        if (this.isPopupWindow()) {
+            console.log('🔍 Detected popup window context - handling auth response');
+            this.handlePopupAuthentication();
+            return; // Don't initialize full app in popup
+        }
+        
+        // Check and redirect from 127.0.0.1 to localhost for Azure compatibility
+        if (this.checkAndRedirectToLocalhost()) {
+            console.log('🔄 Redirecting to localhost, stopping initialization...');
+            return; // Stop initialization if redirecting
+        }
+        
         this.restoreSessionFromStorage(); // Add session restoration
         this.initializeSocket();
         this.bindEvents();
+        this.setupPopupMessageListener(); // Add popup communication
+        this.checkForAuthResponse(); // Check for auth response in URL
         this.updateConnectionStatus(this.isConnected ? 'connected' : 'disconnected', this.currentTenant);
         this.setupAuthenticationListener();
         this.initializeAuthenticationService();
         this.initializeZeroTrustAssessment();
         this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
+    }
+
+    /**
+     * Detect if we're running in a popup window
+     */
+    isPopupWindow() {
+        // Check multiple indicators that we're in a popup window
+        try {
+            // Primary check: URL contains authentication response parameters
+            const hasAuthResponse = window.location.hash.includes('code=') || 
+                                  window.location.hash.includes('error=') ||
+                                  window.location.search.includes('code=') ||
+                                  window.location.search.includes('error=');
+            
+            // Secondary check: window has opener
+            const hasOpener = window.opener && window.opener !== window;
+            
+            // Additional check: window dimensions suggest popup
+            const isSmallWindow = window.outerWidth < 800 || window.outerHeight < 600;
+            
+            // For popup authentication, we need BOTH auth response AND opener
+            // This prevents false positives and ensures proper MSAL coordination
+            const isPopup = hasAuthResponse && hasOpener;
+            
+            console.log('🔍 Popup detection:', {
+                hasAuthResponse,
+                hasOpener,
+                isSmallWindow,
+                isPopup,
+                url: window.location.href
+            });
+            
+            return isPopup;
+        } catch (e) {
+            console.error('❌ Error in popup detection:', e);
+            // Fallback: if we have auth response AND opener, treat as popup
+            return (window.location.hash.includes('code=') || window.location.hash.includes('error=')) && 
+                   window.opener && window.opener !== window;
+        }
+    }
+
+    /**
+     * Handle authentication in popup context
+     */
+    async handlePopupAuthentication() {
+        try {
+            console.log('🔐 Handling popup authentication response...');
+            
+            // Check if there's an authentication response in the URL
+            const urlParams = new URLSearchParams(window.location.hash.substring(1));
+            const code = urlParams.get('code');
+            const error = urlParams.get('error');
+            const state = urlParams.get('state');
+            
+            if (error) {
+                console.error('❌ Authentication error in popup:', error);
+                // Close popup and notify parent of error
+                if (window.opener) {
+                    window.opener.postMessage({ 
+                        type: 'msal-popup-auth-error', 
+                        error: error 
+                    }, window.location.origin);
+                }
+                window.close();
+                return;
+            }
+            
+            if (code || state) {
+                console.log('✅ Authentication response received in popup');
+                console.log('📝 Code present:', !!code);
+                console.log('📝 State present:', !!state);
+                
+                // Initialize minimal MSAL to handle the response
+                await this.initializeMinimalMSAL();
+                return;
+            }
+            
+            // If no auth parameters, this might not be an auth popup
+            console.log('ℹ️ No authentication parameters found in popup URL');
+            
+        } catch (error) {
+            console.error('❌ Error handling popup authentication:', error);
+            if (window.opener) {
+                window.opener.postMessage({ 
+                    type: 'msal-popup-auth-error', 
+                    error: error.message 
+                }, window.location.origin);
+            }
+            window.close();
+        }
+    }
+
+    /**
+     * Initialize minimal MSAL instance for popup handling
+     */
+    async initializeMinimalMSAL() {
+        try {
+            console.log('🔐 Initializing minimal MSAL for popup handling...');
+            
+            if (typeof msal === 'undefined') {
+                console.error('❌ MSAL library not available in popup');
+                throw new Error('MSAL library not loaded');
+            }
+
+            // Get client ID (same logic as main app)
+            const clientId = this.getClientId();
+            console.log('🔧 Using client ID:', clientId);
+            
+            const msalConfig = {
+                auth: {
+                    clientId: clientId,
+                    authority: 'https://login.microsoftonline.com/common',
+                    redirectUri: window.location.origin
+                },
+                cache: {
+                    cacheLocation: 'localStorage'
+                }
+            };
+
+            const msalInstance = new msal.PublicClientApplication(msalConfig);
+            await msalInstance.initialize();
+            
+            console.log('✅ MSAL popup instance initialized, handling redirect...');
+            
+            // Handle the redirect response
+            const response = await msalInstance.handleRedirectPromise();
+            console.log('📋 MSAL redirect response:', response);
+            
+            if (response && response.account) {
+                console.log('🎉 Successful authentication in popup!');
+                console.log('👤 Account:', response.account.username);
+                console.log('🏢 Tenant:', response.account.tenantId);
+                
+                // Notify parent window of successful authentication
+                if (window.opener && !window.opener.closed) {
+                    console.log('📤 Sending success message to parent window...');
+                    window.opener.postMessage({ 
+                        type: 'msal-popup-auth-success', 
+                        account: response.account,
+                        accessToken: response.accessToken,
+                        tenantId: response.account.tenantId
+                    }, window.location.origin);
+                } else {
+                    console.warn('⚠️ Parent window not available');
+                }
+            } else {
+                console.log('ℹ️ No authentication response from MSAL handleRedirectPromise');
+                
+                // Still notify parent that popup is ready to close
+                if (window.opener && !window.opener.closed) {
+                    console.log('📤 Sending completion message to parent window...');
+                    window.opener.postMessage({ 
+                        type: 'msal-popup-complete' 
+                    }, window.location.origin);
+                }
+            }
+            
+            // Close popup after handling response
+            console.log('🔚 Closing popup window...');
+            setTimeout(() => {
+                window.close();
+            }, 1000); // Give a bit more time for message to be received
+            
+        } catch (error) {
+            console.error('❌ Error initializing minimal MSAL in popup:', error);
+            
+            // Notify parent of error
+            if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({ 
+                    type: 'msal-popup-auth-error', 
+                    error: error.message 
+                }, window.location.origin);
+            }
+            
+            // Still close popup on error
+            setTimeout(() => {
+                window.close();
+            }, 1000);
+        }
+    }
+
+    /**
+     * Get client ID (helper method for popup context)
+     */
+    getClientId() {
+        const urlParams = new URLSearchParams(window.location.search);
+        let clientId = urlParams.get('clientId');
+        
+        if (!clientId) {
+            clientId = localStorage.getItem('icb_client_id');
+        }
+        
+        if (!clientId) {
+            // ICB Solutions App Registration
+            return 'e18ea8f1-5bc5-4710-bb54-aced2112724c';
+        }
+        
+        return clientId;
+    }
+
+    /**
+     * Check if user is accessing via 127.0.0.1 and redirect to localhost
+     * This ensures compatibility with Azure App Registration requirements
+     */
+    checkAndRedirectToLocalhost() {
+        if (window.location.hostname === '127.0.0.1') {
+            const currentUrl = window.location.href;
+            const localhostUrl = currentUrl.replace('127.0.0.1', 'localhost');
+            console.log('🔄 Redirecting from 127.0.0.1 to localhost for Azure compatibility');
+            console.log(`Original URL: ${currentUrl}`);
+            console.log(`Redirect URL: ${localhostUrl}`);
+            window.location.replace(localhostUrl);
+            return true; // Indicates redirect happened
+        }
+        return false; // No redirect needed
+    }
+
+    /**
+     * Setup message listener for popup window communication
+     */
+    setupPopupMessageListener() {
+        console.log('🔧 Setting up popup message listener...');
+        
+        window.addEventListener('message', async (event) => {
+            // Verify the origin for security
+            if (event.origin !== window.location.origin) {
+                console.warn('⚠️ Received message from untrusted origin:', event.origin);
+                return;
+            }
+            
+            console.log('📨 Received popup message:', event.data);
+            
+            if (event.data.type === 'msal-popup-auth-success') {
+                console.log('🎉 Popup authentication successful!');
+                console.log('👤 Account:', event.data.account.username);
+                console.log('🏢 Tenant:', event.data.tenantId);
+                
+                try {
+                    // Update authentication state
+                    if (this.authService) {
+                        // Manually set the authentication state
+                        await this.authService.handleAuthSuccess({
+                            account: event.data.account,
+                            accessToken: event.data.accessToken
+                        });
+                        
+                        console.log('✅ Authentication state updated successfully');
+                    } else {
+                        console.warn('⚠️ Auth service not available for state update');
+                    }
+                } catch (error) {
+                    console.error('❌ Error processing popup auth success:', error);
+                }
+            } else if (event.data.type === 'msal-popup-auth-error') {
+                console.error('❌ Popup authentication error:', event.data.error);
+                // You could show an error message to the user here
+            } else if (event.data.type === 'msal-popup-complete') {
+                console.log('ℹ️ Popup authentication completed (no result)');
+            }
+        }, false);
+        
+        console.log('✅ Popup message listener setup complete');
+    }
+
+    /**
+     * Check if the current page has authentication response parameters and handle them
+     */
+    async checkForAuthResponse() {
+        try {
+            console.log('🔍 Checking for existing authentication session...');
+            
+            // Wait for auth service to be available
+            let attempts = 0;
+            while (!this.authService && attempts < 10) {
+                console.log(`⏳ Waiting for auth service... (attempt ${attempts + 1})`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                attempts++;
+            }
+            
+            if (this.authService) {
+                console.log('🔐 Auth service available, initializing and checking session...');
+                
+                // Initialize MSAL if not already done
+                await this.authService.initializeAuthentication();
+                
+                // Check for existing authentication
+                if (this.authService.isAuthenticated) {
+                    console.log('✅ Found existing authentication session');
+                    const authResult = this.authService.getAuthResult();
+                    this.onAuthenticationSuccess(authResult, authResult.tenantDomain);
+                } else {
+                    console.log('ℹ️ No existing authentication session found');
+                }
+            } else {
+                console.error('❌ Auth service not available after wait period');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error checking for auth response:', error);
+        }
     }
 
     restoreSessionFromStorage() {
@@ -244,6 +561,15 @@ class ICBAgent {
             console.error('getStartedBtn not found!');
         }
 
+        // Disconnect button
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        if (disconnectBtn) {
+            disconnectBtn.addEventListener('click', () => {
+                console.log('Disconnect button clicked');
+                this.handleDisconnect();
+            });
+        }
+
         // Chat functionality
         const sendBtn = document.getElementById('sendBtn');
         const messageInput = document.getElementById('messageInput');
@@ -308,12 +634,6 @@ class ICBAgent {
         const generateReportBtn = document.getElementById('generateReportBtn');
         generateReportBtn.addEventListener('click', () => {
             this.generateHealthReport();
-        });
-
-        // Disconnect button
-        const disconnectBtn = document.getElementById('disconnectBtn');
-        disconnectBtn.addEventListener('click', () => {
-            this.disconnect();
         });
 
         // Connected card buttons
@@ -388,103 +708,198 @@ class ICBAgent {
         console.log('handleGetStarted called - starting Microsoft authentication'); // Debug log
         
         this.setButtonLoading('getStartedBtn', true);
-        this.updateConnectionStatus('connecting');
+        this.updateConnectionStatus('authenticating');
 
         try {
-            // Step 1: Initialize authentication service
-            console.log('🔐 Initializing Microsoft authentication...');
+            // Initialize authentication service if not already done
             if (!this.authService) {
                 throw new Error('Authentication service not available. Please refresh the page.');
             }
 
             await this.authService.initializeAuthentication();
 
-            // Step 2: Perform Microsoft authentication
-            console.log('🔐 Starting Microsoft authentication...');
-            this.updateConnectionStatus('authenticating');
-            
+            // Perform popup-based Microsoft authentication
+            console.log('🔐 Starting popup authentication...');
             const authResult = await this.authService.authenticate();
-            this.isAuthenticated = true;
-            this.graphToken = authResult.accessToken;
-            this.currentTenant = authResult.tenantDomain; // Get tenant from authentication result
             
-            console.log('✅ Microsoft authentication successful:', authResult.account.username);
-            console.log('🏢 Connected to tenant:', this.currentTenant);
+            console.log('✅ Popup authentication successful:', authResult.account.username);
+            console.log('🏢 Connected to tenant:', authResult.tenantDomain);
 
-            // Step 3: Create session with authenticated user info
-            console.log('📝 Creating session with authenticated user...');
+            // The auth service will automatically call onAuthenticationSuccess
+            // through the handleAuthSuccess method
+            
+        } catch (error) {
+            console.error('❌ Error during startup:', error);
+            this.setButtonLoading('getStartedBtn', false);
+            this.updateConnectionStatus('disconnected');
+            
+            // Comprehensive error handling with user-friendly messages
+            let errorMessage = 'Authentication failed. Please try again.';
+            let errorType = 'error';
+            
+            if (error.message.includes('popup_window_error') || error.message.includes('popup was blocked')) {
+                errorMessage = '🚫 Popup blocked! Please allow popups for this site and try again.';
+                errorType = 'warning';
+            } else if (error.message.includes('user_cancelled') || error.message.includes('user canceled')) {
+                errorMessage = '❌ Authentication was cancelled. Click "Sign in with Microsoft" to try again.';
+                errorType = 'info';
+            } else if (error.message.includes('access to the tenant') || error.message.includes('permissions')) {
+                errorMessage = '🔒 Access denied. You may not have permission to access this tenant. Please contact your administrator.';
+                errorType = 'error';
+            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                errorMessage = '🌐 Network error. Please check your internet connection and try again.';
+                errorType = 'error';
+            } else if (error.message.includes('AADSTS')) {
+                // Handle specific Azure AD error codes
+                if (error.message.includes('AADSTS50011')) {
+                    errorMessage = '🔗 Redirect URL mismatch. This is a configuration issue - please contact support.';
+                } else if (error.message.includes('AADSTS65001')) {
+                    errorMessage = '📋 Application not found. Please contact your administrator.';
+                } else if (error.message.includes('AADSTS50020')) {
+                    errorMessage = '👤 User account not found in this tenant. Please check your credentials.';
+                } else if (error.message.includes('AADSTS50034')) {
+                    errorMessage = '👤 User account does not exist. Please contact your administrator.';
+                } else if (error.message.includes('AADSTS50053')) {
+                    errorMessage = '🔒 Account locked. Please contact your administrator.';
+                } else if (error.message.includes('AADSTS50055')) {
+                    errorMessage = '🔑 Password expired. Please reset your password.';
+                } else if (error.message.includes('AADSTS50079')) {
+                    errorMessage = '🔐 Multi-factor authentication required. Please complete MFA and try again.';
+                } else if (error.message.includes('AADSTS50076')) {
+                    errorMessage = '🔐 Multi-factor authentication challenge required.';
+                } else {
+                    errorMessage = `🔑 Authentication error: ${error.message.includes('AADSTS') ? error.message.split(':')[0] : 'Please try again'}`;
+                }
+                errorType = 'error';
+            } else if (error.message.includes('interaction_in_progress')) {
+                errorMessage = '⏳ Another authentication is in progress. Please wait and try again.';
+                errorType = 'warning';
+            } else if (error.message.includes('consent_required')) {
+                errorMessage = '📝 Admin consent required for this application. Please contact your administrator.';
+                errorType = 'error';
+            } else if (error.message.includes('invalid_grant')) {
+                errorMessage = '🔄 Session expired. Please try signing in again.';
+                errorType = 'warning';
+            }
+            
+            // Show appropriate notification
+            this.showNotification(errorMessage, errorType, 5000);
+        }
+    }
+
+    /**
+     * Handle disconnect button click
+     */
+    async handleDisconnect() {
+        try {
+            console.log('🔌 Disconnecting from tenant...');
+            
+            // Update UI to show disconnecting state
+            this.updateConnectionStatus('connecting'); // Use connecting state to show loading
+            
+            // Sign out from MSAL
+            if (this.authService) {
+                await this.authService.disconnect();
+            }
+            
+            // Clear local state
+            this.isAuthenticated = false;
+            this.currentTenant = null;
+            this.authResponse = null;
+            this.graphToken = null;
+            this.sessionId = null;
+            
+            // Clear storage
+            localStorage.removeItem('icb_tenant');
+            localStorage.removeItem('icb_authenticated');
+            localStorage.removeItem('icb_user');
+            localStorage.removeItem('icb_session');
+            
+            // Update UI to disconnected state
+            this.updateConnectionStatus('disconnected');
+            
+            console.log('✅ Successfully disconnected');
+            
+        } catch (error) {
+            console.error('❌ Error during disconnect:', error);
+            // Still update UI to disconnected state
+            this.updateConnectionStatus('disconnected');
+        }
+    }
+
+    /**
+     * Handle authentication success callback from auth service
+     */
+    async onAuthenticationSuccess(authResponse, tenantDomain) {
+        try {
+            console.log('🎉 Authentication success handler called');
+            console.log('📋 Tenant:', tenantDomain);
+            console.log('👤 User:', authResponse.account.username);
+            
+            // Set authentication state
+            this.isAuthenticated = true;
+            this.currentTenant = tenantDomain;
+            this.authResponse = authResponse;
+            
+            // Store tokens
+            if (authResponse.accessToken) {
+                this.graphToken = authResponse.accessToken;
+            }
+            
+            // Update UI to connected state
+            this.updateConnectionStatus('connected', tenantDomain);
+            
+            // Save session information
+            localStorage.setItem('icb_tenant', tenantDomain);
+            localStorage.setItem('icb_authenticated', 'true');
+            localStorage.setItem('icb_user', authResponse.account.username);
+            
+            // Create session and start MCP server
+            await this.createAuthenticatedSession(authResponse);
+            
+        } catch (error) {
+            console.error('❌ Error in authentication success handler:', error);
+            this.updateConnectionStatus('disconnected');
+        }
+    }
+
+    /**
+     * Create authenticated session after successful login
+     */
+    async createAuthenticatedSession(authResponse) {
+        try {
+            console.log('🔧 Creating authenticated session...');
+            
+            // Create session with authentication context
             const sessionResponse = await fetch('/api/session/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
-                    tenantDomain: this.currentTenant,
-                    userPrincipalName: authResult.account.username,
-                    accessToken: authResult.accessToken
-                }),
+                body: JSON.stringify({
+                    tenant: this.currentTenant,
+                    user: authResponse.account.username,
+                    accessToken: authResponse.accessToken
+                })
             });
 
             const sessionData = await sessionResponse.json();
-            console.log('Session response:', sessionData); // Debug log
             
             if (!sessionResponse.ok) {
                 throw new Error(sessionData.error || 'Failed to create session');
             }
 
             this.sessionId = sessionData.sessionId;
-
-            // Save session and authentication state
             localStorage.setItem('icb_session', this.sessionId);
-            localStorage.setItem('icb_tenant', this.currentTenant);
-            localStorage.setItem('icb_authenticated', 'true');
 
             // Join socket room
             this.socket.emit('join_session', this.sessionId);
 
-            // Step 4: Start MCP server with authentication context
-            console.log('🚀 Starting MCP server with authentication...');
-            const mcpResponse = await fetch('/api/mcp/start', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    sessionId: this.sessionId, 
-                    tenantDomain: this.currentTenant,
-                    accessToken: this.graphToken
-                }),
-            });
-
-            const mcpData = await mcpResponse.json();
+            console.log('✅ Authenticated session created successfully');
             
-            if (!mcpResponse.ok) {
-                throw new Error(mcpData.error || 'Failed to start MCP server');
-            }
-
-            // Update to fully connected and authenticated status
-            this.isConnected = true;
-            this.updateConnectionStatus('connected', this.currentTenant);
-            
-            console.log('✅ ICB Agent setup complete - authenticated and connected');
-
         } catch (error) {
-            console.error('❌ Error during startup:', error);
-            
-            // Handle specific authentication errors
-            if (error.message.includes('popup') || error.message.includes('Popup')) {
-                this.showError('Authentication popup was blocked. Please allow popups for this site and try again.');
-            } else if (error.message.includes('MSAL')) {
-                this.showError('Authentication service unavailable. Please check your internet connection and try again.');
-            } else {
-                this.showError(error.message);
-            }
-            
-            this.updateConnectionStatus('disconnected');
-            this.isAuthenticated = false;
-            this.graphToken = null;
-        } finally {
-            this.setButtonLoading('getStartedBtn', false);
+            console.error('❌ Failed to create authenticated session:', error);
+            throw error;
         }
     }
 
@@ -1084,9 +1499,100 @@ class ICBAgent {
     }
 
     handleMonthlyReportFeatureClick() {
-        // Launch the Monthly Report generation flow
-        // This will trigger MSAL authentication and then generate the report
-        this.showMonthlyReportModal();
+        // Check if user is authenticated
+        if (this.isAuthenticated && this.currentTenant) {
+            console.log('🔧 User is authenticated, starting automatic report generation...');
+            // User is authenticated, automatically generate the report
+            this.generateMonthlyReport();
+        } else {
+            console.log('🔐 User not authenticated, showing modal for authentication...');
+            // User not authenticated, show the modal for authentication
+            this.showMonthlyReportModal();
+        }
+    }
+
+    /**
+     * Generate monthly report automatically for authenticated users
+     */
+    async generateMonthlyReport() {
+        try {
+            console.log('📊 Starting automatic monthly report generation...');
+            
+            // Show progress indicator
+            this.showProgressIndicator('Generating Monthly Report', 'Preparing comprehensive tenant analysis...');
+            
+            // Get access token for the report
+            const accessToken = await this.getAccessToken();
+            if (!accessToken) {
+                throw new Error('Unable to get access token for report generation');
+            }
+            
+            // Use the monthly report auth service to generate the report
+            if (window.monthlyReportAuth) {
+                console.log('🔧 Using monthly report service for generation...');
+                
+                // Update progress
+                this.updateProgressIndicator('Connecting to Microsoft Graph...', 20);
+                
+                // Generate the report
+                const reportData = await window.monthlyReportAuth.generateReport({
+                    tenantDomain: this.currentTenant,
+                    userPrincipalName: this.authResponse?.account?.username,
+                    accessToken: accessToken
+                });
+                
+                // Update progress
+                this.updateProgressIndicator('Report generated successfully!', 100);
+                
+                // Close progress indicator after a short delay
+                setTimeout(() => {
+                    this.hideProgressIndicator();
+                    
+                    // Open report in new tab
+                    const reportUrl = this.createReportUrl(reportData);
+                    window.open(reportUrl, '_blank');
+                    
+                    console.log('✅ Monthly report opened in new tab');
+                }, 1500);
+                
+            } else {
+                // Fallback to original method
+                console.log('⚠️ Monthly report service not available, using fallback...');
+                this.showMonthlyReportModal();
+            }
+            
+        } catch (error) {
+            console.error('❌ Error generating monthly report:', error);
+            this.hideProgressIndicator();
+            
+            let errorMessage = 'Failed to generate monthly report. Please try again.';
+            if (error.message.includes('access token')) {
+                errorMessage = 'Authentication expired. Please disconnect and sign in again.';
+            } else if (error.message.includes('permissions')) {
+                errorMessage = 'Insufficient permissions to generate report. Please contact your administrator.';
+            }
+            
+            this.showError(errorMessage);
+        }
+    }
+
+    /**
+     * Create URL for the generated report
+     */
+    createReportUrl(reportData) {
+        // Create a blob URL for the report data or use a dedicated report page
+        if (reportData.pdfBlob) {
+            return URL.createObjectURL(reportData.pdfBlob);
+        } else if (reportData.reportId) {
+            return `/reports/${reportData.reportId}`;
+        } else {
+            // Fallback to monthly report page with data
+            const params = new URLSearchParams({
+                tenant: this.currentTenant,
+                generated: Date.now()
+            });
+            return `/monthly-report.html?${params.toString()}`;
+        }
     }
 
     showReportModal(report) {
@@ -2355,6 +2861,71 @@ Once you complete the permission process, your query will be automatically proce
                 }
             }, 300);
         }, duration);
+    }
+
+    // ==================== PROGRESS INDICATOR METHODS ====================
+
+    /**
+     * Show progress indicator for long-running operations
+     */
+    showProgressIndicator(title, message, progress = 0) {
+        // Create progress indicator if it doesn't exist
+        let progressModal = document.getElementById('progressIndicator');
+        if (!progressModal) {
+            progressModal = document.createElement('div');
+            progressModal.id = 'progressIndicator';
+            progressModal.className = 'modal progress-modal';
+            progressModal.innerHTML = `
+                <div class="modal-content progress-content">
+                    <div class="progress-header">
+                        <h3 id="progressTitle">${title}</h3>
+                        <p id="progressMessage">${message}</p>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar">
+                            <div id="progressFill" class="progress-fill" style="width: ${progress}%"></div>
+                        </div>
+                        <span id="progressPercent">${progress}%</span>
+                    </div>
+                    <div class="progress-spinner"></div>
+                </div>
+            `;
+            document.body.appendChild(progressModal);
+        }
+        
+        // Update content
+        document.getElementById('progressTitle').textContent = title;
+        document.getElementById('progressMessage').textContent = message;
+        document.getElementById('progressFill').style.width = `${progress}%`;
+        document.getElementById('progressPercent').textContent = `${progress}%`;
+        
+        // Show modal
+        progressModal.style.display = 'flex';
+        console.log(`📊 Progress: ${title} - ${message} (${progress}%)`);
+    }
+
+    /**
+     * Update progress indicator
+     */
+    updateProgressIndicator(message, progress) {
+        const progressModal = document.getElementById('progressIndicator');
+        if (progressModal && progressModal.style.display === 'flex') {
+            document.getElementById('progressMessage').textContent = message;
+            document.getElementById('progressFill').style.width = `${progress}%`;
+            document.getElementById('progressPercent').textContent = `${progress}%`;
+            console.log(`📊 Progress update: ${message} (${progress}%)`);
+        }
+    }
+
+    /**
+     * Hide progress indicator
+     */
+    hideProgressIndicator() {
+        const progressModal = document.getElementById('progressIndicator');
+        if (progressModal) {
+            progressModal.style.display = 'none';
+            console.log('📊 Progress indicator hidden');
+        }
     }
 
     // ==================== ZERO TRUST ASSESSMENT METHODS ====================

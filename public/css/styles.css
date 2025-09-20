@@ -4555,3 +4555,82 @@ body::before {
     justify-content: center;
   }
 }
+
+/* ==================== PROGRESS INDICATOR STYLES ==================== */
+
+.progress-modal {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+}
+
+.progress-content {
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  padding: var(--spacing-8);
+  background: linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.85) 100%);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--glass-border);
+}
+
+.progress-header {
+  margin-bottom: var(--spacing-6);
+}
+
+.progress-header h3 {
+  color: var(--primary-900);
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+}
+
+.progress-header p {
+  color: var(--gray-600);
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.progress-bar-container {
+  margin: var(--spacing-6) 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--gray-200);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-500) 0%, var(--primary-600) 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+#progressPercent {
+  font-weight: 600;
+  color: var(--primary-700);
+  min-width: 40px;
+  text-align: right;
+}
+
+.progress-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--gray-200);
+  border-top: 3px solid var(--primary-500);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: var(--spacing-4) auto 0;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

@@ -16,7 +16,7 @@ class ICBAuthService {
         this.clientConfig = {
             clientId: null,
             authority: null,
-            redirectUri: window.location.origin
+            redirectUri: this.getRedirectUri()
         };
 
         // Required permissions for full ICB Agent functionality
@@ -40,6 +40,16 @@ class ICBAuthService {
     }
 
     /**
+     * Get the appropriate redirect URI based on current hostname
+     */
+    getRedirectUri() {
+        // Always use localhost for consistency with Azure App Registration
+        // Azure only allows localhost or https, not 127.0.0.1
+        const port = window.location.port || '3000';
+        return `http://localhost:${port}`;
+    }
+
+    /**
      * Initialize MSAL with common Microsoft endpoint
      */
     async initializeAuthentication() {
@@ -58,8 +68,8 @@ class ICBAuthService {
                 auth: {
                     clientId: clientId,
                     authority: 'https://login.microsoftonline.com/common', // Common endpoint for multi-tenant
-                    redirectUri: window.location.origin,
-                    postLogoutRedirectUri: window.location.origin
+                    redirectUri: this.getRedirectUri(),
+                    postLogoutRedirectUri: this.getRedirectUri()
                 },
                 cache: {
                     cacheLocation: "sessionStorage",
@@ -79,11 +89,76 @@ class ICBAuthService {
             await this.msalInstance.initialize();
             
             console.log('✅ MSAL initialized successfully with common endpoint');
+            
+            // Load existing session if available
+            this.loadAuthState();
+            
+            // Handle redirect response if we're returning from authentication
+            await this.handleRedirectResponse();
+            
             return true;
             
         } catch (error) {
             console.error('❌ Failed to initialize MSAL:', error);
             throw new Error(`Authentication initialization failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle authentication redirect response
+     * For popup flow, this mainly handles existing sessions
+     */
+    async handleRedirectResponse() {
+        try {
+            // Check for existing sessions first
+            const accounts = this.msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                console.log('✅ Found existing session for:', accounts[0].username);
+                this.account = accounts[0];
+                this.isAuthenticated = true;
+                this.tenantDomain = this.extractTenantDomain(this.account);
+                
+                // Try to get a fresh token to validate the session
+                try {
+                    const silentRequest = {
+                        scopes: ['User.Read'],
+                        account: this.account
+                    };
+                    const tokenResponse = await this.msalInstance.acquireTokenSilent(silentRequest);
+                    this.accessToken = tokenResponse.accessToken;
+                    console.log('✅ Successfully refreshed access token from existing session');
+                    
+                    // Save the authentication state
+                    this.saveAuthState();
+                    
+                    // Notify the app of existing authentication
+                    if (window.icbAgent) {
+                        console.log('🔔 Notifying ICB Agent of existing authentication session');
+                        window.icbAgent.updateConnectionStatus('connected', this.tenantDomain);
+                        window.icbAgent.onAuthenticationSuccess(this.getAuthResult(), this.tenantDomain);
+                    }
+                } catch (tokenError) {
+                    console.log('⚠️ Could not refresh token from existing session:', tokenError.message);
+                    // Session exists but token refresh failed - clear the session
+                    this.account = null;
+                    this.isAuthenticated = false;
+                    this.tenantDomain = null;
+                    this.accessToken = null;
+                }
+                return;
+            }
+
+            // Handle any redirect responses (mainly for error cases)
+            const response = await this.msalInstance.handleRedirectPromise();
+            if (response) {
+                console.log('✅ Authentication redirect processed:', response);
+                return this.handleAuthSuccess(response);
+            }
+        } catch (error) {
+            console.error('❌ Error handling redirect response:', error);
+            if (window.icbAgent) {
+                window.icbAgent.updateConnectionStatus('disconnected');
+            }
         }
     }
 
@@ -116,7 +191,8 @@ class ICBAuthService {
         // Use development fallback
         if (!clientId) {
             console.log('⚠️ No client ID configured, using development mode');
-            return 'YOUR_CLIENT_ID_HERE'; // This should be replaced with actual client ID
+            // ICB Solutions App Registration - Multi-tenant Microsoft 365 Management Platform
+            return 'e18ea8f1-5bc5-4710-bb54-aced2112724c';
         }
         
         return clientId;
@@ -155,10 +231,23 @@ class ICBAuthService {
                 }
             }
 
-            // Interactive authentication
-            const response = await this.msalInstance.acquireTokenPopup(loginRequest);
-            console.log('✅ Interactive authentication successful');
-            return this.handleAuthSuccess(response);
+            // Interactive authentication with fallback detection
+            try {
+                const response = await this.msalInstance.acquireTokenPopup(loginRequest);
+                console.log('✅ Interactive authentication successful');
+                return this.handleAuthSuccess(response);
+            } catch (popupError) {
+                console.log('⚠️ Popup authentication promise failed, checking for completed authentication...');
+                
+                // Fallback: Check if authentication completed despite popup promise failing
+                const authResult = await this.checkForCompletedAuthentication();
+                if (authResult) {
+                    console.log('✅ Authentication detected via fallback mechanism');
+                    return authResult;
+                }
+                
+                throw popupError;
+            }
             
         } catch (error) {
             console.error('❌ Authentication failed:', error);
@@ -168,6 +257,42 @@ class ICBAuthService {
             }
             
             throw new Error(`Authentication failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Check for completed authentication when popup promise fails
+     */
+    async checkForCompletedAuthentication() {
+        try {
+            console.log('🔍 Checking for completed authentication...');
+            
+            // Wait a moment for potential account changes
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Check for new accounts
+            const accounts = this.msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                console.log('✅ Found accounts after popup, attempting silent token acquisition');
+                
+                const silentRequest = {
+                    scopes: ['User.Read'],
+                    account: accounts[0]
+                };
+                
+                try {
+                    const response = await this.msalInstance.acquireTokenSilent(silentRequest);
+                    console.log('✅ Successfully acquired token for detected account');
+                    return this.handleAuthSuccess(response);
+                } catch (silentError) {
+                    console.log('❌ Failed to acquire token for detected account:', silentError.message);
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('❌ Error checking for completed authentication:', error);
+            return null;
         }
     }
 
@@ -194,6 +319,21 @@ class ICBAuthService {
         // Try to acquire additional permissions
         await this.acquireAdditionalPermissions();
         
+        // Save authentication state for session persistence
+        this.saveAuthState();
+        
+        // Notify the app of successful authentication
+        if (window.icbAgent) {
+            window.icbAgent.onAuthenticationSuccess(this.getAuthResult(), this.tenantDomain);
+        }
+        
+        return this.getAuthResult();
+    }
+
+    /**
+     * Get authentication result object
+     */
+    getAuthResult() {
         return {
             isAuthenticated: true,
             account: this.account,
@@ -249,13 +389,67 @@ class ICBAuthService {
                 const userInfo = await response.json();
                 console.log('✅ Tenant access validated for user:', userInfo.userPrincipalName);
                 return true;
+            } else {
+                console.error('❌ Failed to validate tenant access:', response.status, response.statusText);
+                return false;
             }
-            
-            return false;
         } catch (error) {
-            console.error('❌ Tenant validation failed:', error);
+            console.error('❌ Error validating tenant access:', error);
             return false;
         }
+    }
+
+    /**
+     * Save authentication state to localStorage for session persistence
+     */
+    saveAuthState() {
+        if (this.isAuthenticated && this.account) {
+            const authState = {
+                account: this.account,
+                tenantDomain: this.tenantDomain,
+                isAuthenticated: this.isAuthenticated,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('icb_auth_state', JSON.stringify(authState));
+            console.log('💾 Authentication state saved to localStorage');
+        }
+    }
+
+    /**
+     * Load authentication state from localStorage
+     */
+    loadAuthState() {
+        try {
+            const authStateJson = localStorage.getItem('icb_auth_state');
+            if (authStateJson) {
+                const authState = JSON.parse(authStateJson);
+                
+                // Check if state is not too old (24 hours)
+                const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+                if (Date.now() - authState.timestamp < maxAge) {
+                    this.account = authState.account;
+                    this.tenantDomain = authState.tenantDomain;
+                    this.isAuthenticated = authState.isAuthenticated;
+                    console.log('📥 Authentication state loaded from localStorage');
+                    return true;
+                } else {
+                    console.log('⏰ Stored authentication state expired, clearing');
+                    this.clearAuthState();
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error loading authentication state:', error);
+            this.clearAuthState();
+        }
+        return false;
+    }
+
+    /**
+     * Clear authentication state from localStorage
+     */
+    clearAuthState() {
+        localStorage.removeItem('icb_auth_state');
+        console.log('🗑️ Authentication state cleared from localStorage');
     }
 
     /**
@@ -334,6 +528,14 @@ class ICBAuthService {
             this.isAuthenticated = false;
             this.tenantDomain = null;
             
+            // Clear stored auth state
+            this.clearAuthState();
+            
+            // Notify the app of disconnection
+            if (window.icbAgent) {
+                window.icbAgent.updateConnectionStatus('disconnected');
+            }
+            
             console.log('✅ Sign out successful');
             
         } catch (error) {
@@ -343,7 +545,15 @@ class ICBAuthService {
             this.account = null;
             this.isAuthenticated = false;
             this.tenantDomain = null;
+            this.clearAuthState();
         }
+    }
+
+    /**
+     * Disconnect user (same as sign out but different terminology)
+     */
+    async disconnect() {
+        await this.signOut();
     }
 
     /**

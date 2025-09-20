@@ -51,6 +51,16 @@ class MonthlyReportAuth {
         this.initializeMSAL();
     }
 
+    /**
+     * Get the appropriate redirect URI based on current hostname
+     */
+    getRedirectUri() {
+        // Always use localhost for consistency with Azure App Registration
+        // Azure only allows localhost or https, not 127.0.0.1
+        const port = window.location.port || '3000';
+        return `http://localhost:${port}`;
+    }
+
     initializeMSAL() {
         // Get client ID from environment or use a default for demo
         const clientId = this.getClientId();
@@ -66,8 +76,8 @@ class MonthlyReportAuth {
             auth: {
                 clientId: clientId,
                 authority: 'https://login.microsoftonline.com/common',
-                redirectUri: window.location.origin + '/public/index.html',
-                postLogoutRedirectUri: window.location.origin
+                redirectUri: this.getRedirectUri(), // Fixed: was window.location.origin
+                postLogoutRedirectUri: this.getRedirectUri()
             },
             cache: {
                 cacheLocation: 'sessionStorage',
@@ -115,11 +125,11 @@ class MonthlyReportAuth {
 
         // 3. Check if running in development (demo mode)
         if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            console.log('🛠️ Development mode detected - using demo client ID');
-            console.log('ℹ️ For production, please configure a proper Microsoft App Registration');
+            console.log('🛠️ Development mode detected - using ICB Solutions client ID');
+            console.log('ℹ️ Using ICB Solutions multi-tenant app registration');
             
-            // Return a placeholder that will show helpful error message
-            return 'DEMO_CLIENT_ID_REPLACE_ME';
+            // ICB Solutions App Registration - Multi-tenant Microsoft 365 Management Platform
+            return 'e18ea8f1-5bc5-4710-bb54-aced2112724c';
         }
 
         // 4. Production should have this configured properly
@@ -288,7 +298,7 @@ class MonthlyReportAuth {
             if (this.currentAccount) {
                 await this.msalInstance.logoutPopup({
                     account: this.currentAccount,
-                    postLogoutRedirectUri: window.location.origin
+                    postLogoutRedirectUri: this.getRedirectUri()
                 });
             }
             
