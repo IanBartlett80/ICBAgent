@@ -1094,6 +1094,12 @@ class ICBAgent {
             return;
         }
 
+        // Validate tenant domain format
+        if (!this.isValidTenantDomain(tenantDomain)) {
+            this.showError('Please enter a valid tenant domain (e.g., customer.onmicrosoft.com)');
+            return;
+        }
+
         const authStatus = document.getElementById('authStatus');
         const statusIndicator = authStatus.querySelector('.status-indicator');
         const statusText = authStatus.querySelector('.status-text');
@@ -1104,24 +1110,91 @@ class ICBAgent {
         statusText.textContent = 'Initiating Microsoft Authentication...';
 
         try {
-            // This will trigger MSAL authentication popup
-            // For now, simulate the authentication process
-            setTimeout(() => {
-                statusIndicator.className = 'status-indicator connected';
-                statusText.textContent = `✅ Successfully authenticated to ${tenantDomain}`;
+            // Use real MSAL authentication
+            console.log(`🔐 Starting MSAL authentication for tenant: ${tenantDomain}`);
+            
+            // Check if MSAL auth service is available
+            if (!window.monthlyReportAuth) {
+                throw new Error('Authentication service not available. Please refresh the page.');
+            }
+
+            statusText.textContent = 'Opening Microsoft sign-in window...';
+            
+            // Perform authentication with the specified tenant
+            const authResult = await window.monthlyReportAuth.authenticateForTenant(tenantDomain);
+            
+            // Validate permissions
+            statusText.textContent = 'Validating permissions...';
+            const permissionValidation = await window.monthlyReportAuth.validatePermissions();
+            
+            if (!permissionValidation.isValid) {
+                console.warn('⚠️ Missing some permissions:', permissionValidation.missingScopes);
+                statusText.textContent = `⚠️ Authentication successful with limited permissions (${permissionValidation.totalGranted}/${permissionValidation.totalRequired} granted)`;
+                statusIndicator.className = 'status-indicator warning';
                 
-                // Move to next step after successful auth
-                setTimeout(() => {
-                    this.showConfigurationStep(tenantDomain);
-                }, 1500);
+                // Show warning but continue
+                this.showWarning(`Authentication successful but missing ${permissionValidation.missingScopes.length} permissions. Some report features may be limited.`);
+            } else {
+                statusIndicator.className = 'status-indicator connected';
+                statusText.textContent = `✅ Successfully authenticated to ${tenantDomain} with full permissions`;
+                console.log('✅ Full permissions granted for comprehensive report generation');
+            }
+            
+            // Get user info for display
+            const userInfo = window.monthlyReportAuth.getCurrentUser();
+            if (userInfo) {
+                console.log(`👤 Authenticated as: ${userInfo.username}`);
+                statusText.textContent += ` (${userInfo.username})`;
+            }
+
+            // Store authentication details for later use
+            this.monthlyReportSession = {
+                tenantDomain: tenantDomain,
+                authResult: authResult,
+                userInfo: userInfo,
+                permissions: permissionValidation,
+                authenticatedAt: new Date().toISOString()
+            };
+
+            // Move to next step after successful auth
+            setTimeout(() => {
+                this.showConfigurationStep(tenantDomain);
             }, 2000);
 
         } catch (error) {
-            console.error('Authentication failed:', error);
+            console.error('❌ Authentication failed:', error);
             statusIndicator.className = 'status-indicator disconnected';
-            statusText.textContent = '❌ Authentication failed. Please try again.';
-            this.showError('Failed to authenticate with Microsoft 365');
+            
+            // Handle specific error types
+            if (error.message.includes('popup')) {
+                statusText.textContent = '❌ Authentication popup blocked. Please allow popups and try again.';
+                this.showError('Authentication popup was blocked. Please allow popups in your browser and try again.');
+            } else if (error.message.includes('cancelled')) {
+                statusText.textContent = '❌ Authentication cancelled by user.';
+                this.showError('Authentication was cancelled. Please try again to generate the monthly report.');
+            } else if (error.message.includes('not available')) {
+                statusText.textContent = '❌ Authentication service unavailable.';
+                this.showError('Authentication service is not available. Please refresh the page and try again.');
+            } else {
+                statusText.textContent = '❌ Authentication failed. Please try again.';
+                this.showError(`Authentication failed: ${error.message}`);
+            }
         }
+    }
+
+    /**
+     * Validate tenant domain format
+     * @param {string} domain - Tenant domain to validate
+     * @returns {boolean} True if valid
+     */
+    isValidTenantDomain(domain) {
+        // Basic validation for common tenant domain formats
+        const patterns = [
+            /^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]\.onmicrosoft\.com$/,  // xxx.onmicrosoft.com
+            /^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]\.[a-zA-Z]{2,}$/      // custom domains
+        ];
+        
+        return patterns.some(pattern => pattern.test(domain));
     }
 
     showConfigurationStep(tenantDomain) {
@@ -1129,12 +1202,25 @@ class ICBAgent {
         document.getElementById('authStep').style.display = 'none';
         document.getElementById('configStep').style.display = 'block';
         
-        // Pre-populate customer name from tenant domain
+        // Pre-populate customer name from tenant domain and authentication info
         const customerName = document.getElementById('customerName');
-        const domain = tenantDomain.replace('.onmicrosoft.com', '').replace('.com', '');
-        customerName.value = domain.charAt(0).toUpperCase() + domain.slice(1);
+        let defaultName = tenantDomain.replace('.onmicrosoft.com', '').replace('.com', '');
+        defaultName = defaultName.charAt(0).toUpperCase() + defaultName.slice(1);
         
+        // If we have user info from authentication, try to get organization name
+        if (this.monthlyReportSession && this.monthlyReportSession.userInfo) {
+            const userInfo = this.monthlyReportSession.userInfo;
+            console.log(`📋 Configuration step for authenticated user: ${userInfo.username}`);
+            
+            // You could potentially extract org name from the username domain
+            // For now, use the tenant domain as fallback
+        }
+        
+        customerName.value = defaultName;
         this.currentReportTenant = tenantDomain;
+        
+        // Show authentication success message
+        this.showSuccess(`🎉 Successfully authenticated to ${tenantDomain}. Please configure your report settings.`);
     }
 
     async generateMonthlyReportData() {
