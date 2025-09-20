@@ -72,7 +72,7 @@ class ICBAuthService {
                     postLogoutRedirectUri: this.getRedirectUri()
                 },
                 cache: {
-                    cacheLocation: "sessionStorage",
+                    cacheLocation: "localStorage", // Use localStorage for cross-window sharing
                     storeAuthStateInCookie: false
                 },
                 system: {
@@ -231,23 +231,11 @@ class ICBAuthService {
                 }
             }
 
-            // Interactive authentication with fallback detection
-            try {
-                const response = await this.msalInstance.acquireTokenPopup(loginRequest);
-                console.log('✅ Interactive authentication successful');
-                return this.handleAuthSuccess(response);
-            } catch (popupError) {
-                console.log('⚠️ Popup authentication promise failed, checking for completed authentication...');
-                
-                // Fallback: Check if authentication completed despite popup promise failing
-                const authResult = await this.checkForCompletedAuthentication();
-                if (authResult) {
-                    console.log('✅ Authentication detected via fallback mechanism');
-                    return authResult;
-                }
-                
-                throw popupError;
-            }
+            // Interactive popup authentication - let MSAL handle everything
+            console.log('🚀 Opening authentication popup...');
+            const response = await this.msalInstance.acquireTokenPopup(loginRequest);
+            console.log('✅ Popup authentication completed successfully');
+            return this.handleAuthSuccess(response);
             
         } catch (error) {
             console.error('❌ Authentication failed:', error);
@@ -256,43 +244,11 @@ class ICBAuthService {
                 throw new Error('Popup blocked. Please allow popups for this site and try again.');
             }
             
-            throw new Error(`Authentication failed: ${error.message}`);
-        }
-    }
-
-    /**
-     * Check for completed authentication when popup promise fails
-     */
-    async checkForCompletedAuthentication() {
-        try {
-            console.log('🔍 Checking for completed authentication...');
-            
-            // Wait a moment for potential account changes
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Check for new accounts
-            const accounts = this.msalInstance.getAllAccounts();
-            if (accounts.length > 0) {
-                console.log('✅ Found accounts after popup, attempting silent token acquisition');
-                
-                const silentRequest = {
-                    scopes: ['User.Read'],
-                    account: accounts[0]
-                };
-                
-                try {
-                    const response = await this.msalInstance.acquireTokenSilent(silentRequest);
-                    console.log('✅ Successfully acquired token for detected account');
-                    return this.handleAuthSuccess(response);
-                } catch (silentError) {
-                    console.log('❌ Failed to acquire token for detected account:', silentError.message);
-                }
+            if (error.name === 'BrowserAuthError' && error.errorMessage.includes('user_cancelled')) {
+                throw new Error('Authentication was cancelled. Please try again.');
             }
             
-            return null;
-        } catch (error) {
-            console.error('❌ Error checking for completed authentication:', error);
-            return null;
+            throw new Error(`Authentication failed: ${error.message}`);
         }
     }
 

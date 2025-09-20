@@ -19,229 +19,23 @@ class ICBAgent {
     init() {
         console.log('ICBAgent initializing...'); // Debug log
         
-        // Only handle popup if we have clear authentication response AND opener
-        // This prevents interference with MSAL's native popup handling
-        if (this.isPopupWindow()) {
-            console.log('🔍 Detected popup window context - handling auth response');
-            this.handlePopupAuthentication();
-            return; // Don't initialize full app in popup
-        }
-        
         // Check and redirect from 127.0.0.1 to localhost for Azure compatibility
         if (this.checkAndRedirectToLocalhost()) {
             console.log('🔄 Redirecting to localhost, stopping initialization...');
             return; // Stop initialization if redirecting
         }
         
-        this.restoreSessionFromStorage(); // Add session restoration
+        this.restoreSessionFromStorage(); // Restore session
         this.initializeSocket();
         this.bindEvents();
-        this.setupPopupMessageListener(); // Add popup communication
-        this.checkForAuthResponse(); // Check for auth response in URL
+        this.setupPopupMessageListener(); // Listen for popup authentication results
+        this.setupSessionStoragePolling(); // Check for popup auth results in sessionStorage
         this.updateConnectionStatus(this.isConnected ? 'connected' : 'disconnected', this.currentTenant);
         this.setupAuthenticationListener();
         this.initializeAuthenticationService();
         this.initializeZeroTrustAssessment();
         this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
-    }
-
-    /**
-     * Detect if we're running in a popup window
-     */
-    isPopupWindow() {
-        // Check multiple indicators that we're in a popup window
-        try {
-            // Primary check: URL contains authentication response parameters
-            const hasAuthResponse = window.location.hash.includes('code=') || 
-                                  window.location.hash.includes('error=') ||
-                                  window.location.search.includes('code=') ||
-                                  window.location.search.includes('error=');
-            
-            // Secondary check: window has opener
-            const hasOpener = window.opener && window.opener !== window;
-            
-            // Additional check: window dimensions suggest popup
-            const isSmallWindow = window.outerWidth < 800 || window.outerHeight < 600;
-            
-            // For popup authentication, we need BOTH auth response AND opener
-            // This prevents false positives and ensures proper MSAL coordination
-            const isPopup = hasAuthResponse && hasOpener;
-            
-            console.log('🔍 Popup detection:', {
-                hasAuthResponse,
-                hasOpener,
-                isSmallWindow,
-                isPopup,
-                url: window.location.href
-            });
-            
-            return isPopup;
-        } catch (e) {
-            console.error('❌ Error in popup detection:', e);
-            // Fallback: if we have auth response AND opener, treat as popup
-            return (window.location.hash.includes('code=') || window.location.hash.includes('error=')) && 
-                   window.opener && window.opener !== window;
-        }
-    }
-
-    /**
-     * Handle authentication in popup context
-     */
-    async handlePopupAuthentication() {
-        try {
-            console.log('🔐 Handling popup authentication response...');
-            
-            // Check if there's an authentication response in the URL
-            const urlParams = new URLSearchParams(window.location.hash.substring(1));
-            const code = urlParams.get('code');
-            const error = urlParams.get('error');
-            const state = urlParams.get('state');
-            
-            if (error) {
-                console.error('❌ Authentication error in popup:', error);
-                // Close popup and notify parent of error
-                if (window.opener) {
-                    window.opener.postMessage({ 
-                        type: 'msal-popup-auth-error', 
-                        error: error 
-                    }, window.location.origin);
-                }
-                window.close();
-                return;
-            }
-            
-            if (code || state) {
-                console.log('✅ Authentication response received in popup');
-                console.log('📝 Code present:', !!code);
-                console.log('📝 State present:', !!state);
-                
-                // Initialize minimal MSAL to handle the response
-                await this.initializeMinimalMSAL();
-                return;
-            }
-            
-            // If no auth parameters, this might not be an auth popup
-            console.log('ℹ️ No authentication parameters found in popup URL');
-            
-        } catch (error) {
-            console.error('❌ Error handling popup authentication:', error);
-            if (window.opener) {
-                window.opener.postMessage({ 
-                    type: 'msal-popup-auth-error', 
-                    error: error.message 
-                }, window.location.origin);
-            }
-            window.close();
-        }
-    }
-
-    /**
-     * Initialize minimal MSAL instance for popup handling
-     */
-    async initializeMinimalMSAL() {
-        try {
-            console.log('🔐 Initializing minimal MSAL for popup handling...');
-            
-            if (typeof msal === 'undefined') {
-                console.error('❌ MSAL library not available in popup');
-                throw new Error('MSAL library not loaded');
-            }
-
-            // Get client ID (same logic as main app)
-            const clientId = this.getClientId();
-            console.log('🔧 Using client ID:', clientId);
-            
-            const msalConfig = {
-                auth: {
-                    clientId: clientId,
-                    authority: 'https://login.microsoftonline.com/common',
-                    redirectUri: window.location.origin
-                },
-                cache: {
-                    cacheLocation: 'localStorage'
-                }
-            };
-
-            const msalInstance = new msal.PublicClientApplication(msalConfig);
-            await msalInstance.initialize();
-            
-            console.log('✅ MSAL popup instance initialized, handling redirect...');
-            
-            // Handle the redirect response
-            const response = await msalInstance.handleRedirectPromise();
-            console.log('📋 MSAL redirect response:', response);
-            
-            if (response && response.account) {
-                console.log('🎉 Successful authentication in popup!');
-                console.log('👤 Account:', response.account.username);
-                console.log('🏢 Tenant:', response.account.tenantId);
-                
-                // Notify parent window of successful authentication
-                if (window.opener && !window.opener.closed) {
-                    console.log('📤 Sending success message to parent window...');
-                    window.opener.postMessage({ 
-                        type: 'msal-popup-auth-success', 
-                        account: response.account,
-                        accessToken: response.accessToken,
-                        tenantId: response.account.tenantId
-                    }, window.location.origin);
-                } else {
-                    console.warn('⚠️ Parent window not available');
-                }
-            } else {
-                console.log('ℹ️ No authentication response from MSAL handleRedirectPromise');
-                
-                // Still notify parent that popup is ready to close
-                if (window.opener && !window.opener.closed) {
-                    console.log('📤 Sending completion message to parent window...');
-                    window.opener.postMessage({ 
-                        type: 'msal-popup-complete' 
-                    }, window.location.origin);
-                }
-            }
-            
-            // Close popup after handling response
-            console.log('🔚 Closing popup window...');
-            setTimeout(() => {
-                window.close();
-            }, 1000); // Give a bit more time for message to be received
-            
-        } catch (error) {
-            console.error('❌ Error initializing minimal MSAL in popup:', error);
-            
-            // Notify parent of error
-            if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({ 
-                    type: 'msal-popup-auth-error', 
-                    error: error.message 
-                }, window.location.origin);
-            }
-            
-            // Still close popup on error
-            setTimeout(() => {
-                window.close();
-            }, 1000);
-        }
-    }
-
-    /**
-     * Get client ID (helper method for popup context)
-     */
-    getClientId() {
-        const urlParams = new URLSearchParams(window.location.search);
-        let clientId = urlParams.get('clientId');
-        
-        if (!clientId) {
-            clientId = localStorage.getItem('icb_client_id');
-        }
-        
-        if (!clientId) {
-            // ICB Solutions App Registration
-            return 'e18ea8f1-5bc5-4710-bb54-aced2112724c';
-        }
-        
-        return clientId;
     }
 
     /**
@@ -259,91 +53,6 @@ class ICBAgent {
             return true; // Indicates redirect happened
         }
         return false; // No redirect needed
-    }
-
-    /**
-     * Setup message listener for popup window communication
-     */
-    setupPopupMessageListener() {
-        console.log('🔧 Setting up popup message listener...');
-        
-        window.addEventListener('message', async (event) => {
-            // Verify the origin for security
-            if (event.origin !== window.location.origin) {
-                console.warn('⚠️ Received message from untrusted origin:', event.origin);
-                return;
-            }
-            
-            console.log('📨 Received popup message:', event.data);
-            
-            if (event.data.type === 'msal-popup-auth-success') {
-                console.log('🎉 Popup authentication successful!');
-                console.log('👤 Account:', event.data.account.username);
-                console.log('🏢 Tenant:', event.data.tenantId);
-                
-                try {
-                    // Update authentication state
-                    if (this.authService) {
-                        // Manually set the authentication state
-                        await this.authService.handleAuthSuccess({
-                            account: event.data.account,
-                            accessToken: event.data.accessToken
-                        });
-                        
-                        console.log('✅ Authentication state updated successfully');
-                    } else {
-                        console.warn('⚠️ Auth service not available for state update');
-                    }
-                } catch (error) {
-                    console.error('❌ Error processing popup auth success:', error);
-                }
-            } else if (event.data.type === 'msal-popup-auth-error') {
-                console.error('❌ Popup authentication error:', event.data.error);
-                // You could show an error message to the user here
-            } else if (event.data.type === 'msal-popup-complete') {
-                console.log('ℹ️ Popup authentication completed (no result)');
-            }
-        }, false);
-        
-        console.log('✅ Popup message listener setup complete');
-    }
-
-    /**
-     * Check if the current page has authentication response parameters and handle them
-     */
-    async checkForAuthResponse() {
-        try {
-            console.log('🔍 Checking for existing authentication session...');
-            
-            // Wait for auth service to be available
-            let attempts = 0;
-            while (!this.authService && attempts < 10) {
-                console.log(`⏳ Waiting for auth service... (attempt ${attempts + 1})`);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                attempts++;
-            }
-            
-            if (this.authService) {
-                console.log('🔐 Auth service available, initializing and checking session...');
-                
-                // Initialize MSAL if not already done
-                await this.authService.initializeAuthentication();
-                
-                // Check for existing authentication
-                if (this.authService.isAuthenticated) {
-                    console.log('✅ Found existing authentication session');
-                    const authResult = this.authService.getAuthResult();
-                    this.onAuthenticationSuccess(authResult, authResult.tenantDomain);
-                } else {
-                    console.log('ℹ️ No existing authentication session found');
-                }
-            } else {
-                console.error('❌ Auth service not available after wait period');
-            }
-            
-        } catch (error) {
-            console.error('❌ Error checking for auth response:', error);
-        }
     }
 
     restoreSessionFromStorage() {
@@ -397,6 +106,152 @@ class ICBAgent {
             console.log('🔍 Contains list items:', rendered.includes('<li class="response-list-item">'));
         } catch (error) {
             console.error('❌ Enhanced rendering test failed:', error);
+        }
+    }
+
+    setupPopupMessageListener() {
+        // Listen for messages from authentication popup windows
+        window.addEventListener('message', (event) => {
+            console.log('🔗 Received popup message:', event.data);
+            
+            // Verify origin for security
+            if (event.origin !== window.location.origin) {
+                console.log('⚠️ Ignoring message from different origin:', event.origin);
+                return;
+            }
+            
+            if (event.data && event.data.type === 'MSAL_AUTH_SUCCESS') {
+                console.log('✅ Popup authentication successful!', event.data);
+                this.handlePopupAuthSuccess(event.data.authResult);
+            } else if (event.data && event.data.type === 'MSAL_AUTH_ERROR') {
+                console.log('❌ Popup authentication failed!', event.data);
+                this.handlePopupAuthError(event.data.error);
+            }
+        });
+    }
+
+    async handlePopupAuthSuccess(authResult) {
+        console.log('🔐 Processing popup authentication success:', authResult);
+        
+        try {
+            // Use MSAL to handle the authorization code
+            if (this.authService && this.authService.msalInstance) {
+                console.log('🔄 Processing authorization code with MSAL...');
+                
+                // Let MSAL handle the redirect response
+                const response = await this.authService.msalInstance.handleRedirectPromise();
+                console.log('📝 MSAL redirect response:', response);
+                
+                if (response && response.account) {
+                    console.log('✅ Authentication completed successfully:', response.account.username);
+                    
+                    // Update authentication state
+                    this.isAuthenticated = true;
+                    this.currentTenant = response.account.username.split('@')[1];
+                    this.isConnected = true;
+                    
+                    // Store session
+                    this.saveSessionToStorage();
+                    
+                    // Update UI
+                    this.updateConnectionStatus('connected', this.currentTenant);
+                    
+                    // Show success message
+                    this.showSuccess(`🎉 Successfully connected to ${this.currentTenant}!`);
+                } else {
+                    throw new Error('No account found in authentication response');
+                }
+            } else {
+                throw new Error('Authentication service not available');
+            }
+        } catch (error) {
+            console.error('❌ Error processing popup authentication:', error);
+            this.handlePopupAuthError({ error: 'processing_error', error_description: error.message });
+        }
+    }
+
+    handlePopupAuthError(error) {
+        console.error('❌ Popup authentication error:', error);
+        
+        // Update UI to show error
+        this.updateConnectionStatus('disconnected');
+        
+        // Show user-friendly error message
+        let errorMessage = 'Authentication failed. Please try again.';
+        if (error.error === 'access_denied') {
+            errorMessage = 'Access was denied. Please grant the required permissions.';
+        } else if (error.error === 'user_cancelled') {
+            errorMessage = 'Authentication was cancelled.';
+        } else if (error.error_description) {
+            errorMessage = error.error_description;
+        }
+        
+        this.showError(`🔐 ${errorMessage}`);
+    }
+
+    setupSessionStoragePolling() {
+        // Check immediately on initialization
+        this.checkSessionStorageForAuthResults();
+        
+        // Set up periodic polling to check for popup authentication results
+        this.authPollingInterval = setInterval(() => {
+            this.checkSessionStorageForAuthResults();
+        }, 1000); // Check every second
+        
+        // Clear interval after 5 minutes to avoid indefinite polling
+        setTimeout(() => {
+            if (this.authPollingInterval) {
+                clearInterval(this.authPollingInterval);
+                this.authPollingInterval = null;
+                console.log('🔐 Stopped sessionStorage polling after timeout');
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+    }
+
+    checkSessionStorageForAuthResults() {
+        try {
+            const authSuccess = sessionStorage.getItem('msalAuthSuccess');
+            const authResult = sessionStorage.getItem('msalAuthResult');
+            const authError = sessionStorage.getItem('msalAuthError');
+            
+            if (authSuccess === 'true' && authResult) {
+                console.log('🔐 Found successful authentication result in sessionStorage');
+                
+                // Clear the stored values
+                sessionStorage.removeItem('msalAuthSuccess');
+                sessionStorage.removeItem('msalAuthResult');
+                sessionStorage.removeItem('msalAuthError');
+                
+                // Clear polling interval
+                if (this.authPollingInterval) {
+                    clearInterval(this.authPollingInterval);
+                    this.authPollingInterval = null;
+                }
+                
+                // Process the authentication result
+                const parsedAuthResult = JSON.parse(authResult);
+                this.handlePopupAuthSuccess(parsedAuthResult);
+                
+            } else if (authSuccess === 'false' && authError) {
+                console.log('🔐 Found authentication error in sessionStorage');
+                
+                // Clear the stored values
+                sessionStorage.removeItem('msalAuthSuccess');
+                sessionStorage.removeItem('msalAuthResult');
+                sessionStorage.removeItem('msalAuthError');
+                
+                // Clear polling interval
+                if (this.authPollingInterval) {
+                    clearInterval(this.authPollingInterval);
+                    this.authPollingInterval = null;
+                }
+                
+                // Process the authentication error
+                const parsedAuthError = JSON.parse(authError);
+                this.handlePopupAuthError(parsedAuthError);
+            }
+        } catch (error) {
+            console.error('❌ Error checking sessionStorage for auth results:', error);
         }
     }
 
@@ -3016,9 +2871,163 @@ Once you complete the permission process, your query will be automatically proce
     }
 }
 
+// Function to detect if this window is a popup for authentication
+function isPopupWindow() {
+    try {
+        // Check if this window was opened by another window (has an opener)
+        const hasOpener = window.opener && window.opener !== window;
+        
+        // Check if URL contains authentication parameters
+        const hasAuthParams = window.location.href.includes('code=') || 
+                            window.location.href.includes('error=') ||
+                            window.location.href.includes('access_token=');
+        
+        // Check if window is smaller than typical browser window (popup characteristics)
+        const isSmallWindow = window.outerWidth < 800 || window.outerHeight < 600;
+        
+        console.log('🔍 Popup detection:', {
+            hasOpener,
+            hasAuthParams,
+            isSmallWindow,
+            href: window.location.href,
+            outerWidth: window.outerWidth,
+            outerHeight: window.outerHeight
+        });
+        
+        return hasOpener || hasAuthParams;
+    } catch (error) {
+        console.log('⚠️ Popup detection error (likely cross-origin):', error.message);
+        // If we can't access window.opener due to cross-origin, check other indicators
+        return window.location.href.includes('code=') || 
+               window.location.href.includes('error=') ||
+               window.location.href.includes('access_token=');
+    }
+}
+
+// Function to handle popup authentication
+function handlePopupAuthentication() {
+    console.log('🔐 Handling popup authentication...');
+    
+    const url = window.location.href;
+    console.log('🔍 Popup URL:', url);
+    
+    try {
+        // Check for authorization code
+        if (url.includes('code=')) {
+            console.log('✅ Authorization code found in popup');
+            
+            // Extract the authorization code and other parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            
+            const authResult = {
+                code: urlParams.get('code') || hashParams.get('code'),
+                state: urlParams.get('state') || hashParams.get('state'),
+                session_state: urlParams.get('session_state') || hashParams.get('session_state'),
+                client_info: urlParams.get('client_info') || hashParams.get('client_info')
+            };
+            
+            console.log('🔐 Extracted auth result:', authResult);
+            
+            // Send success message to parent window
+            if (window.opener) {
+                console.log('📤 Sending auth result to parent window');
+                window.opener.postMessage({
+                    type: 'MSAL_AUTH_SUCCESS',
+                    authResult: authResult,
+                    url: url
+                }, window.location.origin);
+                
+                // Close popup after a short delay
+                setTimeout(() => {
+                    console.log('🔐 Closing authentication popup');
+                    window.close();
+                }, 500);
+            } else {
+                console.log('⚠️ No parent window found, storing auth result');
+                // Store in sessionStorage as fallback
+                sessionStorage.setItem('msalAuthResult', JSON.stringify(authResult));
+                sessionStorage.setItem('msalAuthSuccess', 'true');
+                
+                // Close popup after a short delay even without parent window
+                setTimeout(() => {
+                    console.log('🔐 Closing authentication popup (no parent window)');
+                    window.close();
+                }, 500);
+            }
+        } else if (url.includes('error=')) {
+            console.log('❌ Authentication error found in popup');
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            
+            const error = {
+                error: urlParams.get('error') || hashParams.get('error'),
+                error_description: urlParams.get('error_description') || hashParams.get('error_description'),
+                state: urlParams.get('state') || hashParams.get('state')
+            };
+            
+            console.log('❌ Extracted auth error:', error);
+            
+            // Send error message to parent window
+            if (window.opener) {
+                console.log('📤 Sending auth error to parent window');
+                window.opener.postMessage({
+                    type: 'MSAL_AUTH_ERROR',
+                    error: error,
+                    url: url
+                }, window.location.origin);
+                
+                // Close popup after a short delay
+                setTimeout(() => {
+                    console.log('🔐 Closing authentication popup with error');
+                    window.close();
+                }, 500);
+            } else {
+                console.log('⚠️ No parent window found, storing auth error');
+                // Store in sessionStorage as fallback
+                sessionStorage.setItem('msalAuthError', JSON.stringify(error));
+                sessionStorage.setItem('msalAuthSuccess', 'false');
+                
+                // Close popup after a short delay even without parent window
+                setTimeout(() => {
+                    console.log('🔐 Closing authentication popup with error (no parent window)');
+                    window.close();
+                }, 500);
+            }
+        } else {
+            console.log('⚠️ No authentication parameters found in popup URL');
+        }
+    } catch (error) {
+        console.error('❌ Error handling popup authentication:', error);
+        
+        // Send error message to parent window
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'MSAL_AUTH_ERROR',
+                error: { error: 'popup_error', error_description: error.message },
+                url: url
+            }, window.location.origin);
+            
+            setTimeout(() => {
+                window.close();
+            }, 500);
+        }
+    }
+}
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing ICB Agent...'); // Debug log
+    console.log('DOM loaded, checking if popup window...'); // Debug log
+    
+    // Check if this is a popup window for authentication
+    if (isPopupWindow()) {
+        console.log('🔐 Detected popup window, handling authentication...');
+        handlePopupAuthentication();
+        return; // Don't initialize the full ICB Agent in popup
+    }
+    
+    console.log('🖥️ Main window detected, initializing ICB Agent...'); // Debug log
     window.icbAgent = new ICBAgent();
     console.log('ICB Agent created:', window.icbAgent); // Debug log
 });
