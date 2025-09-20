@@ -26,8 +26,21 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      connectSrc: ["'self'", "ws:", "wss:"]
+      scriptSrc: [
+        "'self'", 
+        "'unsafe-inline'", 
+        "https://alcdn.msauth.net",
+        "https://cdnjs.cloudflare.com",
+        "https://cdn.jsdelivr.net"
+      ],
+      connectSrc: [
+        "'self'", 
+        "ws:", 
+        "wss:",
+        "https://login.microsoftonline.com",
+        "https://graph.microsoft.com",
+        "https://alcdn.msauth.net"
+      ]
     }
   }
 }));

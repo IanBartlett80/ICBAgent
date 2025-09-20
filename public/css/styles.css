@@ -505,6 +505,17 @@ body::before {
   animation: rippleYellow 2s infinite;
 }
 
+.status-indicator.authenticating {
+  background-color: #8b5cf6;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  animation: statusPulsePurple 2s infinite;
+}
+
+.status-indicator.authenticating::before {
+  background-color: #8b5cf6;
+  animation: ripplePurple 2s infinite;
+}
+
 /* Main Content with Enhanced Styling - Optimized for single viewport */
 .main-content {
   flex: 1;
@@ -2047,6 +2058,21 @@ body::before {
   }
 }
 
+@keyframes statusPulsePurple {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    background-color: #8b5cf6;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+    background-color: #8b5cf6;
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.8);
+  }
+}
+
 @keyframes rippleGreen {
   0% {
     transform: scale(0.8);
@@ -2083,6 +2109,19 @@ body::before {
     transform: scale(2);
     opacity: 0;
     background-color: #f59e0b;
+  }
+}
+
+@keyframes ripplePurple {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+    background-color: #8b5cf6;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+    background-color: #8b5cf6;
   }
 }
 

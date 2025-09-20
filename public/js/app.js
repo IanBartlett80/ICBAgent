@@ -9,6 +9,10 @@ class ICBAgent {
         // Initialize Zero Trust Assessment
         this.zeroTrustAssessment = null;
         
+        // Initialize Authentication Service
+        this.authService = null;
+        this.isAuthenticated = false;
+        
         this.init();
     }
 
@@ -19,6 +23,7 @@ class ICBAgent {
         this.bindEvents();
         this.updateConnectionStatus(this.isConnected ? 'connected' : 'disconnected', this.currentTenant);
         this.setupAuthenticationListener();
+        this.initializeAuthenticationService();
         this.initializeZeroTrustAssessment();
         this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
@@ -28,14 +33,18 @@ class ICBAgent {
         try {
             const savedSession = localStorage.getItem('icb_session');
             const savedTenant = localStorage.getItem('icb_tenant');
+            const savedAuth = localStorage.getItem('icb_authenticated');
             
             if (savedSession && savedTenant) {
                 this.sessionId = savedSession;
                 this.currentTenant = savedTenant;
                 this.isConnected = true;
+                this.isAuthenticated = savedAuth === 'true';
+                
                 console.log('🔄 Session restored from localStorage:', { 
                     sessionId: this.sessionId, 
-                    tenant: this.currentTenant 
+                    tenant: this.currentTenant,
+                    authenticated: this.isAuthenticated
                 });
                 
                 // Join the existing socket room when socket connects
@@ -175,6 +184,22 @@ class ICBAgent {
         this.socket.on('query_rerun_complete', (data) => {
             this.addMessage(data.message, 'assistant');
         });
+    }
+
+    initializeAuthenticationService() {
+        console.log('🔧 Initializing Authentication Service...');
+        
+        // Check if ICBAuthService is available
+        if (typeof ICBAuthService !== 'undefined') {
+            try {
+                this.authService = new ICBAuthService();
+                console.log('✅ Authentication Service initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to initialize Authentication Service:', error);
+            }
+        } else {
+            console.error('❌ ICBAuthService not available');
+        }
     }
 
     initializeZeroTrustAssessment() {
@@ -391,14 +416,36 @@ class ICBAgent {
         this.updateConnectionStatus('connecting', tenantDomain);
 
         try {
-            console.log('Making session create request...'); // Debug log
-            // Create session
+            // Step 1: Initialize authentication for the tenant
+            console.log('🔐 Initializing Microsoft authentication...');
+            if (!this.authService) {
+                throw new Error('Authentication service not available. Please refresh the page.');
+            }
+
+            await this.authService.initializeAuthentication(tenantDomain);
+
+            // Step 2: Perform Microsoft authentication
+            console.log('🔐 Starting Microsoft authentication...');
+            this.updateConnectionStatus('authenticating', tenantDomain);
+            
+            const authResult = await this.authService.authenticate();
+            this.isAuthenticated = true;
+            this.graphToken = authResult.accessToken;
+            
+            console.log('✅ Microsoft authentication successful:', authResult.account.username);
+
+            // Step 3: Create session with authenticated user info
+            console.log('📝 Creating session with authenticated user...');
             const sessionResponse = await fetch('/api/session/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ tenantDomain }),
+                body: JSON.stringify({ 
+                    tenantDomain,
+                    userPrincipalName: authResult.account.username,
+                    accessToken: authResult.accessToken
+                }),
             });
 
             const sessionData = await sessionResponse.json();
@@ -411,11 +458,16 @@ class ICBAgent {
             this.sessionId = sessionData.sessionId;
             this.currentTenant = tenantDomain;
 
+            // Save session and authentication state
+            localStorage.setItem('icb_session', this.sessionId);
+            localStorage.setItem('icb_tenant', this.currentTenant);
+            localStorage.setItem('icb_authenticated', 'true');
+
             // Join socket room
             this.socket.emit('join_session', this.sessionId);
 
-            // Start MCP server
-            console.log('Starting MCP server...'); // Debug log
+            // Step 4: Start MCP server with authentication context
+            console.log('🚀 Starting MCP server with authentication...');
             const mcpResponse = await fetch('/api/mcp/start', {
                 method: 'POST',
                 headers: {
@@ -423,7 +475,8 @@ class ICBAgent {
                 },
                 body: JSON.stringify({ 
                     sessionId: this.sessionId, 
-                    tenantDomain 
+                    tenantDomain,
+                    accessToken: this.graphToken
                 }),
             });
 
@@ -433,16 +486,59 @@ class ICBAgent {
                 throw new Error(mcpData.error || 'Failed to start MCP server');
             }
 
-            // Stay on landing page but update connection status
-            // Note: Authentication may still be pending, final connected status will be set by auth_status_changed event
-            this.updateConnectionStatus('connecting', this.currentTenant);
+            // Update to fully connected and authenticated status
+            this.isConnected = true;
+            this.updateConnectionStatus('connected', this.currentTenant);
+            
+            console.log('✅ ICB Agent setup complete - authenticated and connected');
 
         } catch (error) {
-            console.error('Error during startup:', error);
-            this.showError(error.message);
+            console.error('❌ Error during startup:', error);
+            
+            // Handle specific authentication errors
+            if (error.message.includes('popup') || error.message.includes('Popup')) {
+                this.showError('Authentication popup was blocked. Please allow popups for this site and try again.');
+            } else if (error.message.includes('MSAL')) {
+                this.showError('Authentication service unavailable. Please check your internet connection and try again.');
+            } else {
+                this.showError(error.message);
+            }
+            
             this.updateConnectionStatus('disconnected');
+            this.isAuthenticated = false;
+            this.graphToken = null;
         } finally {
             this.setButtonLoading('getStartedBtn', false);
+        }
+    }
+
+    /**
+     * Get a valid access token for Microsoft Graph API calls
+     */
+    async getAccessToken() {
+        if (!this.isAuthenticated || !this.authService) {
+            throw new Error('Not authenticated. Please authenticate first.');
+        }
+
+        try {
+            const token = await this.authService.getAccessToken();
+            this.graphToken = token;
+            return token;
+        } catch (error) {
+            console.error('❌ Failed to get access token:', error);
+            // Try to re-authenticate
+            try {
+                console.log('🔄 Attempting to re-authenticate...');
+                const authResult = await this.authService.authenticate();
+                this.graphToken = authResult.accessToken;
+                return this.graphToken;
+            } catch (authError) {
+                console.error('❌ Re-authentication failed:', authError);
+                this.isAuthenticated = false;
+                this.graphToken = null;
+                this.updateConnectionStatus('disconnected');
+                throw new Error('Authentication expired. Please refresh and try again.');
+            }
         }
     }
 
@@ -1949,6 +2045,29 @@ class ICBAgent {
                     connectionStatus.onclick = null;
                     connectionStatus.title = '';
                     // Hide disconnect button when connecting
+                    if (disconnectBtn) {
+                        disconnectBtn.style.display = 'none';
+                    }
+                    // Show tenant setup and hide current connection card
+                    if (tenantSetup) {
+                        tenantSetup.style.display = 'block';
+                    }
+                    if (currentConnection) {
+                        currentConnection.style.display = 'none';
+                    }
+                    this.isConnected = false;
+                    break;
+                case 'authenticating':
+                    const authTenant = tenantDomain || this.currentTenant || '';
+                    text.innerHTML = authTenant ? 
+                        `Authenticating with Microsoft for <strong>${authTenant}</strong>...` : 
+                        'Authenticating with Microsoft...';
+                    text.className = 'status-text';
+                    connectionStatus.className = 'connection-status';
+                    connectionStatus.style.cursor = 'default';
+                    connectionStatus.onclick = null;
+                    connectionStatus.title = '';
+                    // Hide disconnect button when authenticating
                     if (disconnectBtn) {
                         disconnectBtn.style.display = 'none';
                     }
