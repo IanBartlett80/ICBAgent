@@ -44,16 +44,26 @@
                         </svg>
                         <span>Home</span>
                     </button>
+                    
+                    <!-- Sign In Button (shown when not authenticated) -->
+                    <button class="signin-btn" id="signinBtn" title="Sign in with Microsoft">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z" fill="currentColor"/>
+                        </svg>
+                        <span>Sign in with Microsoft</span>
+                    </button>
+                    
                     <div class="connection-wrapper">
                         <div class="connection-status" id="connectionStatus">
                             <div class="status-indicator disconnected" id="statusIndicator"></div>
-                            <span id="statusText">Disconnected</span>
+                            <span id="statusText">Not Connected</span>
+                            <span id="tenantInfo" style="display: none;"></span>
                         </div>
-                        <button class="disconnect-btn" id="disconnectBtn" style="display: none;" title="Disconnect from tenant">
+                        <button class="signout-btn" id="signoutBtn" style="display: none;" title="Sign out">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
                             </svg>
-                            <span>Disconnect</span>
+                            <span>Sign Out</span>
                         </button>
                     </div>
                 </div>
@@ -128,87 +138,6 @@
                             <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
                             </svg>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Enhanced Tenant Setup -->
-                <div class="tenant-setup" id="tenantSetup">
-                    <div class="setup-form">
-                        <h3>Begin Your Journey</h3>
-                        <p>Connect to your Microsoft 365 tenant with secure authentication and unlock the future of IT management.</p>
-                        
-                        <div class="auth-info">
-                            <div class="auth-features">
-                                <div class="feature-item">
-                                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-                                    </svg>
-                                    <span>Secure Microsoft Authentication</span>
-                                </div>
-                                <div class="feature-item">
-                                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                    </svg>
-                                    <span>Full Graph API Access</span>
-                                </div>
-                                <div class="feature-item">
-                                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-                                    </svg>
-                                    <span>Comprehensive Reporting</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <button class="get-started-btn microsoft-login-btn" id="getStartedBtn">
-                            <div class="btn-content">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                    <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z" fill="currentColor"/>
-                                </svg>
-                                <span class="btn-text">Sign in with Microsoft</span>
-                            </div>
-                            <span class="btn-loader" style="display: none;">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.3"/>
-                                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                                </svg>
-                            </span>
-                        </button>
-                        
-                        <p class="auth-note">
-                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-                            </svg>
-                            You'll be redirected to Microsoft's secure login page
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Current Connection Card (shown when connected) -->
-                <div class="tenant-setup" id="currentConnection" style="display: none;">
-                    <div class="setup-form connected-card">
-                        <div class="connection-icon">
-                            <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                            </svg>
-                        </div>
-                        <h3>Currently Connected</h3>
-                        <p class="connected-tenant" id="connectedTenantDisplay">Connected to your Microsoft 365 tenant</p>
-                        
-                        <div class="connection-actions">
-                            <button class="chat-btn" id="openChatBtn">
-                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h4l4 4 4-4h4c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-                                </svg>
-                                <span>Open Chat Interface</span>
-                            </button>
-                            <button class="disconnect-card-btn" id="disconnectCardBtn">
-                                <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.59L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
-                                </svg>
-                                <span>Disconnect</span>
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -414,7 +343,7 @@
     <!-- MSAL Library for Microsoft Graph Authentication -->
     <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
     <!-- ICB Auth Service -->
-    <script src="js/auth-service.js?v=1753867551"></script>
+    <script src="js/auth-service-new.js?v=1753867551"></script>
     <!-- Zero Trust Assessment Scripts -->
     <script src="js/zero-trust-graph-service.js?v=1753867551"></script>
     <script src="js/zero-trust-assessment-engine.js?v=1753867551"></script>
