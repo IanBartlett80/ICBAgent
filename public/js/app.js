@@ -2874,6 +2874,30 @@ Once you complete the permission process, your query will be automatically proce
 // Function to detect if this window is a popup for authentication
 function isPopupWindow() {
     try {
+        // Check if this is an MSAL popup by looking for state parameter
+        const url = new URL(window.location.href);
+        
+        // First check if this has MSAL state parameter indicating it's an MSAL popup
+        let stateValue = url.searchParams.get('state');
+        if (!stateValue && url.hash.includes('state=')) {
+            // Extract state from hash if not in search params
+            const hashParams = new URLSearchParams(url.hash.substring(1));
+            stateValue = hashParams.get('state');
+        }
+        
+        if (stateValue) {
+            try {
+                const decodedState = JSON.parse(atob(stateValue));
+                if (decodedState.meta && decodedState.meta.interactionType === 'popup') {
+                    console.log('🔍 Detected MSAL popup - letting MSAL handle it completely');
+                    return false; // This is NOT a custom popup - it's MSAL
+                }
+            } catch (e) {
+                // If we can't decode state, continue with other checks
+                console.log('⚠️ Could not decode state parameter:', e.message);
+            }
+        }
+        
         // Check if this window was opened by another window (has an opener)
         const hasOpener = window.opener && window.opener !== window;
         
@@ -2882,25 +2906,28 @@ function isPopupWindow() {
                             window.location.href.includes('error=') ||
                             window.location.href.includes('access_token=');
         
-        // Check if window is smaller than typical browser window (popup characteristics)
-        const isSmallWindow = window.outerWidth < 800 || window.outerHeight < 600;
+        // This is a custom popup only if it has opener, auth params, but no MSAL state
+        const isCustomPopup = hasOpener && hasAuthParams && !stateValue;
         
         console.log('🔍 Popup detection:', {
             hasOpener,
             hasAuthParams,
-            isSmallWindow,
-            href: window.location.href,
-            outerWidth: window.outerWidth,
-            outerHeight: window.outerHeight
+            hasState: !!stateValue,
+            isCustomPopup,
+            href: window.location.href
         });
         
-        return hasOpener || hasAuthParams;
+        return isCustomPopup;
     } catch (error) {
         console.log('⚠️ Popup detection error (likely cross-origin):', error.message);
         // If we can't access window.opener due to cross-origin, check other indicators
-        return window.location.href.includes('code=') || 
-               window.location.href.includes('error=') ||
-               window.location.href.includes('access_token=');
+        const hasAuthParams = window.location.href.includes('code=') || 
+                            window.location.href.includes('error=') ||
+                            window.location.href.includes('access_token=');
+        const hasState = window.location.href.includes('state=');
+        
+        // Only handle non-MSAL authentication popups
+        return hasAuthParams && !hasState;
     }
 }
 
@@ -3020,9 +3047,60 @@ function handlePopupAuthentication() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, checking if popup window...'); // Debug log
     
-    // Check if this is a popup window for authentication
+    // Check for MSAL popup first
+    const url = new URL(window.location.href);
+    const state = url.searchParams.get('state') || (url.hash.includes('state=') ? new URLSearchParams(url.hash.substring(1)).get('state') : null);
+    
+    if (state) {
+        try {
+            const decodedState = JSON.parse(atob(state));
+            if (decodedState.meta && decodedState.meta.interactionType === 'popup') {
+                console.log('🔍 MSAL popup detected - handling authentication response');
+                console.log('🔗 Popup URL:', window.location.href);
+                
+                // For MSAL popups, handle the authentication response and let MSAL close the popup
+                if (typeof msal !== 'undefined') {
+                    console.log('🔐 Initializing minimal MSAL in popup for response handling...');
+                    
+                    // Create a minimal MSAL instance just for handling the popup response
+                    try {
+                        const msalConfig = {
+                            auth: {
+                                clientId: 'e18ea8f1-5bc5-4710-bb54-aced2112724c', // ICB Solutions client ID
+                                authority: 'https://login.microsoftonline.com/common',
+                                redirectUri: window.location.origin
+                            }
+                        };
+                        
+                        const msalInstance = new msal.PublicClientApplication(msalConfig);
+                        msalInstance.initialize().then(() => {
+                            console.log('🔐 MSAL popup handler initialized, processing response...');
+                            // MSAL will automatically handle the popup response and close the window
+                            msalInstance.handleRedirectPromise().then((response) => {
+                                if (response) {
+                                    console.log('✅ Popup authentication response handled successfully');
+                                } else {
+                                    console.log('ℹ️ No authentication response to handle');
+                                }
+                            }).catch((error) => {
+                                console.error('❌ Error handling popup response:', error);
+                            });
+                        });
+                    } catch (error) {
+                        console.error('❌ Error initializing popup MSAL handler:', error);
+                    }
+                }
+                
+                return; // Don't initialize ICB Agent
+            }
+        } catch (e) {
+            // If we can't decode state, continue with normal checks
+        }
+    }
+    
+    // Check if this is a custom popup window for authentication
     if (isPopupWindow()) {
-        console.log('🔐 Detected popup window, handling authentication...');
+        console.log('🔐 Detected custom popup window, handling authentication...');
         handlePopupAuthentication();
         return; // Don't initialize the full ICB Agent in popup
     }
