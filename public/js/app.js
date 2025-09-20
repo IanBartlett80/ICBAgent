@@ -230,31 +230,18 @@ class ICBAgent {
     }
 
     bindEvents() {
-        // Get Started button
+        // Microsoft Login button
         const getStartedBtn = document.getElementById('getStartedBtn');
-        const tenantDomainInput = document.getElementById('tenantDomain');
         
         console.log('getStartedBtn:', getStartedBtn); // Debug log
-        console.log('tenantDomainInput:', tenantDomainInput); // Debug log
         
         if (getStartedBtn) {
             getStartedBtn.addEventListener('click', () => {
-                console.log('Get started button clicked'); // Debug log
+                console.log('Microsoft login button clicked'); // Debug log
                 this.handleGetStarted();
             });
         } else {
             console.error('getStartedBtn not found!');
-        }
-
-        if (tenantDomainInput) {
-            tenantDomainInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    console.log('Enter key pressed in domain input'); // Debug log
-                    this.handleGetStarted();
-                }
-            });
-        } else {
-            console.error('tenantDomainInput not found!');
         }
 
         // Chat functionality
@@ -398,41 +385,31 @@ class ICBAgent {
     }
 
     async handleGetStarted() {
-        console.log('handleGetStarted called'); // Debug log
-        const tenantDomain = document.getElementById('tenantDomain').value.trim();
-        console.log('Tenant domain:', tenantDomain); // Debug log
+        console.log('handleGetStarted called - starting Microsoft authentication'); // Debug log
         
-        if (!tenantDomain) {
-            this.showError('Please enter a tenant domain');
-            return;
-        }
-
-        if (!this.isValidDomain(tenantDomain)) {
-            this.showError('Please enter a valid domain (e.g., contoso.onmicrosoft.com, contoso.com, or mail.contoso.com)');
-            return;
-        }
-
         this.setButtonLoading('getStartedBtn', true);
-        this.updateConnectionStatus('connecting', tenantDomain);
+        this.updateConnectionStatus('connecting');
 
         try {
-            // Step 1: Initialize authentication for the tenant
+            // Step 1: Initialize authentication service
             console.log('🔐 Initializing Microsoft authentication...');
             if (!this.authService) {
                 throw new Error('Authentication service not available. Please refresh the page.');
             }
 
-            await this.authService.initializeAuthentication(tenantDomain);
+            await this.authService.initializeAuthentication();
 
             // Step 2: Perform Microsoft authentication
             console.log('🔐 Starting Microsoft authentication...');
-            this.updateConnectionStatus('authenticating', tenantDomain);
+            this.updateConnectionStatus('authenticating');
             
             const authResult = await this.authService.authenticate();
             this.isAuthenticated = true;
             this.graphToken = authResult.accessToken;
+            this.currentTenant = authResult.tenantDomain; // Get tenant from authentication result
             
             console.log('✅ Microsoft authentication successful:', authResult.account.username);
+            console.log('🏢 Connected to tenant:', this.currentTenant);
 
             // Step 3: Create session with authenticated user info
             console.log('📝 Creating session with authenticated user...');
@@ -442,7 +419,7 @@ class ICBAgent {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ 
-                    tenantDomain,
+                    tenantDomain: this.currentTenant,
                     userPrincipalName: authResult.account.username,
                     accessToken: authResult.accessToken
                 }),
@@ -456,7 +433,6 @@ class ICBAgent {
             }
 
             this.sessionId = sessionData.sessionId;
-            this.currentTenant = tenantDomain;
 
             // Save session and authentication state
             localStorage.setItem('icb_session', this.sessionId);
@@ -475,7 +451,7 @@ class ICBAgent {
                 },
                 body: JSON.stringify({ 
                     sessionId: this.sessionId, 
-                    tenantDomain,
+                    tenantDomain: this.currentTenant,
                     accessToken: this.graphToken
                 }),
             });

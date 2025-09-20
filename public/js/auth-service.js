@@ -40,29 +40,24 @@ class ICBAuthService {
     }
 
     /**
-     * Initialize MSAL with tenant-specific configuration
+     * Initialize MSAL with common Microsoft endpoint
      */
-    async initializeAuthentication(tenantDomain) {
+    async initializeAuthentication() {
         try {
-            console.log('🚀 Initializing authentication for tenant:', tenantDomain);
+            console.log('🚀 Initializing Microsoft authentication...');
             
             if (typeof msal === 'undefined') {
                 throw new Error('MSAL library not loaded. Please check your internet connection.');
             }
-
-            this.tenantDomain = tenantDomain;
-            
-            // Determine tenant ID/domain for authority
-            const tenantAuthority = this.buildTenantAuthority(tenantDomain);
             
             // Get or generate client ID
             const clientId = this.getClientId();
             
-            // Configure MSAL
+            // Configure MSAL with common endpoint - allows any Microsoft tenant
             this.clientConfig = {
                 auth: {
                     clientId: clientId,
-                    authority: tenantAuthority,
+                    authority: 'https://login.microsoftonline.com/common', // Common endpoint for multi-tenant
                     redirectUri: window.location.origin,
                     postLogoutRedirectUri: window.location.origin
                 },
@@ -83,7 +78,7 @@ class ICBAuthService {
             this.msalInstance = new msal.PublicClientApplication(this.clientConfig);
             await this.msalInstance.initialize();
             
-            console.log('✅ MSAL initialized successfully');
+            console.log('✅ MSAL initialized successfully with common endpoint');
             return true;
             
         } catch (error) {
@@ -184,12 +179,16 @@ class ICBAuthService {
         this.account = response.account;
         this.isAuthenticated = true;
         
+        // Extract tenant domain from the authenticated user
+        this.tenantDomain = this.extractTenantDomain(this.account);
+        
         console.log('✅ Authentication successful for:', this.account.username);
+        console.log('🏢 Detected tenant domain:', this.tenantDomain);
         
         // Validate tenant access
         const isValidTenant = await this.validateTenantAccess();
         if (!isValidTenant) {
-            throw new Error('User does not have access to the specified tenant');
+            throw new Error('User does not have access to the tenant');
         }
         
         // Try to acquire additional permissions
@@ -201,6 +200,36 @@ class ICBAuthService {
             tenantDomain: this.tenantDomain,
             accessToken: this.accessToken
         };
+    }
+
+    /**
+     * Extract tenant domain from authenticated user account
+     */
+    extractTenantDomain(account) {
+        // Try to get tenant info from various sources
+        if (account.tenantId && account.tenantId !== 'common') {
+            // Use tenant ID if available
+            return account.tenantId;
+        }
+        
+        if (account.username && account.username.includes('@')) {
+            // Extract domain from username
+            const domain = account.username.split('@')[1];
+            if (domain) {
+                return domain;
+            }
+        }
+        
+        if (account.homeAccountId && account.homeAccountId.includes('.')) {
+            // Extract from home account ID
+            const parts = account.homeAccountId.split('.');
+            if (parts.length > 1) {
+                return parts[1];
+            }
+        }
+        
+        // Fallback to tenant ID or generic
+        return account.tenantId || 'microsoft-tenant';
     }
 
     /**
