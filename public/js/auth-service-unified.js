@@ -487,6 +487,20 @@ class ICBUnifiedAuthService {
     }
 
     /**
+     * Get tenant information for reports
+     */
+    getTenantInfo() {
+        return {
+            domain: this.tenantDomain,
+            username: this.account?.username,
+            name: this.account?.name,
+            tenantId: this.account?.tenantId,
+            homeAccountId: this.account?.homeAccountId,
+            authenticatedAt: new Date().toISOString()
+        };
+    }
+
+    /**
      * Sign out the current user
      */
     async signOut() {

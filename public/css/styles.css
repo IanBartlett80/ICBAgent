@@ -4740,3 +4740,363 @@ body::before {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* MSP Professional Report Styles */
+.msp-report {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  color: var(--gray-800);
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.msp-report-header {
+  background: var(--gradient-primary);
+  color: white;
+  padding: var(--spacing-6);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.msp-report-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.msp-report-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  margin: 0 0 var(--spacing-2);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.msp-report-subtitle {
+  font-size: 1.125rem;
+  font-weight: 400;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.msp-report-content {
+  padding: var(--spacing-6);
+}
+
+.msp-section {
+  margin-bottom: var(--spacing-6);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.msp-section-header {
+  background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-100) 100%);
+  padding: var(--spacing-4) var(--spacing-5);
+  border-bottom: 1px solid var(--primary-200);
+}
+
+.msp-section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--primary-800);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.msp-section-title::before {
+  content: '';
+  width: 4px;
+  height: 20px;
+  background: var(--primary-500);
+  border-radius: 2px;
+}
+
+.msp-section-content {
+  padding: var(--spacing-5);
+  background: white;
+}
+
+.msp-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-5);
+}
+
+.msp-kpi-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: var(--spacing-4);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.msp-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.msp-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--primary-500);
+}
+
+.msp-kpi-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary-700);
+  margin: 0;
+  line-height: 1;
+}
+
+.msp-kpi-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gray-600);
+  margin: var(--spacing-1) 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.msp-health-score {
+  text-align: center;
+  margin-bottom: var(--spacing-5);
+}
+
+.msp-health-score-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  margin: 0 auto var(--spacing-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: white;
+  position: relative;
+  background: conic-gradient(from 0deg, var(--success) 0%, var(--success) var(--score-percent, 85%), var(--gray-200) var(--score-percent, 85%), var(--gray-200) 100%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.msp-health-score-circle::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: white;
+}
+
+.msp-health-score-value {
+  position: relative;
+  z-index: 1;
+  color: var(--gray-800);
+}
+
+.msp-findings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.msp-findings-list li {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: var(--spacing-3) var(--spacing-4);
+  margin-bottom: var(--spacing-2);
+  position: relative;
+  padding-left: var(--spacing-10);
+}
+
+.msp-findings-list li::before {
+  content: '→';
+  position: absolute;
+  left: var(--spacing-4);
+  top: var(--spacing-3);
+  color: var(--primary-500);
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.msp-risk-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+}
+
+.msp-risk-item {
+  border-radius: 6px;
+  padding: var(--spacing-3) var(--spacing-4);
+  border-left: 4px solid;
+  position: relative;
+}
+
+.msp-risk-high {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--error);
+  color: #7f1d1d;
+}
+
+.msp-risk-medium {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: var(--warning);
+  color: #78350f;
+}
+
+.msp-risk-low {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: var(--success);
+  color: #064e3b;
+}
+
+.msp-risk-title {
+  font-weight: 600;
+  margin: 0 0 var(--spacing-1);
+}
+
+.msp-risk-description {
+  font-size: 0.875rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.msp-action-timeline {
+  background: linear-gradient(135deg, var(--primary-50) 0%, rgba(255,255,255,0.5) 100%);
+  border-radius: 8px;
+  padding: var(--spacing-4);
+  border: 1px solid var(--primary-200);
+}
+
+.msp-action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+  padding-bottom: var(--spacing-3);
+  border-bottom: 1px solid var(--primary-200);
+}
+
+.msp-action-item:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.msp-action-priority {
+  background: var(--primary-500);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 12px;
+  min-width: 60px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.msp-action-content {
+  flex: 1;
+}
+
+.msp-action-title {
+  font-weight: 600;
+  color: var(--gray-800);
+  margin: 0 0 var(--spacing-1);
+}
+
+.msp-action-description {
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  margin: 0;
+}
+
+.msp-footer {
+  background: var(--gray-100);
+  padding: var(--spacing-4) var(--spacing-6);
+  border-top: 1px solid var(--gray-200);
+  text-align: center;
+  color: var(--gray-600);
+}
+
+.msp-footer-logo {
+  font-weight: 700;
+  color: var(--primary-700);
+  margin-bottom: var(--spacing-1);
+}
+
+.msp-footer-tagline {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.msp-report-metadata {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-4);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: var(--spacing-4);
+  margin-top: var(--spacing-4);
+}
+
+.msp-metadata-item {
+  text-align: center;
+}
+
+.msp-metadata-label {
+  font-size: 0.875rem;
+  opacity: 0.8;
+  margin: 0 0 4px;
+}
+
+.msp-metadata-value {
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Responsive adjustments for MSP reports */
+@media (max-width: 768px) {
+  .msp-report-title {
+    font-size: 1.75rem;
+  }
+  
+  .msp-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--spacing-3);
+  }
+  
+  .msp-health-score-circle {
+    width: 100px;
+    height: 100px;
+    font-size: 2rem;
+  }
+  
+  .msp-risk-matrix {
+    grid-template-columns: 1fr;
+  }
+  
+  .msp-report-metadata {
+    grid-template-columns: 1fr;
+  }
+}

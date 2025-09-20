@@ -444,7 +444,9 @@ class MonthlyReportGraphService {
      */
     async graphRequest(endpoint, params = {}, useBeta = false) {
         const baseUrl = useBeta ? this.graphBetaUrl : this.graphBaseUrl;
-        const url = new URL(endpoint.startsWith('/') ? endpoint.slice(1) : endpoint, baseUrl);
+        // Fix URL construction - append endpoint to base URL properly
+        const fullUrl = baseUrl + (endpoint.startsWith('/') ? endpoint : '/' + endpoint);
+        const url = new URL(fullUrl);
         
         // Add query parameters
         Object.keys(params).forEach(key => {

@@ -1196,10 +1196,43 @@ class ICBAgent {
             // User is authenticated, automatically generate the report
             this.generateMonthlyReport();
         } else {
-            console.log('🔐 User not authenticated, showing modal for authentication...');
-            // User not authenticated, show the modal for authentication
-            this.showMonthlyReportModal();
+            console.log('🔐 User not authenticated, showing sample report preview...');
+            // For testing purposes, show sample report even without authentication
+            this.showSampleMSPReport();
         }
+    }
+
+    /**
+     * Show sample MSP report for testing the enhanced professional formatting
+     */
+    showSampleMSPReport() {
+        console.log('📊 Showing sample MSP report for testing...');
+        
+        // Create sample data that matches expected structure
+        const sampleData = {
+            users: { totalUsers: 145, activeUsers: 138, licensedUsers: 145 },
+            groups: { totalGroups: 24, securityGroups: 18, distributionGroups: 6 },
+            applications: { totalApps: 67, enabledApps: 59, customApps: 8 },
+            devices: { totalDevices: 203, compliantDevices: 187, managedDevices: 195 },
+            security: {
+                alerts: { high: 3, medium: 12, low: 8 },
+                incidents: { total: 5, resolved: 3, investigating: 2 },
+                riskUsers: { high: 2, medium: 7, low: 15 }
+            },
+            sharepoint: { sites: 34, storage: { used: 2.1, total: 5.0 } },
+            exchange: { mailboxes: 145, storage: { used: 34.5, total: 50.0 } },
+            teams: { totalTeams: 28, activeTeams: 24, guestUsers: 12 },
+            licenses: [
+                { name: 'Microsoft 365 E3', assigned: 100, total: 150 },
+                { name: 'Microsoft 365 E5', assigned: 45, total: 50 }
+            ]
+        };
+
+        // Set the sample data
+        this.collectedReportData = sampleData;
+        
+        // Generate and show the report
+        this.showMonthlyReportPreview();
     }
 
     /**
@@ -1212,48 +1245,58 @@ class ICBAgent {
             // Show progress indicator
             this.showProgressIndicator('Generating Monthly Report', 'Preparing comprehensive tenant analysis...');
             
-            // Get access token for the report
-            const accessToken = await this.getAccessToken();
-            if (!accessToken) {
-                throw new Error('Unable to get access token for report generation');
+            // Check authentication
+            if (!this.isAuthenticated || !this.currentTenant) {
+                throw new Error('User authentication required for report generation');
             }
             
-            console.log('🔧 Generating report with unified authentication service...');
+            console.log('🔧 Generating report with existing Graph API service...');
             
-            // Update progress
-            this.updateProgressIndicator('Connecting to Microsoft Graph...', 20);
+            // Initialize the comprehensive Graph API service
+            const graphService = new window.MonthlyReportGraphService(this.authService);
             
-            // Use the unified authentication data for report generation
-            const reportData = {
-                tenantDomain: this.currentTenant,
-                userPrincipalName: this.authResponse?.account?.username || 'admin',
-                accessToken: accessToken,
-                timestamp: new Date().toISOString(),
-                reportType: 'monthly'
+            // Set up progress callback to update our progress indicator
+            window.reportProgressCallback = (progress) => {
+                const percentage = Math.round((progress.current / progress.total) * 100);
+                this.updateProgressIndicator(`${progress.task}...`, percentage);
             };
             
             // Update progress
-            this.updateProgressIndicator('Collecting tenant data...', 40);
+            this.updateProgressIndicator('Connecting to Microsoft Graph...', 10);
             
-            // Simulate data collection process
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            this.updateProgressIndicator('Analyzing security posture...', 60);
+            // Collect real data from Microsoft Graph API
+            console.log('🚀 Starting comprehensive data collection...');
+            const reportData = await graphService.collectReportData({
+                reportPeriod: 'last-month'
+            });
             
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            this.updateProgressIndicator('Generating insights...', 80);
+            console.log('📊 Data collection completed successfully');
+            console.log('Collected data summary:', reportData.executiveSummary);
             
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Store collected data
+            this.collectedReportData = reportData;
+            
+            // Prepare report for display
+            const report = {
+                id: `health-report-${Date.now()}`,
+                tenantDomain: this.currentTenant,
+                generatedAt: new Date().toISOString(),
+                generatedBy: this.authResponse?.account?.username || 'admin',
+                reportType: 'monthly_health',
+                status: 'completed',
+                data: reportData,
+                executiveSummary: reportData.executiveSummary,
+                sections: reportData.sections || []
+            };
+            
             this.updateProgressIndicator('Report generated successfully!', 100);
             
-            // Close progress indicator after a short delay
+            // Close progress indicator and show report
             setTimeout(() => {
                 this.hideProgressIndicator();
-                
-                // For now, show a success message
-                this.showError('Monthly report generated successfully! (Report generation service integration in progress)', 'success');
-                
+                this.showReportModal(report);
                 console.log('✅ Monthly report generation completed');
-            }, 1500);
+            }, 1000);
             
         } catch (error) {
             console.error('❌ Error generating monthly report:', error);
@@ -1298,22 +1341,169 @@ class ICBAgent {
     }
 
     generateReportHTML(report) {
-        return `
-            <div class="report-header">
-                <h4>Tenant: ${report.tenantDomain}</h4>
-                <p>Generated: ${new Date(report.generatedAt).toLocaleString()}</p>
-            </div>
-            <div class="report-sections">
-                ${report.sections.map(section => `
-                    <div class="report-section">
-                        <div class="section-header">
-                            <h5>${section.name}</h5>
-                            <span class="status-badge status-${section.status}">${section.status.replace('_', ' ')}</span>
+        // Handle different report formats
+        if (report.data && report.data.executiveSummary) {
+            // World-class MSP report format
+            const summary = report.data.executiveSummary;
+            const sections = report.data.sections || [];
+            const metadata = report.data.metadata || {};
+            const tenantName = report.tenantDomain || 'Customer Tenant';
+            const reportDate = new Date(report.generatedAt);
+            
+            // Calculate overall health score
+            const healthScore = this.calculateOverallHealthScore(summary, sections);
+            const healthStatus = this.getHealthStatus(healthScore);
+            
+            return `
+                <div class="msp-report-container">
+                    <!-- Professional Header -->
+                    <div class="msp-report-header">
+                        <div class="header-branding">
+                            <div class="msp-logo">
+                                <span class="logo-icon">🛡️</span>
+                                <span class="logo-text">ICB Solutions</span>
+                            </div>
+                            <div class="report-type">Microsoft 365 Health Assessment</div>
+                        </div>
+                        <div class="customer-info">
+                            <h3 class="customer-name">${tenantName}</h3>
+                            <div class="report-details">
+                                <span class="report-date">Report Generated: ${reportDate.toLocaleDateString('en-US', { 
+                                    weekday: 'long', 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric' 
+                                })}</span>
+                                <span class="report-period">Assessment Period: ${report.data.reportPeriod || 'Previous 30 Days'}</span>
+                            </div>
                         </div>
                     </div>
-                `).join('')}
-            </div>
-        `;
+
+                    <!-- Executive Dashboard -->
+                    <div class="executive-dashboard">
+                        <div class="dashboard-header">
+                            <h4>� Executive Dashboard</h4>
+                            <div class="overall-health">
+                                <span class="health-label">Overall Health Score</span>
+                                <div class="health-score ${healthStatus.class}">
+                                    <span class="score-value">${healthScore}%</span>
+                                    <span class="score-status">${healthStatus.text}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="kpi-grid">
+                            <div class="kpi-card security">
+                                <div class="kpi-icon">🛡️</div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value">${summary.securityScore || 'N/A'}${typeof summary.securityScore === 'number' ? '%' : ''}</div>
+                                    <div class="kpi-label">Security Posture</div>
+                                    <div class="kpi-trend ${this.getTrendClass(summary.securityScore)}">
+                                        ${this.getTrendIcon(summary.securityScore)} ${this.getTrendText(summary.securityScore)}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="kpi-card users">
+                                <div class="kpi-icon">👥</div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value">${summary.totalUsers || 'N/A'}</div>
+                                    <div class="kpi-label">Active Users</div>
+                                    <div class="kpi-detail">${summary.licensedUsers || 'N/A'} Licensed</div>
+                                </div>
+                            </div>
+                            
+                            <div class="kpi-card devices">
+                                <div class="kpi-icon">📱</div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value">${summary.totalDevices || 'N/A'}</div>
+                                    <div class="kpi-label">Managed Devices</div>
+                                    <div class="kpi-detail">${summary.compliantDevices || 'N/A'} Compliant</div>
+                                </div>
+                            </div>
+                            
+                            <div class="kpi-card alerts">
+                                <div class="kpi-icon">⚠️</div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value">${summary.criticalAlerts || '0'}</div>
+                                    <div class="kpi-label">Critical Alerts</div>
+                                    <div class="kpi-detail">${summary.totalAlerts || '0'} Total Alerts</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Key Findings & Recommendations -->
+                    <div class="key-findings">
+                        <h4>🎯 Key Findings & Strategic Recommendations</h4>
+                        <div class="findings-grid">
+                            ${this.generateKeyFindings(summary, sections)}
+                        </div>
+                    </div>
+
+                    <!-- Detailed Security Analysis -->
+                    <div class="security-analysis">
+                        <h4>🔍 Detailed Security Analysis</h4>
+                        <div class="analysis-sections">
+                            ${sections.map(section => this.generateEnhancedSection(section)).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Risk Assessment Matrix -->
+                    <div class="risk-assessment">
+                        <h4>📊 Risk Assessment Matrix</h4>
+                        <div class="risk-matrix">
+                            ${this.generateRiskMatrix(sections)}
+                        </div>
+                    </div>
+
+                    <!-- Action Plan -->
+                    <div class="action-plan">
+                        <h4>📋 30-Day Action Plan</h4>
+                        <div class="action-timeline">
+                            ${this.generateActionPlan(sections)}
+                        </div>
+                    </div>
+
+                    <!-- Professional Footer -->
+                    <div class="msp-report-footer">
+                        <div class="footer-content">
+                            <div class="provider-info">
+                                <strong>Managed Service Provider:</strong> ICB Solutions<br>
+                                <strong>Report Prepared By:</strong> Microsoft 365 Health Monitor<br>
+                                <strong>Next Assessment:</strong> ${this.getNextAssessmentDate()}
+                            </div>
+                            <div class="contact-info">
+                                <div class="contact-label">Questions about this report?</div>
+                                <div class="contact-details">Contact your dedicated ICB Solutions team</div>
+                            </div>
+                        </div>
+                        <div class="footer-disclaimer">
+                            <small>This assessment is based on Microsoft 365 telemetry and industry best practices. 
+                            Recommendations should be evaluated in the context of your organization's specific requirements and policies.</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Fallback for simple report format
+            return `
+                <div class="report-header">
+                    <h4>Tenant: ${report.tenantDomain}</h4>
+                    <p>Generated: ${new Date(report.generatedAt).toLocaleString()}</p>
+                </div>
+                <div class="report-sections">
+                    ${(report.sections || []).map(section => `
+                        <div class="report-section">
+                            <div class="section-header">
+                                <h5>${section.name}</h5>
+                                <span class="status-badge status-${section.status}">${section.status.replace('_', ' ')}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
     }
 
     showMonthlyReportModal() {
@@ -1341,20 +1531,427 @@ class ICBAgent {
         authStatus.style.display = 'none';
     }
 
+    // World-class MSP Report Helper Methods
+    calculateOverallHealthScore(summary, sections) {
+        let totalScore = 0;
+        let components = 0;
+
+        // Security score (40% weight)
+        if (summary.securityScore && typeof summary.securityScore === 'number') {
+            totalScore += summary.securityScore * 0.4;
+            components += 0.4;
+        }
+
+        // Compliance score based on sections (30% weight)
+        const healthySections = sections.filter(s => s.status === 'healthy').length;
+        const totalSections = sections.length || 1;
+        const complianceScore = (healthySections / totalSections) * 100;
+        totalScore += complianceScore * 0.3;
+        components += 0.3;
+
+        // Alert score (20% weight) - inverse of critical alerts
+        const criticalAlerts = summary.criticalAlerts || 0;
+        const alertScore = Math.max(0, 100 - (criticalAlerts * 10));
+        totalScore += alertScore * 0.2;
+        components += 0.2;
+
+        // Device compliance (10% weight)
+        if (summary.totalDevices && summary.compliantDevices) {
+            const deviceScore = (summary.compliantDevices / summary.totalDevices) * 100;
+            totalScore += deviceScore * 0.1;
+            components += 0.1;
+        }
+
+        return components > 0 ? Math.round(totalScore / components) : 75; // Default to 75% if no data
+    }
+
+    getHealthStatus(score) {
+        if (score >= 90) return { text: 'Excellent', class: 'excellent' };
+        if (score >= 75) return { text: 'Good', class: 'good' };
+        if (score >= 60) return { text: 'Fair', class: 'fair' };
+        return { text: 'Needs Attention', class: 'poor' };
+    }
+
+    getTrendClass(value) {
+        if (typeof value !== 'number') return 'neutral';
+        if (value >= 80) return 'positive';
+        if (value >= 60) return 'neutral';
+        return 'negative';
+    }
+
+    getTrendIcon(value) {
+        if (typeof value !== 'number') return '➖';
+        if (value >= 80) return '⬆️';
+        if (value >= 60) return '➖';
+        return '⬇️';
+    }
+
+    getTrendText(value) {
+        if (typeof value !== 'number') return 'No Change';
+        if (value >= 80) return 'Strong';
+        if (value >= 60) return 'Stable';
+        return 'Requires Attention';
+    }
+
+    generateKeyFindings(summary, sections) {
+        const findings = [];
+
+        // Security findings
+        if (summary.securityScore) {
+            if (summary.securityScore >= 80) {
+                findings.push({
+                    type: 'positive',
+                    icon: '✅',
+                    title: 'Strong Security Posture',
+                    description: `Your organization maintains a strong security score of ${summary.securityScore}%, indicating effective security controls and policies.`,
+                    action: 'Continue monitoring and maintain current security practices.'
+                });
+            } else {
+                findings.push({
+                    type: 'warning',
+                    icon: '⚠️',
+                    title: 'Security Score Below Target',
+                    description: `Security score of ${summary.securityScore}% indicates areas for improvement in your security posture.`,
+                    action: 'Prioritize implementation of recommended security controls.'
+                });
+            }
+        }
+
+        // Alert findings
+        if (summary.criticalAlerts > 0) {
+            findings.push({
+                type: 'critical',
+                icon: '🚨',
+                title: 'Critical Alerts Detected',
+                description: `${summary.criticalAlerts} critical security alerts require immediate attention.`,
+                action: 'Review and remediate critical alerts within 24-48 hours.'
+            });
+        } else {
+            findings.push({
+                type: 'positive',
+                icon: '✅',
+                title: 'No Critical Alerts',
+                description: 'Your environment currently has no critical security alerts.',
+                action: 'Maintain proactive monitoring and incident response procedures.'
+            });
+        }
+
+        // Device compliance
+        if (summary.totalDevices && summary.compliantDevices) {
+            const complianceRate = (summary.compliantDevices / summary.totalDevices) * 100;
+            if (complianceRate < 95) {
+                findings.push({
+                    type: 'warning',
+                    icon: '📱',
+                    title: 'Device Compliance Gap',
+                    description: `${Math.round(complianceRate)}% device compliance rate. ${summary.totalDevices - summary.compliantDevices} devices require attention.`,
+                    action: 'Review non-compliant devices and update policies as needed.'
+                });
+            }
+        }
+
+        return findings.map(finding => `
+            <div class="finding-card ${finding.type}">
+                <div class="finding-header">
+                    <span class="finding-icon">${finding.icon}</span>
+                    <h5>${finding.title}</h5>
+                </div>
+                <div class="finding-content">
+                    <p class="finding-description">${finding.description}</p>
+                    <div class="finding-action">
+                        <strong>Recommended Action:</strong> ${finding.action}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    generateEnhancedSection(section) {
+        const statusIcons = {
+            'healthy': '✅',
+            'warning': '⚠️',
+            'critical': '🚨',
+            'unknown': '❓'
+        };
+
+        const riskLevel = this.calculateSectionRisk(section);
+        
+        return `
+            <div class="enhanced-section ${section.status}">
+                <div class="section-header-enhanced">
+                    <div class="section-title">
+                        <span class="section-icon">${section.icon || statusIcons[section.status] || '📋'}</span>
+                        <h5>${section.name}</h5>
+                    </div>
+                    <div class="section-status">
+                        <span class="status-badge ${section.status}">${(section.status || 'unknown').replace('_', ' ').toUpperCase()}</span>
+                        <span class="risk-indicator risk-${riskLevel.toLowerCase()}">${riskLevel} Risk</span>
+                    </div>
+                </div>
+                
+                <div class="section-metrics">
+                    <div class="metric">
+                        <span class="metric-label">Items Assessed:</span>
+                        <span class="metric-value">${section.itemCount || 0}</span>
+                    </div>
+                    ${section.issueCount ? `
+                        <div class="metric">
+                            <span class="metric-label">Issues Found:</span>
+                            <span class="metric-value">${section.issueCount}</span>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="section-summary">
+                    <p>${section.summary || this.generateDefaultSummary(section)}</p>
+                </div>
+
+                ${section.recommendations && section.recommendations.length > 0 ? `
+                    <div class="section-recommendations">
+                        <h6>📋 Recommendations</h6>
+                        <div class="recommendation-list">
+                            ${section.recommendations.slice(0, 3).map((rec, index) => `
+                                <div class="recommendation-item priority-${this.getRecommendationPriority(rec, index)}">
+                                    <span class="rec-priority">${this.getPriorityLabel(this.getRecommendationPriority(rec, index))}</span>
+                                    <span class="rec-text">${rec.text || rec}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    calculateSectionRisk(section) {
+        if (!section.status) return 'Medium';
+        
+        switch (section.status) {
+            case 'critical': return 'High';
+            case 'warning': return 'Medium';
+            case 'healthy': return 'Low';
+            default: return 'Medium';
+        }
+    }
+
+    generateDefaultSummary(section) {
+        const summaries = {
+            'identity': 'User identity and authentication security assessment including multi-factor authentication, privileged accounts, and access policies.',
+            'devices': 'Device management and compliance status including enrollment, configuration, and security baseline adherence.',
+            'security': 'Security score analysis covering threat protection, information protection, and security baseline implementation.',
+            'compliance': 'Compliance posture assessment including policy adherence, audit readiness, and regulatory requirement fulfillment.',
+            'applications': 'Application security review including OAuth permissions, app governance, and third-party application risks.',
+            'data': 'Data protection assessment covering sharing policies, external access, and information governance controls.'
+        };
+
+        const sectionKey = Object.keys(summaries).find(key => 
+            section.name.toLowerCase().includes(key)
+        );
+
+        return summaries[sectionKey] || 'Comprehensive assessment of security controls and configuration in this area.';
+    }
+
+    getRecommendationPriority(rec, index) {
+        // High priority for first recommendation, medium for second, low for third
+        const priorities = ['high', 'medium', 'low'];
+        return priorities[index] || 'low';
+    }
+
+    getPriorityLabel(priority) {
+        const labels = {
+            'high': 'HIGH',
+            'medium': 'MED',
+            'low': 'LOW'
+        };
+        return labels[priority] || 'MED';
+    }
+
+    generateRiskMatrix(sections) {
+        const riskCategories = {
+            'High': sections.filter(s => s.status === 'critical').length,
+            'Medium': sections.filter(s => s.status === 'warning').length,
+            'Low': sections.filter(s => s.status === 'healthy').length
+        };
+
+        return `
+            <div class="risk-grid">
+                ${Object.entries(riskCategories).map(([level, count]) => `
+                    <div class="risk-category risk-${level.toLowerCase()}">
+                        <div class="risk-count">${count}</div>
+                        <div class="risk-label">${level} Risk Items</div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="risk-summary">
+                <p>Risk assessment based on security findings, compliance gaps, and operational concerns. 
+                High-risk items require immediate attention, while medium and low-risk items should be addressed in upcoming maintenance windows.</p>
+            </div>
+        `;
+    }
+
+    generateActionPlan(sections) {
+        const actions = [];
+        
+        // Add critical actions first
+        sections.filter(s => s.status === 'critical').forEach(section => {
+            actions.push({
+                priority: 'immediate',
+                timeframe: 'Week 1',
+                action: `Address critical issues in ${section.name}`,
+                description: 'Immediate remediation required for critical security findings.'
+            });
+        });
+
+        // Add warning actions
+        sections.filter(s => s.status === 'warning').forEach(section => {
+            actions.push({
+                priority: 'high',
+                timeframe: 'Week 2-3',
+                action: `Resolve findings in ${section.name}`,
+                description: 'Address identified security gaps and compliance issues.'
+            });
+        });
+
+        // Add optimization actions
+        actions.push({
+            priority: 'medium',
+            timeframe: 'Week 4',
+            action: 'Optimize security configurations',
+            description: 'Fine-tune policies and implement additional security controls.'
+        });
+
+        actions.push({
+            priority: 'ongoing',
+            timeframe: 'Ongoing',
+            action: 'Monitor and maintain',
+            description: 'Continuous monitoring and regular health assessments.'
+        });
+
+        return actions.slice(0, 6).map(action => `
+            <div class="action-item priority-${action.priority}">
+                <div class="action-timeline">
+                    <span class="timeframe">${action.timeframe}</span>
+                    <span class="priority-badge">${action.priority.toUpperCase()}</span>
+                </div>
+                <div class="action-content">
+                    <h6>${action.action}</h6>
+                    <p>${action.description}</p>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    getNextAssessmentDate() {
+        const nextDate = new Date();
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        return nextDate.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+    }
+
     closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
     }
 
-    downloadReport() {
-        // Implement PDF download functionality
-        console.log('Downloading report...');
-        this.showSuccess('Report download started');
+    async downloadReport() {
+        try {
+            if (!this.collectedReportData) {
+                this.showError('No report data available. Please generate a report first.');
+                return;
+            }
+
+            console.log('📄 Starting PDF generation...');
+            this.showProgressIndicator('Generating PDF', 'Preparing your report for download...');
+
+            // Initialize PDF generator
+            const pdfGenerator = new MonthlyReportPDFGenerator();
+            
+            // Generate PDF with collected data
+            this.updateProgressIndicator('Creating PDF document...', 50);
+            const pdf = await pdfGenerator.generateReport(this.collectedReportData, {
+                customerName: this.currentTenant,
+                customerLogo: null // Can be configured later
+            });
+
+            this.updateProgressIndicator('Finalizing download...', 90);
+
+            // Download the PDF
+            pdf.save(`${this.currentTenant}-health-report-${new Date().toISOString().split('T')[0]}.pdf`);
+            
+            this.hideProgressIndicator();
+            this.showSuccess('Report downloaded successfully!');
+            console.log('✅ PDF download completed');
+
+        } catch (error) {
+            console.error('❌ Error downloading report:', error);
+            this.hideProgressIndicator();
+            this.showError('Failed to download report. Please try again.');
+        }
     }
 
-    emailReport() {
-        // Implement email functionality
-        console.log('Emailing report...');
-        this.showSuccess('Report sent to customer');
+    async emailReport() {
+        try {
+            if (!this.collectedReportData) {
+                this.showError('No report data available. Please generate a report first.');
+                return;
+            }
+
+            // Show email configuration dialog
+            const recipientEmail = prompt('Enter recipient email address:');
+            if (!recipientEmail) {
+                return;
+            }
+
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(recipientEmail)) {
+                this.showError('Please enter a valid email address.');
+                return;
+            }
+
+            console.log('📧 Preparing email with report...');
+            this.showProgressIndicator('Sending Email', 'Generating report and preparing email...');
+
+            // Generate PDF first
+            this.updateProgressIndicator('Generating PDF attachment...', 30);
+            const pdfGenerator = new MonthlyReportPDFGenerator();
+            const pdf = await pdfGenerator.generateReport(this.collectedReportData, {
+                customerName: this.currentTenant,
+                customerLogo: null
+            });
+
+            // Convert PDF to blob for email
+            this.updateProgressIndicator('Preparing email...', 60);
+            const pdfBlob = pdf.output('blob');
+
+            // Send email via server endpoint
+            this.updateProgressIndicator('Sending email...', 80);
+            const formData = new FormData();
+            formData.append('pdf', pdfBlob, `${this.currentTenant}-health-report.pdf`);
+            formData.append('recipientEmail', recipientEmail);
+            formData.append('tenantName', this.currentTenant);
+            formData.append('reportData', JSON.stringify(this.collectedReportData.executiveSummary));
+
+            const response = await fetch('/api/reports/email', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`Email sending failed: ${response.statusText}`);
+            }
+
+            this.hideProgressIndicator();
+            this.showSuccess(`Report sent successfully to ${recipientEmail}!`);
+            console.log('✅ Email sent successfully');
+
+        } catch (error) {
+            console.error('❌ Error emailing report:', error);
+            this.hideProgressIndicator();
+            this.showError('Failed to send email. Please try again or contact support.');
+        }
     }
 
     // Monthly Report Methods

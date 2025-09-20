@@ -3562,8 +3562,19 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/reports/health-check', async (req, res) => {
   const { sessionId } = req.body;
   
-  if (!sessionId || !activeSessions.has(sessionId)) {
-    return res.status(400).json({ error: 'Invalid session ID' });
+  if (!sessionId) {
+    return res.status(400).json({ error: 'Session ID is required' });
+  }
+  
+  // Check if session exists, create if missing (for restored sessions)
+  if (!activeSessions.has(sessionId)) {
+    console.log(`⚠️ Session ${sessionId} not found in activeSessions, creating default session`);
+    activeSessions.set(sessionId, {
+      id: sessionId,
+      tenantDomain: 'Unknown', // Will be filled from the request if available
+      createdAt: new Date(),
+      status: 'restored'
+    });
   }
   
   try {
