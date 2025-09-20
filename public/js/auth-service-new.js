@@ -19,24 +19,32 @@ class ICBAuthService {
             redirectUri: this.getRedirectUri()
         };
 
-        // Required permissions for full ICB Agent functionality
+        // Required permissions for ICB Agent functionality
+        // Starting with core permissions, can be expanded as needed
         this.requiredScopes = [
             "User.Read.All",
-            "User.ReadWrite.All", 
-            "UserAuthenticationMethod.Read.All",
-            "SecurityEvents.Read.All",
-            "ThreatIndicators.Read.All",
-            "DeviceManagementApps.Read.All",
-            "DeviceManagementConfiguration.Read.All",
-            "DeviceManagementManagedDevices.Read.All",
             "Directory.Read.All",
+            "DeviceManagementManagedDevices.Read.All",
+            "DeviceManagementConfiguration.Read.All",
+            "DeviceManagementApps.Read.All",
             "AuditLog.Read.All",
-            "InformationProtectionPolicy.Read.All",
             "Reports.Read.All",
-            "ReportSettings.Read.All"
+            "SecurityEvents.Read.All"
         ];
 
         console.log('🔧 ICB Auth Service initialized');
+        
+        // Check if we have auth parameters immediately upon initialization
+        const hasAuthParams = window.location.hash.includes('code=') || window.location.search.includes('code=');
+        if (hasAuthParams) {
+            console.log('🔍 Auth parameters detected during initialization, scheduling redirect processing...');
+            // Schedule redirect processing after initialization is complete
+            setTimeout(() => {
+                this.handleRedirectResponse().catch(error => {
+                    console.error('❌ Error in scheduled redirect processing:', error);
+                });
+            }, 100);
+        }
     }
 
     /**
@@ -48,20 +56,13 @@ class ICBAuthService {
     }
 
     /**
-     * Get or generate a client ID for the application
+     * Get the client ID for the application
+     * Using ICB Solutions tenant app registration
      */
     getClientId() {
-        let clientId = localStorage.getItem('icb_client_id');
-        if (!clientId) {
-            // Generate a UUID v4
-            clientId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                const r = Math.random() * 16 | 0;
-                const v = c == 'x' ? r : (r & 0x3 | 0x8);
-                return v.toString(16);
-            });
-            localStorage.setItem('icb_client_id', clientId);
-            console.log('🆔 Generated new client ID:', clientId);
-        }
+        // ICB Solutions tenant app registration ID
+        const clientId = 'e18ea8f1-5bc5-4710-bb54-aced2112724c';
+        console.log('🆔 Using ICB Solutions app registration client ID:', clientId);
         return clientId;
     }
 
@@ -123,12 +124,44 @@ class ICBAuthService {
      */
     async handleRedirectResponse() {
         try {
+            console.log('🔍 Processing redirect response...');
+            console.log('🔍 Current URL:', window.location.href);
+            console.log('🔍 URL hash:', window.location.hash);
+            console.log('🔍 URL search:', window.location.search);
+            
+            // Check if MSAL instance is initialized
+            if (!this.msalInstance) {
+                console.log('⚠️ MSAL instance not ready, initializing first...');
+                await this.initializeAuthentication();
+            }
+            
+            // Check if URL contains auth parameters manually first
+            const hasAuthCode = window.location.hash.includes('code=') || window.location.search.includes('code=');
+            const hasState = window.location.hash.includes('state=') || window.location.search.includes('state=');
+            console.log('🔍 Manual auth parameter check:', { hasAuthCode, hasState });
+            
             const response = await this.msalInstance.handleRedirectPromise();
+            console.log('🔍 MSAL handleRedirectPromise response:', response);
             
             if (response !== null) {
                 // User just returned from redirect
                 console.log('✅ Redirect authentication successful');
+                console.log('✅ Response details:', response);
                 return this.handleAuthSuccess(response);
+            } else if (hasAuthCode && hasState) {
+                // MSAL didn't detect auth parameters but they exist - force a retry
+                console.log('⚠️ MSAL missed auth parameters, manually handling...');
+                console.log('🔄 Attempting MSAL retry with current URL...');
+                
+                // Wait a moment and try again
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const retryResponse = await this.msalInstance.handleRedirectPromise();
+                console.log('🔍 MSAL retry response:', retryResponse);
+                
+                if (retryResponse !== null) {
+                    console.log('✅ Retry successful');
+                    return this.handleAuthSuccess(retryResponse);
+                }
             } else {
                 // Check for existing sessions
                 const accounts = this.msalInstance.getAllAccounts();
@@ -148,9 +181,14 @@ class ICBAuthService {
                         this.accessToken = tokenResponse.accessToken;
                         this.saveAuthState();
                         
-                        // Notify the app
+                        // Notify the app with correct parameter structure
                         if (window.icbAgent) {
-                            window.icbAgent.onAuthenticationSuccess(this.getAuthResult());
+                            const authResponse = {
+                                account: this.account,
+                                accessToken: this.accessToken,
+                                isAuthenticated: this.isAuthenticated
+                            };
+                            window.icbAgent.onAuthenticationSuccess(authResponse, this.tenantDomain);
                         }
                         
                         return {
@@ -269,9 +307,16 @@ class ICBAuthService {
         // Save authentication state
         this.saveAuthState();
         
-        // Notify the app
+        // Notify the app with the correct parameter structure
         if (window.icbAgent) {
-            window.icbAgent.onAuthenticationSuccess(this.getAuthResult());
+            // The app expects (authResponse, tenantDomain) as separate parameters
+            const authResponse = {
+                account: this.account,
+                accessToken: this.accessToken,
+                isAuthenticated: this.isAuthenticated,
+                expiresOn: response.expiresOn
+            };
+            window.icbAgent.onAuthenticationSuccess(authResponse, this.tenantDomain);
         }
         
         return {

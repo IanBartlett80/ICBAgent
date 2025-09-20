@@ -503,18 +503,33 @@ class ICBAgent {
     async createAuthenticatedSession(authResponse) {
         try {
             console.log('🔧 Creating authenticated session...');
+            console.log('📋 Current tenant for session:', this.currentTenant);
+            console.log('👤 User for session:', authResponse.account.username);
+            console.log('🔑 Has access token:', !!authResponse.accessToken);
+            
+            // Validate required data before making request
+            if (!this.currentTenant) {
+                throw new Error('Tenant domain is required for session creation');
+            }
+            if (!authResponse.account.username) {
+                throw new Error('User account is required for session creation');
+            }
             
             // Create session with authentication context
+            const sessionRequest = {
+                tenant: this.currentTenant,
+                user: authResponse.account.username,
+                accessToken: authResponse.accessToken
+            };
+            
+            console.log('📤 Session request payload:', sessionRequest);
+            
             const sessionResponse = await fetch('/api/session/create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    tenant: this.currentTenant,
-                    user: authResponse.account.username,
-                    accessToken: authResponse.accessToken
-                })
+                body: JSON.stringify(sessionRequest)
             });
 
             const sessionData = await sessionResponse.json();
