@@ -9,8 +9,8 @@ class ICBAgent {
         // Initialize Zero Trust Assessment
         this.zeroTrustAssessment = null;
         
-        // Initialize Authentication Service
-        this.authService = null;
+        // Use Unified Authentication Service
+        this.authService = window.icbUnifiedAuth;
         this.isAuthenticated = false;
         
         this.init();
@@ -29,7 +29,7 @@ class ICBAgent {
         this.initializeSocket();
         this.bindEvents();
         this.updateConnectionStatus(this.isConnected ? 'connected' : 'disconnected', this.currentTenant);
-        this.initializeAuthenticationService();
+        this.initializeUnifiedAuthentication();
         this.initializeZeroTrustAssessment();
         this.testEnhancedRendering(); // Add test function
         console.log('ICBAgent initialized'); // Debug log
@@ -156,19 +156,42 @@ class ICBAgent {
         });
     }
 
-    initializeAuthenticationService() {
-        console.log('🔧 Initializing Authentication Service...');
+    initializeUnifiedAuthentication() {
+        console.log('🔧 Initializing Unified Authentication Service...');
         
-        // Check if ICBAuthService is available
-        if (typeof ICBAuthService !== 'undefined') {
+        // Check if unified auth service is available
+        if (window.icbUnifiedAuth) {
             try {
-                this.authService = new ICBAuthService();
-                console.log('✅ Authentication Service initialized successfully');
+                this.authService = window.icbUnifiedAuth;
+                
+                // Load any existing auth state
+                this.authService.loadAuthState();
+                
+                // Set initial authentication status
+                this.isAuthenticated = this.authService.isUserAuthenticated();
+                
+                console.log('✅ Unified Authentication Service connected successfully');
+                console.log('🔐 Current auth status:', this.isAuthenticated);
+                
+                // Update UI based on current auth state
+                if (this.isAuthenticated) {
+                    const tenant = this.authService.getCurrentTenant();
+                    const sessionId = this.authService.getSessionId();
+                    
+                    if (tenant && sessionId) {
+                        this.currentTenant = tenant;
+                        this.sessionId = sessionId;
+                        this.isConnected = true;
+                        this.updateConnectionStatus('connected', tenant);
+                        console.log('🔄 Restored session from unified auth:', { tenant, sessionId });
+                    }
+                }
+                
             } catch (error) {
-                console.error('❌ Failed to initialize Authentication Service:', error);
+                console.error('❌ Failed to initialize Unified Authentication Service:', error);
             }
         } else {
-            console.error('❌ ICBAuthService not available');
+            console.error('❌ Unified Authentication Service not available');
         }
     }
 
@@ -1473,12 +1496,12 @@ class ICBAgent {
         progressItems.innerHTML = '';
         
         try {
-            // Initialize Graph API service
-            if (!window.monthlyReportAuth?.isUserAuthenticated()) {
+            // Initialize Graph API service with unified authentication
+            if (!this.authService?.isUserAuthenticated()) {
                 throw new Error('User authentication required for data collection');
             }
 
-            const graphService = new window.MonthlyReportGraphService(window.monthlyReportAuth);
+            const graphService = new window.MonthlyReportGraphService(this.authService);
             
             // Set up progress callback
             window.reportProgressCallback = (progress) => {
