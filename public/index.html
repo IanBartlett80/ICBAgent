@@ -86,14 +86,19 @@
                         </div>
                     </div>
                     
-                    <div class="feature-card">
+                    <div class="feature-card health-reports-link" id="healthReportsCard" title="Generate Monthly Report">
                         <div class="feature-icon">
                             <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
                             </svg>
                         </div>
                         <h3>Intelligent Health Reports</h3>
-                        <p>Generate comprehensive, actionable health reports with predictive insights and customizable branding for your customers.</p>
+                        <p>Generate comprehensive monthly reports with Zero Trust analysis, security insights, and customizable branding for your customers.</p>
+                        <div class="feature-link-indicator">
+                            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+                            </svg>
+                        </div>
                     </div>
 
                     <a href="/tenant-clone-new" class="feature-card tenant-clone-link" title="Access Tenant Clone Dashboard">
@@ -250,6 +255,119 @@
                     <div class="modal-footer">
                         <button class="btn-secondary" id="downloadReportBtn">Download PDF</button>
                         <button class="btn-primary" id="emailReportBtn">Email to Customer</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monthly Report Modal -->
+            <div class="modal" id="monthlyReportModal" style="display: none;">
+                <div class="modal-content monthly-report-modal">
+                    <div class="modal-header">
+                        <h3>🏢 ICB Solutions Monthly Report Generator</h3>
+                        <button class="modal-close" id="closeMonthlyReportModal">&times;</button>
+                    </div>
+                    <div class="modal-body" id="monthlyReportContent">
+                        
+                        <!-- Step 1: Authentication -->
+                        <div class="report-step" id="authStep">
+                            <div class="step-header">
+                                <div class="step-number">1</div>
+                                <h4>Microsoft 365 Tenant Authentication</h4>
+                            </div>
+                            <p>Authenticate to the customer's Microsoft 365 tenant to collect comprehensive data for the monthly report.</p>
+                            <div class="auth-section">
+                                <div class="tenant-input-group">
+                                    <label for="reportTenantDomain">Customer Tenant Domain</label>
+                                    <input type="text" id="reportTenantDomain" placeholder="customer.onmicrosoft.com" />
+                                </div>
+                                <button class="btn-primary" id="authenticateTenantBtn">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                                    </svg>
+                                    Authenticate with Microsoft
+                                </button>
+                            </div>
+                            <div class="auth-status" id="authStatus" style="display: none;">
+                                <div class="status-indicator"></div>
+                                <span class="status-text"></span>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Report Configuration -->
+                        <div class="report-step" id="configStep" style="display: none;">
+                            <div class="step-header">
+                                <div class="step-number">2</div>
+                                <h4>Report Configuration</h4>
+                            </div>
+                            <div class="config-section">
+                                <div class="config-group">
+                                    <label for="customerName">Customer Name</label>
+                                    <input type="text" id="customerName" placeholder="Customer Organization Name" />
+                                </div>
+                                <div class="config-group">
+                                    <label for="reportPeriod">Report Period</label>
+                                    <select id="reportPeriod">
+                                        <option value="previous-month">Previous Full Month</option>
+                                        <option value="custom">Custom Date Range</option>
+                                    </select>
+                                </div>
+                                <div class="config-group">
+                                    <label for="customerLogo">Customer Logo (Optional)</label>
+                                    <input type="file" id="customerLogo" accept="image/*" />
+                                    <small>Upload customer logo for branded report header</small>
+                                </div>
+                                <button class="btn-primary" id="generateReportDataBtn">
+                                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                    </svg>
+                                    Generate Report Data
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Data Collection Progress -->
+                        <div class="report-step" id="progressStep" style="display: none;">
+                            <div class="step-header">
+                                <div class="step-number">3</div>
+                                <h4>Collecting Microsoft 365 Data</h4>
+                            </div>
+                            <div class="progress-section">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="dataProgress"></div>
+                                </div>
+                                <div class="progress-items" id="progressItems">
+                                    <!-- Progress items will be populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 4: Report Preview & Edit -->
+                        <div class="report-step" id="previewStep" style="display: none;">
+                            <div class="step-header">
+                                <div class="step-number">4</div>
+                                <h4>Review & Edit Report</h4>
+                            </div>
+                            <div class="preview-section">
+                                <div class="report-preview" id="reportPreview">
+                                    <!-- Generated report content will be shown here -->
+                                </div>
+                                <div class="edit-controls">
+                                    <button class="btn-secondary" id="editReportBtn">
+                                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                                        </svg>
+                                        Edit Content
+                                    </button>
+                                    <button class="btn-primary" id="exportReportBtn">
+                                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M14 2H6C4.9 2 4 2.9 4 4v16c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+                                        </svg>
+                                        Export PDF Report
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>

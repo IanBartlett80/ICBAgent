@@ -1516,6 +1516,300 @@ body::before {
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* Monthly Report Modal Styles */
+.monthly-report-modal {
+  max-width: 900px;
+  max-height: 95%;
+}
+
+.report-step {
+  padding: var(--spacing-4) 0;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  background: var(--gradient-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+}
+
+.step-header h4 {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0;
+}
+
+.auth-section, .config-section, .progress-section, .preview-section {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tenant-input-group, .config-group {
+  margin-bottom: var(--spacing-4);
+}
+
+.tenant-input-group label, .config-group label {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: var(--spacing-2);
+  font-size: var(--font-size-sm);
+}
+
+.tenant-input-group input, .config-group input, .config-group select {
+  width: 100%;
+  padding: var(--spacing-3);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  transition: all var(--animation-medium);
+}
+
+.tenant-input-group input:focus, .config-group input:focus, .config-group select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(62, 138, 180, 0.2);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.config-group small {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  margin-top: var(--spacing-1);
+  display: block;
+}
+
+.auth-status {
+  margin-top: var(--spacing-4);
+  padding: var(--spacing-3);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.auth-status .status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.auth-status .status-indicator.connecting {
+  background: var(--warning);
+  animation: pulse 1.5s infinite;
+}
+
+.auth-status .status-indicator.connected {
+  background: var(--success);
+}
+
+.auth-status .status-indicator.disconnected {
+  background: var(--danger);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--spacing-4);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--gradient-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.progress-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.progress-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all var(--animation-medium);
+}
+
+.progress-item.completed {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.progress-icon {
+  font-size: var(--font-size-lg);
+  flex-shrink: 0;
+}
+
+.progress-name {
+  flex: 1;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.progress-status {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.report-preview {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-5);
+  margin-bottom: var(--spacing-4);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.report-preview-header {
+  text-align: center;
+  margin-bottom: var(--spacing-5);
+  padding-bottom: var(--spacing-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.report-title h2 {
+  color: var(--text-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--spacing-2) 0;
+}
+
+.report-title h3 {
+  color: var(--primary-500);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin: 0 0 var(--spacing-2) 0;
+}
+
+.report-subtitle {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.executive-summary h4, .report-sections-preview h4, .ai-recommendations-preview h4 {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0 0 var(--spacing-4) 0;
+}
+
+.summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-5);
+}
+
+.metric-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  text-align: center;
+}
+
+.metric-value {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--primary-500);
+  margin-bottom: var(--spacing-1);
+}
+
+.metric-label {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-2);
+}
+
+.metric-trend {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.metric-trend.positive {
+  color: var(--success);
+}
+
+.metric-trend.negative {
+  color: var(--danger);
+}
+
+.metric-trend.neutral {
+  color: var(--text-secondary);
+}
+
+.section-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--spacing-5) 0;
+}
+
+.section-list li {
+  padding: var(--spacing-2) 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.recommendation-item {
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid var(--primary-500);
+  padding: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.preview-note {
+  background: rgba(62, 138, 180, 0.1);
+  border: 1px solid rgba(62, 138, 180, 0.3);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-3);
+  color: var(--primary-500);
+  font-size: var(--font-size-sm);
+  margin-top: var(--spacing-4);
+}
+
+.edit-controls {
+  display: flex;
+  gap: var(--spacing-3);
+  justify-content: flex-end;
+  margin-top: var(--spacing-4);
+}
+
 /* Footer */
 .footer {
   background: var(--gray-800);

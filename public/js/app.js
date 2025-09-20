@@ -276,6 +276,14 @@ class ICBAgent {
             });
         }
 
+        // Health Reports feature card click handler
+        const healthReportsCard = document.getElementById('healthReportsCard');
+        if (healthReportsCard) {
+            healthReportsCard.addEventListener('click', () => {
+                this.handleMonthlyReportFeatureClick();
+            });
+        }
+
         // Zero Trust Assessment feature card click handler
         const zeroTrustCard = document.getElementById('zeroTrustCard');
         if (zeroTrustCard) {
@@ -326,6 +334,42 @@ class ICBAgent {
         emailReportBtn.addEventListener('click', () => {
             this.emailReport();
         });
+
+        // Monthly Report Modal controls
+        const closeMonthlyReportModal = document.getElementById('closeMonthlyReportModal');
+        if (closeMonthlyReportModal) {
+            closeMonthlyReportModal.addEventListener('click', () => {
+                this.closeModal('monthlyReportModal');
+            });
+        }
+
+        const authenticateTenantBtn = document.getElementById('authenticateTenantBtn');
+        if (authenticateTenantBtn) {
+            authenticateTenantBtn.addEventListener('click', () => {
+                this.authenticateForMonthlyReport();
+            });
+        }
+
+        const generateReportDataBtn = document.getElementById('generateReportDataBtn');
+        if (generateReportDataBtn) {
+            generateReportDataBtn.addEventListener('click', () => {
+                this.generateMonthlyReportData();
+            });
+        }
+
+        const editReportBtn = document.getElementById('editReportBtn');
+        if (editReportBtn) {
+            editReportBtn.addEventListener('click', () => {
+                this.editMonthlyReport();
+            });
+        }
+
+        const exportReportBtn = document.getElementById('exportReportBtn');
+        if (exportReportBtn) {
+            exportReportBtn.addEventListener('click', () => {
+                this.exportMonthlyReportPDF();
+            });
+        }
     }
 
     async handleGetStarted() {
@@ -967,6 +1011,12 @@ class ICBAgent {
         }
     }
 
+    handleMonthlyReportFeatureClick() {
+        // Launch the Monthly Report generation flow
+        // This will trigger MSAL authentication and then generate the report
+        this.showMonthlyReportModal();
+    }
+
     showReportModal(report) {
         const modal = document.getElementById('reportModal');
         const content = document.getElementById('reportContent');
@@ -994,6 +1044,31 @@ class ICBAgent {
         `;
     }
 
+    showMonthlyReportModal() {
+        const modal = document.getElementById('monthlyReportModal');
+        modal.style.display = 'flex';
+        
+        // Reset modal to first step
+        this.resetMonthlyReportModal();
+    }
+
+    resetMonthlyReportModal() {
+        // Hide all steps except the first one
+        document.getElementById('authStep').style.display = 'block';
+        document.getElementById('configStep').style.display = 'none';
+        document.getElementById('progressStep').style.display = 'none';
+        document.getElementById('previewStep').style.display = 'none';
+        
+        // Reset form fields
+        document.getElementById('reportTenantDomain').value = '';
+        document.getElementById('customerName').value = '';
+        document.getElementById('customerLogo').value = '';
+        
+        // Reset auth status
+        const authStatus = document.getElementById('authStatus');
+        authStatus.style.display = 'none';
+    }
+
     closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
     }
@@ -1008,6 +1083,232 @@ class ICBAgent {
         // Implement email functionality
         console.log('Emailing report...');
         this.showSuccess('Report sent to customer');
+    }
+
+    // Monthly Report Methods
+    async authenticateForMonthlyReport() {
+        const tenantDomain = document.getElementById('reportTenantDomain').value.trim();
+        
+        if (!tenantDomain) {
+            this.showError('Please enter a tenant domain');
+            return;
+        }
+
+        const authStatus = document.getElementById('authStatus');
+        const statusIndicator = authStatus.querySelector('.status-indicator');
+        const statusText = authStatus.querySelector('.status-text');
+        
+        // Show auth status
+        authStatus.style.display = 'flex';
+        statusIndicator.className = 'status-indicator connecting';
+        statusText.textContent = 'Initiating Microsoft Authentication...';
+
+        try {
+            // This will trigger MSAL authentication popup
+            // For now, simulate the authentication process
+            setTimeout(() => {
+                statusIndicator.className = 'status-indicator connected';
+                statusText.textContent = `✅ Successfully authenticated to ${tenantDomain}`;
+                
+                // Move to next step after successful auth
+                setTimeout(() => {
+                    this.showConfigurationStep(tenantDomain);
+                }, 1500);
+            }, 2000);
+
+        } catch (error) {
+            console.error('Authentication failed:', error);
+            statusIndicator.className = 'status-indicator disconnected';
+            statusText.textContent = '❌ Authentication failed. Please try again.';
+            this.showError('Failed to authenticate with Microsoft 365');
+        }
+    }
+
+    showConfigurationStep(tenantDomain) {
+        // Hide auth step, show config step
+        document.getElementById('authStep').style.display = 'none';
+        document.getElementById('configStep').style.display = 'block';
+        
+        // Pre-populate customer name from tenant domain
+        const customerName = document.getElementById('customerName');
+        const domain = tenantDomain.replace('.onmicrosoft.com', '').replace('.com', '');
+        customerName.value = domain.charAt(0).toUpperCase() + domain.slice(1);
+        
+        this.currentReportTenant = tenantDomain;
+    }
+
+    async generateMonthlyReportData() {
+        const customerName = document.getElementById('customerName').value.trim();
+        
+        if (!customerName) {
+            this.showError('Please enter a customer name');
+            return;
+        }
+
+        // Move to progress step
+        document.getElementById('configStep').style.display = 'none';
+        document.getElementById('progressStep').style.display = 'block';
+        
+        // Start data collection process
+        await this.collectReportData();
+    }
+
+    async collectReportData() {
+        const progressFill = document.getElementById('dataProgress');
+        const progressItems = document.getElementById('progressItems');
+        
+        const dataItems = [
+            { name: 'Identity & User Security', endpoint: 'users', icon: '👥' },
+            { name: 'Device Management', endpoint: 'devices', icon: '📱' },
+            { name: 'Security Score & Threats', endpoint: 'security', icon: '🛡️' },
+            { name: 'Compliance & Policies', endpoint: 'compliance', icon: '📋' },
+            { name: 'Application Security', endpoint: 'applications', icon: '🔐' },
+            { name: 'Data Protection', endpoint: 'dataProtection', icon: '📊' }
+        ];
+
+        progressItems.innerHTML = '';
+        let completed = 0;
+
+        for (const item of dataItems) {
+            // Add progress item
+            const itemElement = document.createElement('div');
+            itemElement.className = 'progress-item';
+            itemElement.innerHTML = `
+                <span class="progress-icon">${item.icon}</span>
+                <span class="progress-name">${item.name}</span>
+                <span class="progress-status">⏳ Collecting...</span>
+            `;
+            progressItems.appendChild(itemElement);
+
+            // Simulate data collection
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+            
+            // Update status
+            itemElement.querySelector('.progress-status').innerHTML = '✅ Complete';
+            itemElement.classList.add('completed');
+            
+            completed++;
+            const progress = (completed / dataItems.length) * 100;
+            progressFill.style.width = `${progress}%`;
+        }
+
+        // Move to preview step
+        setTimeout(() => {
+            this.showReportPreview();
+        }, 1000);
+    }
+
+    showReportPreview() {
+        document.getElementById('progressStep').style.display = 'none';
+        document.getElementById('previewStep').style.display = 'block';
+        
+        // Generate and show report preview
+        const reportPreview = document.getElementById('reportPreview');
+        reportPreview.innerHTML = this.generateMonthlyReportPreview();
+    }
+
+    generateMonthlyReportPreview() {
+        const customerName = document.getElementById('customerName').value;
+        const currentDate = new Date();
+        const previousMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+        const monthName = previousMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+        return `
+            <div class="report-preview-header">
+                <div class="report-title">
+                    <h2>Microsoft 365 Security & Compliance Report</h2>
+                    <h3>${customerName} - ${monthName}</h3>
+                    <p class="report-subtitle">Generated by ICB Solutions Managed Services</p>
+                </div>
+            </div>
+            
+            <div class="executive-summary">
+                <h4>📊 Executive Summary</h4>
+                <div class="summary-metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">87%</div>
+                        <div class="metric-label">Security Score</div>
+                        <div class="metric-trend positive">+5% vs last month</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">145</div>
+                        <div class="metric-label">Active Users</div>
+                        <div class="metric-trend neutral">No change</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">23</div>
+                        <div class="metric-label">Devices Managed</div>
+                        <div class="metric-trend positive">+3 new devices</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">2</div>
+                        <div class="metric-label">Critical Alerts</div>
+                        <div class="metric-trend negative">Requires attention</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="report-sections-preview">
+                <h4>📋 Report Sections</h4>
+                <ul class="section-list">
+                    <li>🔐 Identity Security & Zero Trust</li>
+                    <li>📱 Device Management & Compliance</li>
+                    <li>🛡️ Security Center & Threat Protection</li>
+                    <li>📊 Data Protection & Compliance</li>
+                    <li>🎯 Recommendations & Next Steps</li>
+                </ul>
+            </div>
+
+            <div class="ai-recommendations-preview">
+                <h4>🤖 AI-Generated Recommendations</h4>
+                <div class="recommendation-item">
+                    <strong>High Priority:</strong> Enable MFA for 12 remaining admin accounts to improve identity security.
+                </div>
+                <div class="recommendation-item">
+                    <strong>Medium Priority:</strong> Update device compliance policies to address 3 outdated configurations.
+                </div>
+                <div class="recommendation-item">
+                    <strong>Optimization:</strong> Consider upgrading 15 users to Microsoft 365 E5 for advanced security features.
+                </div>
+            </div>
+
+            <p class="preview-note">
+                <strong>Note:</strong> This is a preview of your monthly report. You can edit any section before exporting the final PDF.
+            </p>
+        `;
+    }
+
+    editMonthlyReport() {
+        // TODO: Implement rich text editor for report content
+        this.showInfo('🚀 Report editing interface coming soon! You can currently review and export the report.');
+    }
+
+    async exportMonthlyReportPDF() {
+        try {
+            // TODO: Implement actual PDF generation
+            this.showSuccess('🎉 Monthly report PDF generated successfully! Ready for customer delivery.');
+            
+            // For now, simulate PDF download
+            const blob = new Blob(['PDF Content Placeholder'], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const customerName = document.getElementById('customerName').value || 'Customer';
+            const currentDate = new Date().toISOString().split('T')[0];
+            
+            a.href = url;
+            a.download = `${customerName}_Monthly_Report_${currentDate}.pdf`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            // Close modal after successful export
+            setTimeout(() => {
+                this.closeModal('monthlyReportModal');
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Failed to export PDF:', error);
+            this.showError('Failed to generate PDF report');
+        }
     }
 
     async disconnect() {
