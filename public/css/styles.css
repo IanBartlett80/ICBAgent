@@ -1797,6 +1797,52 @@ body::before {
   font-size: var(--font-size-sm);
 }
 
+.recommendation-item.critical {
+  border-left-color: #dc2626;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.recommendation-item.high {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.recommendation-item.medium {
+  border-left-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.recommendation-item.low,
+.recommendation-item.info {
+  border-left-color: var(--primary-500);
+  background: rgba(62, 138, 180, 0.1);
+}
+
+.data-summary {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-4);
+  margin: var(--spacing-4) 0;
+}
+
+.data-summary h4 {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0 0 var(--spacing-3) 0;
+}
+
+.data-summary p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  margin: var(--spacing-1) 0;
+}
+
+.data-summary strong {
+  color: var(--text-primary);
+}
+
 .preview-note {
   background: rgba(62, 138, 180, 0.1);
   border: 1px solid rgba(62, 138, 180, 0.3);

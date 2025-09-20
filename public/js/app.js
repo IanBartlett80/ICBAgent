@@ -1243,45 +1243,202 @@ class ICBAgent {
         const progressFill = document.getElementById('dataProgress');
         const progressItems = document.getElementById('progressItems');
         
-        const dataItems = [
-            { name: 'Identity & User Security', endpoint: 'users', icon: '👥' },
-            { name: 'Device Management', endpoint: 'devices', icon: '📱' },
-            { name: 'Security Score & Threats', endpoint: 'security', icon: '🛡️' },
-            { name: 'Compliance & Policies', endpoint: 'compliance', icon: '📋' },
-            { name: 'Application Security', endpoint: 'applications', icon: '🔐' },
-            { name: 'Data Protection', endpoint: 'dataProtection', icon: '📊' }
-        ];
-
         progressItems.innerHTML = '';
-        let completed = 0;
+        
+        try {
+            // Initialize Graph API service
+            if (!window.monthlyReportAuth?.isUserAuthenticated()) {
+                throw new Error('User authentication required for data collection');
+            }
 
-        for (const item of dataItems) {
-            // Add progress item
-            const itemElement = document.createElement('div');
+            const graphService = new window.MonthlyReportGraphService(window.monthlyReportAuth);
+            
+            // Set up progress callback
+            window.reportProgressCallback = (progress) => {
+                this.updateCollectionProgress(progress, progressItems, progressFill);
+            };
+
+            // Get report period from form
+            const reportPeriod = document.getElementById('reportPeriod').value;
+            
+            console.log('🚀 Starting real Graph API data collection...');
+            
+            // Collect actual data from Microsoft Graph
+            const reportData = await graphService.collectReportData({
+                reportPeriod: reportPeriod
+            });
+            
+            // Store collected data for report generation
+            this.collectedReportData = reportData;
+            
+            console.log('📊 Data collection completed successfully');
+            console.log('Collected data summary:', reportData.executiveSummary);
+            
+            // Move to preview step
+            setTimeout(() => {
+                this.showReportPreview();
+            }, 1000);
+            
+        } catch (error) {
+            console.error('❌ Data collection failed:', error);
+            
+            // Show error in progress
+            const errorElement = document.createElement('div');
+            errorElement.className = 'progress-item error';
+            errorElement.innerHTML = `
+                <span class="progress-icon">❌</span>
+                <span class="progress-name">Data Collection Failed</span>
+                <span class="progress-status">Error: ${error.message}</span>
+            `;
+            progressItems.appendChild(errorElement);
+            
+            // Show error to user
+            this.showError(`Data collection failed: ${error.message}`);
+            
+            // Offer fallback options
+            setTimeout(() => {
+                this.showDataCollectionError(error);
+            }, 2000);
+        } finally {
+            // Clean up progress callback
+            window.reportProgressCallback = null;
+        }
+    }
+
+    /**
+     * Update collection progress UI
+     */
+    updateCollectionProgress(progress, progressItems, progressFill) {
+        // Update overall progress bar
+        const overallProgress = (progress.current / progress.total) * 100;
+        progressFill.style.width = `${overallProgress}%`;
+        
+        // Find or create progress item for this task
+        let itemElement = Array.from(progressItems.children).find(item => 
+            item.querySelector('.progress-name').textContent === progress.task
+        );
+        
+        if (!itemElement) {
+            itemElement = document.createElement('div');
             itemElement.className = 'progress-item';
             itemElement.innerHTML = `
-                <span class="progress-icon">${item.icon}</span>
-                <span class="progress-name">${item.name}</span>
-                <span class="progress-status">⏳ Collecting...</span>
+                <span class="progress-icon">⏳</span>
+                <span class="progress-name">${progress.task}</span>
+                <span class="progress-status">Starting...</span>
             `;
             progressItems.appendChild(itemElement);
-
-            // Simulate data collection
-            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-            
-            // Update status
-            itemElement.querySelector('.progress-status').innerHTML = '✅ Complete';
-            itemElement.classList.add('completed');
-            
-            completed++;
-            const progress = (completed / dataItems.length) * 100;
-            progressFill.style.width = `${progress}%`;
         }
+        
+        const statusElement = itemElement.querySelector('.progress-status');
+        const iconElement = itemElement.querySelector('.progress-icon');
+        
+        // Update based on status
+        switch (progress.status) {
+            case 'collecting':
+                iconElement.textContent = '🔄';
+                statusElement.textContent = 'Collecting data...';
+                itemElement.className = 'progress-item collecting';
+                break;
+                
+            case 'completed':
+                iconElement.textContent = '✅';
+                statusElement.textContent = 'Complete';
+                itemElement.className = 'progress-item completed';
+                break;
+                
+            case 'failed':
+                iconElement.textContent = '❌';
+                statusElement.textContent = `Failed: ${progress.error || 'Unknown error'}`;
+                itemElement.className = 'progress-item failed';
+                break;
+        }
+    }
 
-        // Move to preview step
-        setTimeout(() => {
-            this.showReportPreview();
-        }, 1000);
+    /**
+     * Handle data collection errors with recovery options
+     */
+    showDataCollectionError(error) {
+        const errorModal = this.createErrorModal({
+            title: '📊 Data Collection Error',
+            message: `Unable to collect all report data: ${error.message}`,
+            options: [
+                {
+                    text: 'Retry Collection',
+                    action: () => this.collectReportData(),
+                    primary: true
+                },
+                {
+                    text: 'Continue with Partial Data',
+                    action: () => this.showReportPreview(),
+                    secondary: true
+                },
+                {
+                    text: 'Configure Permissions',
+                    action: () => this.showPermissionHelp(),
+                    secondary: true
+                }
+            ]
+        });
+        
+        document.body.appendChild(errorModal);
+    }
+
+    /**
+     * Create error modal with options
+     */
+    createErrorModal(config) {
+        const modal = document.createElement('div');
+        modal.className = 'modal error-modal';
+        modal.style.display = 'flex';
+        
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>${config.title}</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>${config.message}</p>
+                </div>
+                <div class="modal-footer">
+                    ${config.options.map(option => `
+                        <button class="btn ${option.primary ? 'btn-primary' : 'btn-secondary'}" 
+                                data-action="${option.text}">
+                            ${option.text}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners
+        modal.querySelector('.modal-close').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+        
+        config.options.forEach(option => {
+            const button = modal.querySelector(`[data-action="${option.text}"]`);
+            button.addEventListener('click', () => {
+                document.body.removeChild(modal);
+                option.action();
+            });
+        });
+        
+        return modal;
+    }
+
+    /**
+     * Show permission help dialog
+     */
+    showPermissionHelp() {
+        this.showInfo(`
+            🔐 Permission Configuration Help:
+            
+            1. Ensure your Microsoft App Registration has all required Graph API permissions
+            2. Admin consent may be required for organization-wide data access
+            3. Some data sources require specific licenses (E3/E5)
+            4. Contact your tenant administrator if permissions are insufficient
+        `);
     }
 
     showReportPreview() {
@@ -1299,6 +1456,40 @@ class ICBAgent {
         const previousMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
         const monthName = previousMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
 
+        // Use real data if available, otherwise use fallback values
+        let summary = {
+            securityScore: 'N/A',
+            totalUsers: 'N/A',
+            totalDevices: 'N/A',
+            criticalAlerts: 'N/A',
+            complianceRate: 'N/A',
+            mfaAdoption: 'N/A'
+        };
+
+        let recommendations = [
+            { priority: 'info', text: 'Data collection in progress - recommendations will be generated based on actual tenant data.' }
+        ];
+
+        let sections = [
+            '🔐 Identity Security & Zero Trust',
+            '📱 Device Management & Compliance', 
+            '🛡️ Security Center & Threat Protection',
+            '📊 Data Protection & Compliance',
+            '🎯 Recommendations & Next Steps'
+        ];
+
+        // Use real collected data if available
+        if (this.collectedReportData) {
+            summary = this.collectedReportData.executiveSummary || summary;
+            recommendations = this.collectedReportData.recommendations || recommendations;
+            
+            if (this.collectedReportData.sections) {
+                sections = this.collectedReportData.sections.map(section => 
+                    `${section.icon} ${section.name} (${section.status})`
+                );
+            }
+        }
+
         return `
             <div class="report-preview-header">
                 <div class="report-title">
@@ -1312,24 +1503,42 @@ class ICBAgent {
                 <h4>📊 Executive Summary</h4>
                 <div class="summary-metrics">
                     <div class="metric-card">
-                        <div class="metric-value">87%</div>
+                        <div class="metric-value">${summary.securityScore}${typeof summary.securityScore === 'number' ? '%' : ''}</div>
                         <div class="metric-label">Security Score</div>
-                        <div class="metric-trend positive">+5% vs last month</div>
+                        <div class="metric-trend ${this.getTrendClass(summary.securityScore, 80)}">${this.getTrendText(summary.securityScore, 80, '%')}</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value">145</div>
+                        <div class="metric-value">${summary.totalUsers}</div>
                         <div class="metric-label">Active Users</div>
-                        <div class="metric-trend neutral">No change</div>
+                        <div class="metric-trend neutral">Current count</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value">23</div>
+                        <div class="metric-value">${summary.totalDevices}</div>
                         <div class="metric-label">Devices Managed</div>
-                        <div class="metric-trend positive">+3 new devices</div>
+                        <div class="metric-trend neutral">Current count</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value">2</div>
+                        <div class="metric-value">${summary.criticalAlerts}</div>
                         <div class="metric-label">Critical Alerts</div>
-                        <div class="metric-trend negative">Requires attention</div>
+                        <div class="metric-trend ${summary.criticalAlerts > 0 ? 'negative' : 'positive'}">${summary.criticalAlerts > 0 ? 'Requires attention' : 'All clear'}</div>
+                    </div>
+                </div>
+                
+                <div class="summary-metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">${summary.complianceRate}${typeof summary.complianceRate === 'number' ? '%' : ''}</div>
+                        <div class="metric-label">Device Compliance</div>
+                        <div class="metric-trend ${this.getTrendClass(summary.complianceRate, 90)}">${this.getTrendText(summary.complianceRate, 90, '%')}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${summary.mfaAdoption}${typeof summary.mfaAdoption === 'number' ? '%' : ''}</div>
+                        <div class="metric-label">MFA Adoption</div>
+                        <div class="metric-trend ${this.getTrendClass(summary.mfaAdoption, 95)}">${this.getTrendText(summary.mfaAdoption, 95, '%')}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${this.collectedReportData?.metadata?.dataSourcesCollected || 'N/A'}</div>
+                        <div class="metric-label">Data Sources</div>
+                        <div class="metric-trend positive">Collected successfully</div>
                     </div>
                 </div>
             </div>
@@ -1337,31 +1546,83 @@ class ICBAgent {
             <div class="report-sections-preview">
                 <h4>📋 Report Sections</h4>
                 <ul class="section-list">
-                    <li>🔐 Identity Security & Zero Trust</li>
-                    <li>📱 Device Management & Compliance</li>
-                    <li>🛡️ Security Center & Threat Protection</li>
-                    <li>📊 Data Protection & Compliance</li>
-                    <li>🎯 Recommendations & Next Steps</li>
+                    ${sections.map(section => `<li>${section}</li>`).join('')}
                 </ul>
             </div>
 
             <div class="ai-recommendations-preview">
                 <h4>🤖 AI-Generated Recommendations</h4>
-                <div class="recommendation-item">
-                    <strong>High Priority:</strong> Enable MFA for 12 remaining admin accounts to improve identity security.
-                </div>
-                <div class="recommendation-item">
-                    <strong>Medium Priority:</strong> Update device compliance policies to address 3 outdated configurations.
-                </div>
-                <div class="recommendation-item">
-                    <strong>Optimization:</strong> Consider upgrading 15 users to Microsoft 365 E5 for advanced security features.
-                </div>
+                ${this.generateRecommendationsHTML(recommendations)}
             </div>
 
+            ${this.collectedReportData ? `
+                <div class="data-summary">
+                    <h4>📈 Data Collection Summary</h4>
+                    <p><strong>Collection Time:</strong> ${new Date(this.collectedReportData.metadata.generatedAt).toLocaleString()}</p>
+                    <p><strong>Report Period:</strong> ${new Date(this.collectedReportData.metadata.reportPeriod.startDate).toLocaleDateString()} - ${new Date(this.collectedReportData.metadata.reportPeriod.endDate).toLocaleDateString()}</p>
+                    <p><strong>Duration:</strong> ${Math.round(this.collectedReportData.metadata.collectionDuration / 1000)}s</p>
+                    <p><strong>Tenant:</strong> ${this.collectedReportData.metadata.tenantInfo?.domain || 'Unknown'}</p>
+                </div>
+            ` : ''}
+
             <p class="preview-note">
-                <strong>Note:</strong> This is a preview of your monthly report. You can edit any section before exporting the final PDF.
+                <strong>Note:</strong> This is a preview of your monthly report based on ${this.collectedReportData ? 'real Microsoft 365 data' : 'sample data'}. You can edit any section before exporting the final PDF.
             </p>
         `;
+    }
+
+    /**
+     * Generate HTML for recommendations
+     */
+    generateRecommendationsHTML(recommendations) {
+        if (!recommendations || recommendations.length === 0) {
+            return '<p>No specific recommendations generated.</p>';
+        }
+
+        return recommendations.map(rec => {
+            const priorityIcon = {
+                'critical': '🚨',
+                'high': '⚠️',
+                'medium': '💡',
+                'low': 'ℹ️',
+                'info': 'ℹ️'
+            }[rec.priority || 'info'];
+
+            if (rec.title && rec.description) {
+                return `
+                    <div class="recommendation-item ${rec.priority}">
+                        <strong>${priorityIcon} ${rec.priority?.charAt(0).toUpperCase() + rec.priority?.slice(1)} Priority:</strong> 
+                        ${rec.title} - ${rec.description}
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="recommendation-item info">
+                        <strong>${priorityIcon}</strong> ${rec.text || rec}
+                    </div>
+                `;
+            }
+        }).join('');
+    }
+
+    /**
+     * Get trend CSS class based on value and threshold
+     */
+    getTrendClass(value, threshold) {
+        if (typeof value !== 'number') return 'neutral';
+        return value >= threshold ? 'positive' : 'negative';
+    }
+
+    /**
+     * Get trend text based on value and threshold
+     */
+    getTrendText(value, threshold, suffix = '') {
+        if (typeof value !== 'number') return 'Data not available';
+        if (value >= threshold) {
+            return `Above target (${threshold}${suffix})`;
+        } else {
+            return `Below target (${threshold}${suffix})`;
+        }
     }
 
     editMonthlyReport() {
