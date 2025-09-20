@@ -4738,7 +4738,31 @@ async function generateHealthCheckReport(sessionId) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`ICB Agent Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+const HOST = process.env.HOST || '0.0.0.0';
+
+// Add error handling
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`ICB Agent Server running on http://${HOST}:${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server accessible at: http://localhost:${PORT}`);
+  console.log(`Process ID: ${process.pid}`);
+  
+  // Test that the server is actually listening
+  setTimeout(() => {
+    console.log('Server should be listening now...');
+  }, 1000);
+});
+
+server.on('error', (err) => {
+  console.error('Server error:', err);
+});
+
+console.log('Starting server initialization...');
