@@ -10,6 +10,9 @@ const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
+// Import Intelligent Health Report Service
+const IntelligentHealthReportService = require('./services/intelligent-health-report-service');
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -18,6 +21,10 @@ const io = socketIo(server, {
     methods: ["GET", "POST"]
   }
 });
+
+// Initialize Intelligent Health Report Service
+const intelligentReportService = new IntelligentHealthReportService(io);
+console.log('📊 Intelligent Health Report Service initialized');
 
 // Security middleware
 app.use(helmet({
@@ -3594,6 +3601,54 @@ io.on('connection', (socket) => {
   socket.on('join_session', (sessionId) => {
     socket.join(sessionId);
     console.log(`Socket ${socket.id} joined session ${sessionId}`);
+  });
+
+  // Intelligent Health Report Generation
+  socket.on('generate-intelligent-report', async (data) => {
+    console.log('📊 Intelligent health report generation requested:', {
+      sessionId: data.sessionId,
+      socketId: socket.id,
+      hasToken: !!data.icbAccessToken
+    });
+
+    try {
+      // Generate report with ICB staff token
+      const result = await intelligentReportService.generateReport({
+        sessionId: data.sessionId,
+        socketId: socket.id,
+        icbAccessToken: data.icbAccessToken
+      });
+
+      if (result.success) {
+        console.log('✅ Report generation successful:', {
+          customerName: result.customerName,
+          documentPath: result.documentPath,
+          sharepointPath: result.sharepointPath
+        });
+
+        socket.emit('intelligent-report-complete', {
+          success: true,
+          documentPath: result.documentPath,
+          sharepointPath: result.sharepointPath,
+          customerName: result.customerName
+        });
+      } else {
+        console.warn('⚠️ Report generation completed with warnings:', result.error);
+        
+        socket.emit('intelligent-report-error', {
+          success: false,
+          error: result.error,
+          partialReportPath: result.documentPath
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error generating intelligent report:', error);
+      
+      socket.emit('intelligent-report-error', {
+        success: false,
+        error: error.message || 'An unexpected error occurred during report generation'
+      });
+    }
   });
   
   // Dual-Tenant Socket Events for Tenant Clone Feature

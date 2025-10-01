@@ -154,6 +154,19 @@ class ICBAgent {
         this.socket.on('query_rerun_complete', (data) => {
             this.addMessage(data.message, 'assistant');
         });
+
+        // Intelligent Health Report socket events
+        this.socket.on('intelligent-report-progress', (data) => {
+            this.updateReportProgress(data);
+        });
+
+        this.socket.on('intelligent-report-complete', (data) => {
+            this.handleReportComplete(data);
+        });
+
+        this.socket.on('intelligent-report-error', (data) => {
+            this.handleReportError(data);
+        });
     }
 
     async initializeUnifiedAuthentication() {
@@ -311,6 +324,29 @@ class ICBAgent {
             });
         }
 
+        // Intelligent Report Modal handlers
+        const closeReportModal = document.getElementById('closeReportModal');
+        const cancelReportBtn = document.getElementById('cancelReportBtn');
+        const startReportBtn = document.getElementById('startReportBtn');
+
+        if (closeReportModal) {
+            closeReportModal.addEventListener('click', () => {
+                this.hideIntelligentReportModal();
+            });
+        }
+
+        if (cancelReportBtn) {
+            cancelReportBtn.addEventListener('click', () => {
+                this.hideIntelligentReportModal();
+            });
+        }
+
+        if (startReportBtn) {
+            startReportBtn.addEventListener('click', () => {
+                this.startIntelligentReport();
+            });
+        }
+
         // Zero Trust Assessment feature card click handler
         const zeroTrustCard = document.getElementById('zeroTrustCard');
         if (zeroTrustCard) {
@@ -339,12 +375,6 @@ class ICBAgent {
                 this.disconnect();
             });
         }
-
-        // Modal controls
-        const closeReportModal = document.getElementById('closeReportModal');
-        closeReportModal.addEventListener('click', () => {
-            this.closeModal('reportModal');
-        });
 
         const downloadReportBtn = document.getElementById('downloadReportBtn');
         downloadReportBtn.addEventListener('click', () => {
@@ -1190,16 +1220,8 @@ class ICBAgent {
     }
 
     handleMonthlyReportFeatureClick() {
-        // Check if user is authenticated
-        if (this.isAuthenticated && this.currentTenant) {
-            console.log('🔧 User is authenticated, starting automatic report generation...');
-            // User is authenticated, automatically generate the report
-            this.generateMonthlyReport();
-        } else {
-            console.log('🔐 User not authenticated, showing sample report preview...');
-            // For testing purposes, show sample report even without authentication
-            this.showSampleMSPReport();
-        }
+        // Show intelligent health report modal (requires ICB authentication)
+        this.showIntelligentReportModal();
     }
 
     /**
@@ -2775,6 +2797,8 @@ class ICBAgent {
         const connectionStatus = document.querySelector('#connectionStatus');
         const signinBtn = document.querySelector('#signinBtn');
         const signoutBtn = document.querySelector('#signoutBtn');
+        const icbUserInfo = document.querySelector('#icbUserInfo');
+        const icbUserName = document.querySelector('#icbUserName');
         
         if (indicator) {
             indicator.className = `status-indicator ${status}`;
@@ -2794,9 +2818,16 @@ class ICBAgent {
                     connectionStatus.onclick = () => this.scrollToChatSection();
                     connectionStatus.title = 'Click to go to chat interface';
                     
-                    // Show sign-out button, hide sign-in button
+                    // Show ICB user info and sign-out button, hide sign-in button
                     if (signinBtn) signinBtn.style.display = 'none';
                     if (signoutBtn) signoutBtn.style.display = 'flex';
+                    if (icbUserInfo) {
+                        icbUserInfo.style.display = 'flex';
+                        // Display ICB staff member's email
+                        if (icbUserName && this.authResponse && this.authResponse.account) {
+                            icbUserName.textContent = this.authResponse.account.username || this.authResponse.account.email || 'ICB Staff';
+                        }
+                    }
                     
                     this.isConnected = true;
                     break;
@@ -2813,9 +2844,10 @@ class ICBAgent {
                     connectionStatus.onclick = null;
                     connectionStatus.title = '';
                     
-                    // Hide both buttons during transitional states
+                    // Hide all auth-related elements during transitional states
                     if (signinBtn) signinBtn.style.display = 'none';
                     if (signoutBtn) signoutBtn.style.display = 'none';
+                    if (icbUserInfo) icbUserInfo.style.display = 'none';
                     
                     this.isConnected = false;
                     break;
@@ -2830,9 +2862,10 @@ class ICBAgent {
                     connectionStatus.onclick = null;
                     connectionStatus.title = '';
                     
-                    // Show sign-in button, hide sign-out button
+                    // Show sign-in button, hide sign-out button and user info
                     if (signinBtn) signinBtn.style.display = 'flex';
                     if (signoutBtn) signoutBtn.style.display = 'none';
+                    if (icbUserInfo) icbUserInfo.style.display = 'none';
                     
                     this.isConnected = false;
                     break;
@@ -3270,6 +3303,302 @@ Once you complete the permission process, your query will be automatically proce
         });
 
         modal.querySelector('.modal-close').addEventListener('click', closeModal);
+    }
+
+    // ============================================
+    // INTELLIGENT HEALTH REPORT METHODS
+    // ============================================
+
+    /**
+     * Show the intelligent health report pre-flight modal
+     */
+    showIntelligentReportModal() {
+        console.log('📊 Showing Intelligent Health Report modal...');
+
+        // Check ICB authentication
+        if (!this.authService || !this.authService.isUserAuthenticated()) {
+            this.showError('Please sign in with your ICB Solutions account first');
+            return;
+        }
+
+        // Show modal
+        const modal = document.getElementById('intelligentReportModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            console.log('✅ Modal displayed');
+        } else {
+            console.error('❌ Could not find intelligent report modal');
+        }
+    }
+
+    /**
+     * Hide the pre-flight modal
+     */
+    hideIntelligentReportModal() {
+        const modal = document.getElementById('intelligentReportModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    /**
+     * Start the intelligent health report generation process
+     */
+    startIntelligentReport() {
+        console.log('🚀 Starting Intelligent Health Report generation...');
+
+        // Validate ICB authentication
+        if (!this.authService || !this.authService.isUserAuthenticated()) {
+            this.showError('ICB authentication required');
+            return;
+        }
+
+        // Get ICB access token
+        const icbAccessToken = this.authService.getAccessToken();
+        if (!icbAccessToken) {
+            this.showError('Could not retrieve ICB access token. Please sign in again.');
+            return;
+        }
+
+        // Hide pre-flight modal
+        this.hideIntelligentReportModal();
+
+        // Show progress modal
+        this.showProgressModal();
+
+        // Generate unique session ID
+        const sessionId = this.generateSessionId();
+
+        // Emit socket event to start report generation
+        this.socket.emit('generate-intelligent-report', {
+            sessionId: sessionId,
+            icbAccessToken: icbAccessToken
+        });
+
+        console.log('📡 Report generation request sent:', {
+            sessionId,
+            hasToken: !!icbAccessToken
+        });
+    }
+
+    /**
+     * Show the progress modal
+     */
+    showProgressModal() {
+        const modal = document.getElementById('reportProgressModal');
+        if (modal) {
+            modal.style.display = 'flex';
+
+            // Reset progress
+            this.updateProgressBar(0);
+            this.resetProgressSteps();
+            this.updateProgressMessage('Initializing report generation...');
+        }
+    }
+
+    /**
+     * Hide the progress modal
+     */
+    hideProgressModal() {
+        const modal = document.getElementById('reportProgressModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    /**
+     * Reset all progress steps to pending state
+     */
+    resetProgressSteps() {
+        const steps = document.querySelectorAll('.progress-step');
+        steps.forEach(step => {
+            step.classList.remove('active', 'completed');
+            const status = step.querySelector('.step-status');
+            if (status) {
+                status.classList.remove('active', 'completed');
+                status.classList.add('pending');
+            }
+        });
+    }
+
+    /**
+     * Update progress based on server events
+     * @param {Object} data - Progress data from server
+     */
+    updateReportProgress(data) {
+        console.log('📊 Progress update:', data);
+
+        const { step, percentage, message, details } = data;
+
+        // Update progress bar
+        this.updateProgressBar(percentage);
+
+        // Update progress message
+        this.updateProgressMessage(message);
+
+        // Update step status
+        if (step) {
+            this.updateProgressStep(step, details);
+        }
+
+        // Update status text
+        const statusText = document.getElementById('progressStatusText');
+        if (statusText) {
+            statusText.textContent = message;
+        }
+    }
+
+    /**
+     * Update a specific progress step
+     * @param {string} stepName - Name of the step (authentication, screenshots, analysis, document, upload)
+     * @param {string} details - Additional details for the step
+     */
+    updateProgressStep(stepName, details) {
+        const stepElement = document.querySelector(`.progress-step[data-step="${stepName}"]`);
+        if (!stepElement) {
+            console.warn('Step element not found:', stepName);
+            return;
+        }
+
+        // Mark previous steps as completed
+        const allSteps = ['authentication', 'screenshots', 'analysis', 'document', 'upload'];
+        const currentIndex = allSteps.indexOf(stepName);
+
+        allSteps.forEach((step, index) => {
+            const el = document.querySelector(`.progress-step[data-step="${step}"]`);
+            if (!el) return;
+
+            if (index < currentIndex) {
+                // Previous steps - mark as completed
+                el.classList.remove('active');
+                el.classList.add('completed');
+                const status = el.querySelector('.step-status');
+                if (status) {
+                    status.classList.remove('pending', 'active');
+                    status.classList.add('completed');
+                }
+            } else if (index === currentIndex) {
+                // Current step - mark as active
+                el.classList.remove('completed');
+                el.classList.add('active');
+                const status = el.querySelector('.step-status');
+                if (status) {
+                    status.classList.remove('pending', 'completed');
+                    status.classList.add('active');
+                }
+            } else {
+                // Future steps - keep as pending
+                el.classList.remove('active', 'completed');
+                const status = el.querySelector('.step-status');
+                if (status) {
+                    status.classList.remove('active', 'completed');
+                    status.classList.add('pending');
+                }
+            }
+        });
+
+        // Update description if provided
+        if (details) {
+            const description = stepElement.querySelector('.step-description');
+            if (description) {
+                description.textContent = details;
+            }
+        }
+    }
+
+    /**
+     * Update the progress bar
+     * @param {number} percentage - Progress percentage (0-100)
+     */
+    updateProgressBar(percentage) {
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+
+        if (progressFill) {
+            progressFill.style.width = `${percentage}%`;
+        }
+
+        if (progressText) {
+            progressText.textContent = `${percentage}% Complete`;
+        }
+    }
+
+    /**
+     * Update the progress message
+     * @param {string} message - Progress message to display
+     */
+    updateProgressMessage(message) {
+        const messageElement = document.getElementById('progressMessage');
+        if (messageElement) {
+            messageElement.textContent = message;
+        }
+    }
+
+    /**
+     * Handle report generation completion
+     * @param {Object} data - Completion data from server
+     */
+    handleReportComplete(data) {
+        console.log('✅ Report generation complete:', data);
+
+        const { documentPath, sharepointPath, customerName } = data;
+
+        // Mark all steps as completed
+        const steps = document.querySelectorAll('.progress-step');
+        steps.forEach(step => {
+            step.classList.remove('active');
+            step.classList.add('completed');
+            const status = step.querySelector('.step-status');
+            if (status) {
+                status.classList.remove('pending', 'active');
+                status.classList.add('completed');
+            }
+        });
+
+        // Update progress to 100%
+        this.updateProgressBar(100);
+
+        // Update message
+        this.updateProgressMessage('Report generation complete!');
+
+        // Show success message
+        setTimeout(() => {
+            this.hideProgressModal();
+            this.showSuccess(`
+                <strong>Health Report Generated Successfully!</strong><br>
+                <small>Customer: ${customerName}</small><br>
+                ${sharepointPath ? `<small>Saved to: SharePoint</small>` : ''}
+            `);
+        }, 2000);
+    }
+
+    /**
+     * Handle report generation error
+     * @param {Object} data - Error data from server
+     */
+    handleReportError(data) {
+        console.error('❌ Report generation error:', data);
+
+        const { error, partialReportPath } = data;
+
+        // Hide progress modal
+        this.hideProgressModal();
+
+        // Show error message
+        let errorMessage = `<strong>Report Generation Failed</strong><br>${error}`;
+        if (partialReportPath) {
+            errorMessage += '<br><small>A partial report may have been saved locally on the server.</small>';
+        }
+
+        this.showError(errorMessage);
+    }
+
+    /**
+     * Generate a unique session ID
+     * @returns {string} - Unique session identifier
+     */
+    generateSessionId() {
+        return `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     }
 }
 

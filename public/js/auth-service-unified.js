@@ -55,7 +55,10 @@ class ICBUnifiedAuthService {
             "Organization.Read.All",
             
             // Role Management
-            "RoleManagement.Read.Directory"
+            "RoleManagement.Read.Directory",
+            
+            // SharePoint - For saving reports to ICB Solutions SharePoint
+            "Sites.ReadWrite.All"
         ];
 
         console.log('🔧 ICB Unified Auth Service initialized with consolidated permissions');
@@ -355,6 +358,40 @@ class ICBUnifiedAuthService {
         try {
             this.account = response.account;
             this.accessToken = response.accessToken;
+            
+            // **ICB SOLUTIONS STAFF VALIDATION**
+            // Only allow @icb.solutions email addresses to authenticate
+            const userEmail = response.account.username || response.account.email || '';
+            const emailDomain = userEmail.split('@')[1]?.toLowerCase();
+            
+            if (emailDomain !== 'icb.solutions') {
+                console.error('🚫 Access denied: Non-ICB Solutions user attempted to sign in:', userEmail);
+                
+                // Clear any partial authentication state
+                this.account = null;
+                this.accessToken = null;
+                this.isAuthenticated = false;
+                
+                // Sign out the user
+                if (this.msalInstance) {
+                    await this.msalInstance.logoutRedirect({
+                        postLogoutRedirectUri: window.location.origin
+                    });
+                }
+                
+                // Show error to user
+                const errorMessage = 'Access restricted to ICB Solutions staff only. Please sign in with your @icb.solutions email address.';
+                if (window.icbAgent && typeof window.icbAgent.showError === 'function') {
+                    window.icbAgent.showError(errorMessage);
+                } else {
+                    alert(errorMessage);
+                }
+                
+                return { success: false, error: 'access_restricted' };
+            }
+            
+            console.log('✅ ICB Solutions staff validated:', userEmail);
+            
             this.isAuthenticated = true;
             this.tenantDomain = this.extractTenantDomain(response.account.username);
             this.generateSessionId();
