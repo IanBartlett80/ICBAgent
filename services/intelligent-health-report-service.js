@@ -9,7 +9,7 @@
 
 const path = require('path');
 const fs = require('fs').promises;
-const PlaywrightScreenshotService = require('./playwright-screenshot-service-local');
+const ManualScreenshotService = require('./manual-screenshot-service');
 const OpenAIAnalysisService = require('./openai-analysis-service');
 const WordDocumentGenerator = require('./word-document-generator');
 const SharePointUploadService = require('./sharepoint-upload-service');
@@ -17,7 +17,7 @@ const SharePointUploadService = require('./sharepoint-upload-service');
 class IntelligentHealthReportService {
     constructor(io) {
         this.io = io;
-        this.playwrightService = new PlaywrightScreenshotService();
+        this.screenshotService = new ManualScreenshotService();
         this.openaiService = new OpenAIAnalysisService();
         this.wordGenerator = new WordDocumentGenerator();
         this.sharepointService = new SharePointUploadService();
@@ -91,11 +91,11 @@ class IntelligentHealthReportService {
             this.emitProgress(socketId, {
                 step: 'screenshots',
                 progress: 20,
-                message: 'Capturing screenshots from Microsoft 365 portals...',
-                details: 'Starting screenshot capture...'
+                message: 'Waiting for manual screenshot capture...',
+                details: 'Use Windows Snipping Tool to capture sections'
             });
             
-            const screenshots = await this.playwrightService.captureAllPortalScreenshots(
+            const screenshots = await this.screenshotService.captureAllScreenshots(
                 sessionTempPath,
                 (progress) => this.emitProgress(socketId, progress)
             );
