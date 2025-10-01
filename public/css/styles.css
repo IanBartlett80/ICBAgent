@@ -5199,6 +5199,13 @@ body::before {
   flex-direction: column;
 }
 
+/* White background for intelligent report modal */
+.intelligent-report-modal.modal-content {
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2),
+              0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
 @keyframes modalSlideUp {
   from {
     transform: translateY(50px);
@@ -5227,6 +5234,16 @@ body::before {
   color: var(--text-light);
 }
 
+/* White background modal header adjustments */
+.intelligent-report-modal .modal-header {
+  background: #f8f9fa;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.intelligent-report-modal .modal-header h2 {
+  color: var(--primary-900);
+}
+
 .modal-close {
   background: rgba(255, 255, 255, 0.1);
   border: none;
@@ -5238,11 +5255,21 @@ body::before {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: var(--text-light);
+}
+
+/* Close button for white background modal */
+.intelligent-report-modal .modal-close {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--primary-900);
 }
 
 .modal-close:hover {
   background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.intelligent-report-modal .modal-close:hover {
+  background: rgba(0, 0, 0, 0.1);
   transform: scale(1.05);
 }
 
@@ -5271,6 +5298,19 @@ body::before {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* White background modal scrollbar */
+.intelligent-report-modal .modal-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.intelligent-report-modal .modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.intelligent-report-modal .modal-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
 /* Modal Footer */
 .modal-footer {
   padding: var(--spacing-6);
@@ -5279,6 +5319,12 @@ body::before {
   gap: var(--spacing-3);
   justify-content: flex-end;
   background: rgba(0, 0, 0, 0.2);
+}
+
+/* White background modal footer */
+.intelligent-report-modal .modal-footer {
+  background: #f8f9fa;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 /* Pre-Flight Modal Specific Styles */
@@ -5303,6 +5349,12 @@ body::before {
   opacity: 0.9;
 }
 
+/* White background modal text color adjustments */
+.intelligent-report-modal .info-description {
+  color: #374151;
+  opacity: 1;
+}
+
 .checklist {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -5315,6 +5367,16 @@ body::before {
   font-size: 1.125rem;
   font-weight: 600;
   color: var(--text-light);
+}
+
+/* White background modal checklist */
+.intelligent-report-modal .checklist {
+  background: #f8f9fa;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.intelligent-report-modal .checklist h3 {
+  color: var(--primary-900);
 }
 
 .checklist ul {
@@ -5335,6 +5397,11 @@ body::before {
   line-height: 1.5;
 }
 
+/* White background modal checklist items */
+.intelligent-report-modal .checklist li {
+  color: #374151;
+}
+
 .checklist li svg {
   flex-shrink: 0;
   margin-top: 2px;
@@ -5353,6 +5420,13 @@ body::before {
   font-size: 0.9375rem;
 }
 
+/* White background modal estimate */
+.intelligent-report-modal .estimate {
+  background: rgba(62, 138, 180, 0.1);
+  border: 1px solid rgba(62, 138, 180, 0.2);
+  color: var(--primary-900);
+}
+
 .warning-note {
   display: flex;
   align-items: flex-start;
@@ -5364,6 +5438,13 @@ body::before {
   color: var(--text-light);
   font-size: 0.875rem;
   line-height: 1.5;
+}
+
+/* White background modal warning note */
+.intelligent-report-modal .warning-note {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #92400e;
 }
 
 .warning-note svg {

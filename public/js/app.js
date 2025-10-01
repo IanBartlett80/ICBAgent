@@ -3360,6 +3360,22 @@ Once you complete the permission process, your query will be automatically proce
         if (modal) {
             modal.style.display = 'none';
         }
+        
+        // Return to landing page (hide chat interface, show features)
+        this.resetToLandingPage();
+    }
+    
+    /**
+     * Reset UI to landing page state
+     */
+    resetToLandingPage() {
+        const chatInterface = document.getElementById('chatInterface');
+        const features = document.getElementById('features');
+        const hero = document.querySelector('.hero');
+        
+        if (chatInterface) chatInterface.style.display = 'none';
+        if (features) features.style.display = 'block';
+        if (hero) hero.style.display = 'block';
     }
 
     /**

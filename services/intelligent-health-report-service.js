@@ -153,27 +153,33 @@ class IntelligentHealthReportService {
                 details: 'Report document ready'
             });
             
-                        // Step 5: Upload to SharePoint
+            // Step 5: Save report to local permanent location
             this.emitProgress(socketId, {
                 step: 'upload',
                 progress: 90,
-                message: 'Uploading report to SharePoint...',
-                details: 'Saving to Monthly Health Reports folder...'
+                message: 'Saving report to local storage...',
+                details: 'Copying to Monthly Reports folder...'
             });
             
-            const sharepointPath = await this.sharepointService.uploadReport({
-                documentPath: result.documentPath,
-                customerName: result.customerName,
-                icbAccessToken
-            });
+            // Save to C:\ICBAgent\Monthly Reports\<Customer Name>\
+            const localReportsPath = 'C:\\ICBAgent\\Monthly Reports';
+            const customerFolder = path.join(localReportsPath, result.customerName);
             
-            result.sharepointPath = sharepointPath;
+            // Create customer folder if it doesn't exist
+            await fs.mkdir(customerFolder, { recursive: true });
+            
+            // Copy report to permanent location
+            const reportFileName = path.basename(result.documentPath);
+            const permanentPath = path.join(customerFolder, reportFileName);
+            await fs.copyFile(result.documentPath, permanentPath);
+            
+            result.sharepointPath = permanentPath;
             
             this.emitProgress(socketId, {
                 step: 'upload',
                 progress: 95,
-                message: 'Report uploaded successfully!',
-                details: `Saved to: ${sharepointPath}`
+                message: 'Report saved successfully!',
+                details: `Saved to: ${permanentPath}`
             });
             
             // Clean up browser
