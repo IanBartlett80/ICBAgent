@@ -272,72 +272,529 @@ class PlaywrightScreenshotServiceLocal {
      * @returns {Promise<Array>} Array of screenshot results
      */
     async captureAllPortalScreenshots(outputPath, progressCallback) {
-        console.log('📸 Capturing all portal screenshots...');
+        console.log('📸 Capturing all 20 portal screenshots...');
         
         await fs.mkdir(outputPath, { recursive: true });
         
-        // Define specific report pages to capture (NOT landing pages!)
-        const portals = [
-            {
-                name: 'License Allocation',
-                url: 'https://entra.microsoft.com/#view/Microsoft_AAD_IAM/LicensesMenuBlade/~/Products',
-                section: 'licenses',
-                waitFor: 'license table and allocation data',
-                progressValue: 25
-            },
-            {
-                name: 'Monthly Security Summary',
-                url: 'https://security.microsoft.com/reports/monthly-security-summary',
-                section: 'monthly_security_summary',
-                waitFor: 'security metrics and graphs',
-                progressValue: 35
-            },
-            {
-                name: 'Security Report',
-                url: 'https://security.microsoft.com/reports/security-report',
-                section: 'security_report',
-                waitFor: 'security visualizations',
-                progressValue: 45
-            },
-            {
-                name: 'Device Health',
-                url: 'https://security.microsoft.com/reports/device-health',
-                section: 'device_health',
-                waitFor: 'device health metrics',
-                progressValue: 55
-            }
-        ];
-        
         const screenshots = [];
+        let progressValue = 20;
+        const progressIncrement = 40 / 20;  // Spread across 20-60%
         
-        for (const portal of portals) {
-            console.log(`\n📊 Portal: ${portal.name}`);
+        try {
+            // ========================================
+            // 1. ENTRA PORTAL - LICENSES
+            // ========================================
+            console.log('\n📊 Portal 1/20: Entra Licenses');
+            await this.page.goto('https://entra.microsoft.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.page.waitForTimeout(5000);
             
-            const result = await this.capturePortalScreenshot({
-                ...portal,
-                outputPath,
-                progressCallback
-            });
-            
-            if (result.success) {
-                screenshots.push({
-                    path: result.path,
-                    section: result.section,
-                    name: portal.name,
-                    url: portal.url,
-                    description: `${portal.name} showing ${portal.waitFor}`
-                });
-            } else {
-                console.warn(`⚠️ Skipping ${portal.name} due to error`);
-            }
-            
-            // Small delay between portals
+            // Click Billing menu
+            await this.safeClick('text=Billing', 'Billing menu');
             await this.page.waitForTimeout(2000);
+            
+            // Click Licenses
+            await this.safeClick('text=Licenses', 'Licenses submenu');
+            await this.page.waitForTimeout(2000);
+            
+            // Click All Products
+            await this.safeClick('text=All products', 'All Products');
+            await this.page.waitForTimeout(5000);
+            
+            screenshots.push(await this.captureScreenshot({
+                section: 'entra_licenses',
+                name: 'Entra Licenses - All Products',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement
+            }));
+            
+            // ========================================
+            // 2-6. SECURITY PORTAL - VULNERABILITY MANAGEMENT
+            // ========================================
+            console.log('\n📊 Portals 2-6/20: Vulnerability Management');
+            await this.page.goto('https://security.microsoft.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.page.waitForTimeout(5000);
+            
+            // Navigate to Vulnerability Management > Dashboard
+            await this.safeClick('text=Vulnerability management', 'Vulnerability Management');
+            await this.page.waitForTimeout(2000);
+            await this.safeClick('text=Dashboard', 'Dashboard');
+            await this.page.waitForTimeout(5000);
+            
+            // 2. Exposure Score (top of page)
+            screenshots.push(await this.captureScreenshot({
+                section: 'vuln_mgmt_exposure_score',
+                name: 'Exposure Score',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 3. Exposure Score Over Time (scroll 300px)
+            await this.page.evaluate(() => window.scrollTo(0, 300));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'vuln_mgmt_exposure_time',
+                name: 'Exposure Score Over Time',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 4. Device Score (scroll 500px)
+            await this.page.evaluate(() => window.scrollTo(0, 500));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'vuln_mgmt_device_score',
+                name: 'Your Score for Devices',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 5. Exposure Distribution (scroll 700px)
+            await this.page.evaluate(() => window.scrollTo(0, 700));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'vuln_mgmt_exposure_distribution',
+                name: 'Exposure Distribution',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 6. Top 10 Recommendations (new page)
+            await this.safeClick('text=Recommendations', 'Recommendations');
+            await this.page.waitForTimeout(5000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'vuln_mgmt_top_10_recommendations',
+                name: 'Top 10 Vulnerability Recommendations',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // ========================================
+            // 7-11. SECURITY PORTAL - SECURITY REPORTS (GENERAL)
+            // ========================================
+            console.log('\n📊 Portals 7-11/20: Security Reports');
+            await this.page.goto('https://security.microsoft.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.page.waitForTimeout(5000);
+            
+            await this.safeClick('text=Reports', 'Reports menu');
+            await this.page.waitForTimeout(2000);
+            await this.safeClick('text=Security report', 'Security Report');
+            await this.page.waitForTimeout(5000);
+            
+            // 7. Detections Blocked (scroll 300px)
+            await this.page.evaluate(() => window.scrollTo(0, 300));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'security_reports_detections_blocked',
+                name: 'Detections Blocked',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 8. ASR Rules (scroll 500px)
+            await this.page.evaluate(() => window.scrollTo(0, 500));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'security_reports_asr_rules',
+                name: 'ASR Rule Configuration',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 9. Threat Analytics (scroll 700px)
+            await this.page.evaluate(() => window.scrollTo(0, 700));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'security_reports_threat_analytics',
+                name: 'Threat Analytics',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 10. Device Compliance (scroll 900px)
+            await this.page.evaluate(() => window.scrollTo(0, 900));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'security_reports_device_compliance',
+                name: 'Device Compliance',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 11. Active Malware (scroll 1100px)
+            await this.page.evaluate(() => window.scrollTo(0, 1100));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'security_reports_active_malware',
+                name: 'Devices with Active Malware',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // ========================================
+            // 12-14. SECURITY PORTAL - DEVICE HEALTH
+            // ========================================
+            console.log('\n📊 Portals 12-14/20: Device Health');
+            await this.page.goto('https://security.microsoft.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.page.waitForTimeout(5000);
+            
+            await this.safeClick('text=Reports', 'Reports menu');
+            await this.page.waitForTimeout(2000);
+            await this.safeClick('text=Device health', 'Device Health');
+            await this.page.waitForTimeout(5000);
+            
+            // 12. Sensor Health (top)
+            screenshots.push(await this.captureScreenshot({
+                section: 'device_health_sensor_health',
+                name: 'Sensor Health',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 13. OS Platforms (scroll 400px)
+            await this.page.evaluate(() => window.scrollTo(0, 400));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'device_health_os_platforms',
+                name: 'Operating Systems and Platforms',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 14. Windows Versions (scroll 700px)
+            await this.page.evaluate(() => window.scrollTo(0, 700));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'device_health_windows_versions',
+                name: 'Windows Versions',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // ========================================
+            // 15-20. SECURITY PORTAL - MONTHLY SECURITY REPORT
+            // ========================================
+            console.log('\n📊 Portals 15-20/20: Monthly Security Report');
+            await this.page.goto('https://security.microsoft.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.page.waitForTimeout(5000);
+            
+            await this.safeClick('text=Reports', 'Reports menu');
+            await this.page.waitForTimeout(2000);
+            await this.safeClick('text=Monthly security report', 'Monthly Security Report');
+            await this.page.waitForTimeout(5000);
+            
+            // 15. Summary (extract text)
+            const summaryText = await this.extractSummaryText();
+            screenshots.push({
+                success: true,
+                section: 'monthly_security_summary_text',
+                name: 'Monthly Security Summary (Text)',
+                textContent: summaryText,
+                isTextExtraction: true
+            });
+            progressValue += progressIncrement;
+            
+            // 16. Secure Score (scroll 300px)
+            await this.page.evaluate(() => window.scrollTo(0, 300));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'monthly_security_secure_score',
+                name: 'Microsoft Secure Score',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 17. Score Comparison (scroll 500px)
+            await this.page.evaluate(() => window.scrollTo(0, 500));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'monthly_security_score_comparison',
+                name: 'Score Comparison',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 18. Devices Onboarded (scroll 700px)
+            await this.page.evaluate(() => window.scrollTo(0, 700));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'monthly_security_devices_onboarded',
+                name: 'Devices Onboarded',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 19. Threat Protection (scroll 900px)
+            await this.page.evaluate(() => window.scrollTo(0, 900));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'monthly_security_threat_protection',
+                name: 'Protection Against Threats',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+            // 20. Suspicious Activities (scroll 1100px)
+            await this.page.evaluate(() => window.scrollTo(0, 1100));
+            await this.page.waitForTimeout(3000);
+            screenshots.push(await this.captureScreenshot({
+                section: 'monthly_security_suspicious_activities',
+                name: 'Suspicious Activities',
+                outputPath,
+                progressCallback,
+                progressValue: progressValue += progressIncrement,
+                fullPage: false
+            }));
+            
+        } catch (error) {
+            console.error('❌ Error during screenshot capture:', error);
+            throw error;
         }
         
-        console.log(`\n✅ Captured ${screenshots.length} of ${portals.length} portal screenshots`);
+        console.log(`\n✅ Captured ${screenshots.length}/20 screenshots`);
+        return screenshots.filter(s => s.success || s.isTextExtraction);
+    }
+    
+    /**
+     * Safe click with error handling and fallback
+     */
+    async safeClick(selector, elementName) {
+        try {
+            const element = this.page.locator(selector).first();
+            await element.waitFor({ state: 'visible', timeout: 10000 });
+            await element.click();
+            console.log(`  ✓ Clicked: ${elementName}`);
+        } catch (error) {
+            console.warn(`  ⚠️ Could not click ${elementName}: ${error.message}`);
+            // Continue anyway - the navigation might have already happened
+        }
+    }
+    
+    /**
+     * Extract text from Monthly Security Summary section
+     */
+    async extractSummaryText() {
+        try {
+            const summaryContent = await this.page.evaluate(() => {
+                // Try to find summary text in common containers
+                const selectors = [
+                    'div[class*="summary"]',
+                    'div[class*="executive"]',
+                    'p[class*="summary"]',
+                    'div[role="main"] p'
+                ];
+                
+                for (const selector of selectors) {
+                    const elements = document.querySelectorAll(selector);
+                    for (const el of elements) {
+                        const text = el.innerText?.trim();
+                        if (text && text.length > 50) {
+                            return text;
+                        }
+                    }
+                }
+                
+                return 'Summary text extraction not available';
+            });
+            
+            console.log(`  ✓ Extracted summary text (${summaryContent.length} chars)`);
+            return summaryContent;
+        } catch (error) {
+            console.warn(`  ⚠️ Could not extract summary text: ${error.message}`);
+            return 'Summary text extraction failed';
+        }
+    }
+    
+    /**
+     * Capture screenshot helper
+     */
+    async captureScreenshot(options) {
+        const { section, name, outputPath, progressCallback, progressValue, fullPage = false } = options;
         
-        return screenshots;
+        console.log(`  📸 Capturing: ${name}`);
+        
+        if (progressCallback) {
+            progressCallback({
+                step: 'screenshots',
+                progress: Math.round(progressValue),
+                message: `Capturing ${name}...`,
+                details: `Section ${section}`
+            });
+        }
+        
+        try {
+            const timestamp = Date.now();
+            const filename = `${section}_${timestamp}.jpg`;
+            const screenshotPath = path.join(outputPath, filename);
+            
+            await this.page.screenshot({
+                path: screenshotPath,
+                type: 'jpeg',
+                quality: 90,
+                fullPage: fullPage
+            });
+            
+            const stats = await fs.stat(screenshotPath);
+            console.log(`  ✓ Saved: ${filename} (${(stats.size / 1024).toFixed(2)} KB)`);
+            
+            return {
+                success: true,
+                path: screenshotPath,
+                section,
+                name,
+                filename,
+                size: stats.size
+            };
+        } catch (error) {
+            console.error(`  ❌ Failed to capture ${name}:`, error.message);
+            return {
+                success: false,
+                section,
+                name,
+                error: error.message
+            };
+        }
+    }
+    
+    /**
+     * Capture screenshot from a specific portal report page (legacy method - kept for compatibility)
+     * @param {Object} options - Screenshot options
+     * @returns {Promise<Object>} Screenshot result with path and metadata
+     */
+    async capturePortalScreenshot(options) {
+        const { url, section, waitFor, outputPath, progressCallback } = options;
+        
+        console.log(`📸 Capturing screenshot: ${section}`);
+        
+        if (progressCallback) {
+            progressCallback({
+                step: 'screenshots',
+                progress: options.progressValue || 20,
+                message: `Capturing ${section}...`,
+                details: `Navigating to ${url}`
+            });
+        }
+        
+        try {
+            // Navigate to the specific report page
+            await this.page.goto(url, {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
+            });
+            
+            // Wait for dynamic content to load
+            // Azure portals are SPAs with lots of async loading
+            await this.page.waitForTimeout(8000);  // Give graphs/charts time to render
+            
+            // Additional wait for specific elements if provided
+            if (waitFor) {
+                console.log(`  ⏳ Waiting for: ${waitFor}`);
+                // Wait a bit more for charts/graphs to fully render
+                await this.page.waitForTimeout(3000);
+            }
+            
+            // Scroll to load lazy-loaded content
+            await this.autoScroll(this.page);
+            
+            // Generate filename
+            const timestamp = Date.now();
+            const filename = `${section}_${timestamp}.jpg`;
+            const screenshotPath = path.join(outputPath, filename);
+            
+            // Capture full-page screenshot
+            await this.page.screenshot({
+                path: screenshotPath,
+                type: 'jpeg',
+                quality: 90,
+                fullPage: true
+            });
+            
+            // Verify screenshot was created
+            const stats = await fs.stat(screenshotPath);
+            if (stats.size < 10000) {
+                console.warn(`⚠️ Screenshot may be incomplete (${stats.size} bytes)`);
+            }
+            
+            console.log(`✅ Screenshot saved: ${filename} (${(stats.size / 1024).toFixed(2)} KB)`);
+            
+            return {
+                success: true,
+                path: screenshotPath,
+                section,
+                url,
+                filename,
+                size: stats.size
+            };
+            
+        } catch (error) {
+            console.error(`❌ Failed to capture ${section}:`, error.message);
+            
+            // Return partial success - don't fail entire report for one screenshot
+            return {
+                success: false,
+                section,
+                url,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Auto-scroll page to trigger lazy-loaded content
+     * @param {Page} page - Playwright page object
+     */
+    async autoScroll(page) {
+        await page.evaluate(async () => {
+            await new Promise((resolve) => {
+                let totalHeight = 0;
+                const distance = 100;
+                const timer = setInterval(() => {
+                    const scrollHeight = document.body.scrollHeight;
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+
+                    if (totalHeight >= scrollHeight) {
+                        clearInterval(timer);
+                        window.scrollTo(0, 0);  // Scroll back to top
+                        resolve();
+                    }
+                }, 100);
+            });
+        });
     }
 
     /**
