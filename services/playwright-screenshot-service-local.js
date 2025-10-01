@@ -692,7 +692,8 @@ class PlaywrightScreenshotServiceLocal {
      * @returns {Promise<void>}
      */
     async showCapturePrompt(section, sectionNumber, totalSections) {
-        await this.page.evaluate((section, sectionNumber, totalSections) => {
+        await this.page.evaluate((args) => {
+            const { section, sectionNumber, totalSections } = args;
             const overlay = document.getElementById('icb-capture-overlay');
             const progressText = document.getElementById('icb-progress-text');
             const instructions = document.getElementById('icb-instructions');
@@ -710,7 +711,7 @@ class PlaywrightScreenshotServiceLocal {
             window.icbCaptureState.skipRequested = false;
             window.icbCaptureState.selectionComplete = false;
             window.icbCaptureState.selectionBounds = null;
-        }, section, sectionNumber, totalSections);
+        }, { section, sectionNumber, totalSections });
     }
     
     /**
