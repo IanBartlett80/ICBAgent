@@ -290,6 +290,17 @@ class PlaywrightScreenshotServiceLocal {
         const sectionsToCapture = this.getSectionDefinitions();
         
         try {
+            // Set up automatic overlay re-injection on page navigation
+            console.log('🔄 Setting up automatic overlay re-injection...');
+            this.page.on('load', async () => {
+                console.log('  📄 Page loaded, re-injecting overlay...');
+                try {
+                    await this.injectCaptureOverlay();
+                } catch (error) {
+                    console.warn('  ⚠️  Error re-injecting overlay on page load:', error.message);
+                }
+            });
+            
             // Navigate to Entra portal to start capture process
             console.log('🌐 Navigating to Entra portal...');
             await this.page.goto('https://entra.microsoft.com', { 
