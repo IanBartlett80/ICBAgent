@@ -55,17 +55,19 @@ class IntelligentHealthReportService {
         try {
             // Step 1: Launch Playwright and wait for manual authentication
             this.emitProgress(socketId, {
-                step: 'launching-browser',
+                step: 'authentication',
                 progress: 5,
-                message: 'Launching browser for customer tenant authentication...'
+                message: 'Launching browser for customer tenant authentication...',
+                details: 'Initializing browser...'
             });
             
             await this.playwrightService.initialize();
             
             this.emitProgress(socketId, {
-                step: 'waiting-authentication',
+                step: 'authentication',
                 progress: 10,
-                message: 'Please sign in to the customer\'s Microsoft 365 tenant...'
+                message: 'Please sign in to the customer\'s Microsoft 365 tenant...',
+                details: 'Waiting for manual sign-in...'
             });
             
             // Wait for user to complete manual authentication
@@ -78,16 +80,18 @@ class IntelligentHealthReportService {
             result.customerName = authResult.tenantName;
             
             this.emitProgress(socketId, {
-                step: 'authentication-complete',
+                step: 'authentication',
                 progress: 15,
-                message: `Authenticated to ${result.customerName}. Starting data collection...`
+                message: `Authenticated to ${result.customerName}. Starting data collection...`,
+                details: 'Authentication successful'
             });
             
             // Step 2: Capture screenshots from M365 portals
             this.emitProgress(socketId, {
-                step: 'capturing-screenshots',
+                step: 'screenshots',
                 progress: 20,
-                message: 'Capturing screenshots from Entra portal... (1 of 4)'
+                message: 'Capturing screenshots from Entra portal... (1 of 4)',
+                details: 'Navigating to Entra portal...'
             });
             
             const screenshots = await this.captureAllPortalScreenshots(
@@ -96,16 +100,18 @@ class IntelligentHealthReportService {
             );
             
             this.emitProgress(socketId, {
-                step: 'screenshots-complete',
+                step: 'screenshots',
                 progress: 60,
-                message: `Captured ${screenshots.length} screenshots successfully`
+                message: `Captured ${screenshots.length} screenshots successfully`,
+                details: 'All portal screenshots captured'
             });
             
             // Step 3: Analyze data with OpenAI
             this.emitProgress(socketId, {
-                step: 'ai-analysis',
+                step: 'analysis',
                 progress: 65,
-                message: 'Analyzing data with AI to generate recommendations...'
+                message: 'Analyzing data with AI to generate recommendations...',
+                details: 'Processing with GPT-4o...'
             });
             
             const aiAnalysis = await this.openaiService.analyzeHealthData({
@@ -115,16 +121,18 @@ class IntelligentHealthReportService {
             });
             
             this.emitProgress(socketId, {
-                step: 'ai-complete',
+                step: 'analysis',
                 progress: 75,
-                message: 'AI analysis complete. Generating Word document...'
+                message: 'AI analysis complete. Generating Word document...',
+                details: 'Insights and recommendations generated'
             });
             
             // Step 4: Generate Word document
             this.emitProgress(socketId, {
-                step: 'generating-document',
+                step: 'document',
                 progress: 80,
-                message: 'Creating professional Word document...'
+                message: 'Creating professional Word document...',
+                details: 'Building report structure...'
             });
             
             const documentPath = await this.wordGenerator.generateReport({
@@ -137,16 +145,18 @@ class IntelligentHealthReportService {
             result.documentPath = documentPath;
             
             this.emitProgress(socketId, {
-                step: 'document-complete',
+                step: 'document',
                 progress: 85,
-                message: 'Word document generated successfully'
+                message: 'Word document generated successfully',
+                details: 'Report document ready'
             });
             
             // Step 5: Upload to SharePoint
             this.emitProgress(socketId, {
-                step: 'uploading-sharepoint',
+                step: 'upload',
                 progress: 90,
-                message: 'Uploading report to ICB Solutions SharePoint...'
+                message: 'Uploading report to ICB Solutions SharePoint...',
+                details: 'Connecting to SharePoint...'
             });
             
             const sharepointResult = await this.sharepointService.uploadReport({
@@ -158,9 +168,10 @@ class IntelligentHealthReportService {
             result.sharepointPath = sharepointResult.webUrl;
             
             this.emitProgress(socketId, {
-                step: 'complete',
+                step: 'upload',
                 progress: 100,
-                message: 'Report generation complete!'
+                message: 'Report generation complete!',
+                details: 'Successfully uploaded to SharePoint'
             });
             
             // Cleanup Playwright
@@ -248,9 +259,10 @@ class IntelligentHealthReportService {
             const portal = portals[i];
             
             this.emitProgress(socketId, {
-                step: 'capturing-screenshots',
+                step: 'screenshots',
                 progress: 20 + (i * 10),
-                message: `Capturing ${portal.name}... (${i + 1} of ${portals.length})`
+                message: `Capturing ${portal.name}... (${i + 1} of ${portals.length})`,
+                details: `Processing ${portal.section}...`
             });
             
             try {
