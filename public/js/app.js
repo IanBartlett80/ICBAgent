@@ -3315,11 +3315,20 @@ Once you complete the permission process, your query will be automatically proce
     showIntelligentReportModal() {
         console.log('📊 Showing Intelligent Health Report modal...');
 
-        // Check ICB authentication
-        if (!this.authService || !this.authService.isUserAuthenticated()) {
+        // Check ICB connection (not requiring active token - MSAL will handle token refresh when needed)
+        const tenantDomain = this.authService?.getCurrentTenant();
+        
+        if (!this.authService || !this.isConnected || tenantDomain !== 'icb.solutions') {
+            console.log('⚠️ ICB connection check failed:', {
+                hasAuthService: !!this.authService,
+                isConnected: this.isConnected,
+                tenantDomain: tenantDomain
+            });
             this.showError('Please sign in with your ICB Solutions account first');
             return;
         }
+
+        console.log('✅ ICB staff connected, showing modal');
 
         // Show modal
         const modal = document.getElementById('intelligentReportModal');
@@ -3344,21 +3353,33 @@ Once you complete the permission process, your query will be automatically proce
     /**
      * Start the intelligent health report generation process
      */
-    startIntelligentReport() {
+    async startIntelligentReport() {
         console.log('🚀 Starting Intelligent Health Report generation...');
 
-        // Validate ICB authentication
-        if (!this.authService || !this.authService.isUserAuthenticated()) {
-            this.showError('ICB authentication required');
-            return;
-        }
-
-        // Get ICB access token
-        const icbAccessToken = this.authService.getAccessToken();
+        // Get or refresh ICB access token
+        let icbAccessToken = this.authService.getAccessToken();
+        
+        // If no token, try to acquire one silently or interactively
         if (!icbAccessToken) {
-            this.showError('Could not retrieve ICB access token. Please sign in again.');
-            return;
+            console.log('⚠️ No cached access token, attempting to acquire...');
+            
+            try {
+                // This will trigger interactive auth if silent fails
+                await this.authService.authenticate();
+                icbAccessToken = this.authService.getAccessToken();
+                
+                if (!icbAccessToken) {
+                    this.showError('Could not obtain ICB access token. Please sign in again.');
+                    return;
+                }
+            } catch (error) {
+                console.error('❌ Token acquisition failed:', error);
+                this.showError('Authentication required. Please sign in to your ICB Solutions account.');
+                return;
+            }
         }
+        
+        console.log('✅ ICB access token obtained');
 
         // Hide pre-flight modal
         this.hideIntelligentReportModal();

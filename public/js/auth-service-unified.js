@@ -299,6 +299,48 @@ class ICBUnifiedAuthService {
                 }, 1000);
             } else {
                 console.log('ℹ️ No authentication parameters found in URL');
+                
+                // Check if there's an existing MSAL session to restore
+                const accounts = this.msalInstance.getAllAccounts();
+                console.log('👥 Checking for existing MSAL accounts:', accounts.length);
+                
+                if (accounts && accounts.length > 0) {
+                    console.log('🔄 Attempting to restore session from MSAL cache...');
+                    this.account = accounts[0];
+                    this.tenantDomain = this.extractTenantDomain(this.account.username);
+                    
+                    // Try to get a token silently to restore the session
+                    try {
+                        const silentRequest = {
+                            scopes: ["User.Read"],
+                            account: this.account
+                        };
+                        
+                        const tokenResponse = await this.msalInstance.acquireTokenSilent(silentRequest);
+                        this.accessToken = tokenResponse.accessToken;
+                        this.isAuthenticated = true;
+                        this.saveAuthState();
+                        
+                        console.log('✅ Session restored from MSAL cache with access token');
+                        console.log('🔐 Tenant:', this.tenantDomain);
+                        
+                        // Notify the main app
+                        if (window.icbAgent && typeof window.icbAgent.onAuthenticationSuccess === 'function') {
+                            const authResponse = {
+                                account: this.account,
+                                accessToken: this.accessToken,
+                                isAuthenticated: this.isAuthenticated
+                            };
+                            window.icbAgent.onAuthenticationSuccess(authResponse, this.tenantDomain);
+                        }
+                        
+                    } catch (tokenError) {
+                        console.log('⚠️ Silent token acquisition failed:', tokenError.message);
+                        console.log('ℹ️ User will need to re-authenticate when accessing protected features');
+                        // Don't set isAuthenticated to false - let the user try to use features
+                        // and trigger authentication when needed
+                    }
+                }
             }
 
         } catch (error) {
