@@ -130,7 +130,7 @@ class ManualScreenshotService {
                 if (sharp && filename.endsWith('.png')) {
                     console.log(`   🔄 Converting ${filename} to JPEG...`);
                     await sharp(sourceFile)
-                        .jpeg({ quality: 90, progressive: true })
+                        .jpeg({ quality: 95, progressive: true })
                         .toFile(destFile);
                 } else {
                     // Just copy file to output folder

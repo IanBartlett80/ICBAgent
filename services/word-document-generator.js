@@ -428,8 +428,8 @@ class WordDocumentGenerator {
         
         // Add each screenshot with analysis
         for (const screenshot of screenshots) {
-            // Create unique key for this screenshot
-            const uniqueKey = screenshot.section || screenshot.originalName || screenshot.filename || screenshot.name;
+            // Create unique key for this screenshot (prioritize originalName which has the actual filename)
+            const uniqueKey = screenshot.originalName || screenshot.filename || screenshot.name || screenshot.section;
             const sectionAnalysis = aiAnalysis.sectionAnalysis[uniqueKey];
             
             console.log(`🖼️  Processing screenshot: ${uniqueKey}`);
@@ -480,14 +480,15 @@ class WordDocumentGenerator {
             console.error(`Error embedding screenshot ${screenshot.name}:`, error);
         }
         
-        // Comments section with detailed analysis
+        // Comments section with detailed analysis (not a heading to avoid TOC)
         elements.push(
             new Paragraph({
                 children: [
                     new TextRun({
                         text: 'Comments',
                         bold: true,
-                        size: 28
+                        size: 28,
+                        color: this.icbNavyBlue
                     })
                 ],
                 spacing: { after: 200, before: 200 }
@@ -510,9 +511,17 @@ class WordDocumentGenerator {
         // Collect all recommendations for this category
         const categoryRecommendations = [];
         for (const screenshot of screenshots) {
-            const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
+            // Use same unique key logic as in createCategorySection
+            const uniqueKey = screenshot.originalName || screenshot.filename || screenshot.name || screenshot.section;
+            const sectionAnalysis = aiAnalysis.sectionAnalysis[uniqueKey];
+            
+            console.log(`📋 Priority Areas - Checking ${uniqueKey}`);
+            
             if (sectionAnalysis && sectionAnalysis.recommendations) {
+                console.log(`   ✅ Found ${sectionAnalysis.recommendations.length} recommendations`);
                 categoryRecommendations.push(...sectionAnalysis.recommendations);
+            } else {
+                console.log(`   ⚠️  No recommendations found`);
             }
         }
         
@@ -762,9 +771,17 @@ class WordDocumentGenerator {
         // Collect recommendations by category
         for (const [category, screenshots] of Object.entries(categorizedScreenshots)) {
             for (const screenshot of screenshots) {
-                const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
+                // Use same unique key logic as everywhere else
+                const uniqueKey = screenshot.originalName || screenshot.filename || screenshot.name || screenshot.section;
+                const sectionAnalysis = aiAnalysis.sectionAnalysis[uniqueKey];
+                
+                console.log(`🎯 Call to Actions - Checking ${uniqueKey}`);
+                
                 if (sectionAnalysis && sectionAnalysis.recommendations) {
+                    console.log(`   ✅ Found ${sectionAnalysis.recommendations.length} recommendations for ${category}`);
                     priorities[category].push(...sectionAnalysis.recommendations);
+                } else {
+                    console.log(`   ⚠️  No recommendations found for ${category}`);
                 }
             }
             

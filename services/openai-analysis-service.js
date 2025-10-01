@@ -47,9 +47,14 @@ class OpenAIAnalysisService {
         try {
             // Analyze each section with its screenshot
             for (const screenshot of screenshots) {
-                // Create unique key for this screenshot
-                const uniqueKey = screenshot.section || screenshot.originalName || screenshot.filename || screenshot.name;
+                // Create unique key for this screenshot (prioritize originalName which has the actual filename)
+                const uniqueKey = screenshot.originalName || screenshot.filename || screenshot.name || screenshot.section;
                 console.log(`🔍 Analyzing ${uniqueKey}...`);
+                console.log(`   Screenshot object keys: ${Object.keys(screenshot).join(', ')}`);
+                console.log(`   originalName: ${screenshot.originalName}`);
+                console.log(`   filename: ${screenshot.filename}`);
+                console.log(`   name: ${screenshot.name}`);
+                console.log(`   section: ${screenshot.section}`);
                 
                 const sectionAnalysis = await this.analyzeSectionWithVision(
                     screenshot,
@@ -92,7 +97,7 @@ class OpenAIAnalysisService {
     async analyzeSectionWithVision(screenshot, context) {
         const { customerName, sessionTempPath } = context || {};
         
-        const uniqueKey = screenshot.section || screenshot.originalName || screenshot.filename || screenshot.name;
+        const uniqueKey = screenshot.originalName || screenshot.filename || screenshot.name || screenshot.section;
         console.log(`🔍 Analyzing ${uniqueKey} with GPT-4o Vision...`);
         
         try {
