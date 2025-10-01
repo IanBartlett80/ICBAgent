@@ -39,6 +39,9 @@ class WordDocumentGenerator {
         const filePath = path.join(outputPath, filename);
         
         try {
+            // Categorize screenshots by first letter (I, S, E)
+            const categorizedScreenshots = this.categorizeScreenshots(screenshots);
+            
             // Build document sections
             const sections = [];
             
@@ -51,22 +54,41 @@ class WordDocumentGenerator {
             // Section 3: Executive Summary
             sections.push(...this.createExecutiveSummary(aiAnalysis.executiveSummary));
             
-            // Section 4: Customer Details
-            sections.push(...this.createCustomerDetails(customerName, reportDate));
-            
-            // Section 5: Detailed Sections (Licenses, Security, Devices)
-            for (const screenshot of screenshots) {
-                const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
-                if (sectionAnalysis) {
-                    sections.push(...await this.createDetailedSection(
-                        screenshot,
-                        sectionAnalysis
-                    ));
-                }
+            // Section 4: Identity Status
+            if (categorizedScreenshots.identity.length > 0) {
+                sections.push(...await this.createCategorySection(
+                    'Identity Status',
+                    categorizedScreenshots.identity,
+                    aiAnalysis,
+                    'identity'
+                ));
             }
             
-            // Section 6: Next Month Priorities
-            sections.push(...this.createPrioritiesSection(aiAnalysis.overallPriorities));
+            // Section 5: Security Status
+            if (categorizedScreenshots.security.length > 0) {
+                sections.push(...await this.createCategorySection(
+                    'Security Status',
+                    categorizedScreenshots.security,
+                    aiAnalysis,
+                    'security'
+                ));
+            }
+            
+            // Section 6: Endpoint Status
+            if (categorizedScreenshots.endpoint.length > 0) {
+                sections.push(...await this.createCategorySection(
+                    'Endpoint Status',
+                    categorizedScreenshots.endpoint,
+                    aiAnalysis,
+                    'endpoint'
+                ));
+            }
+            
+            // Section 7: ICB Solutions Call to Actions
+            sections.push(...this.createCallToActionsSection(
+                aiAnalysis,
+                categorizedScreenshots
+            ));
             
             // Create document
             const doc = new Document({
@@ -119,8 +141,8 @@ class WordDocumentGenerator {
             logoImage = new ImageRun({
                 data: imageBuffer,
                 transformation: {
-                    width: 100,  // pixels (reduced for better proportion)
-                    height: 100   // pixels (maintains aspect ratio)
+                    width: 80,  // pixels (optimized for report)
+                    height: 80   // pixels (maintains aspect ratio)
                 }
             });
         } catch (error) {
@@ -275,230 +297,6 @@ class WordDocumentGenerator {
     }
 
     /**
-     * Create customer details section
-     */
-    createCustomerDetails(customerName, reportDate) {
-        return [
-            new Paragraph({
-                text: '',
-                pageBreakBefore: true
-            }),
-            new Paragraph({
-                text: 'Customer Details',
-                heading: HeadingLevel.HEADING_1,
-                spacing: { after: 300 }
-            }),
-            new Paragraph({
-                text: `Organization: ${customerName}`,
-                spacing: { after: 200 }
-            }),
-            new Paragraph({
-                text: `Report Period: ${reportDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
-                spacing: { after: 200 }
-            }),
-            new Paragraph({
-                text: `Generated: ${reportDate.toLocaleDateString()} ${reportDate.toLocaleTimeString()}`,
-                spacing: { after: 200 }
-            }),
-            new Paragraph({
-                text: `Prepared by: ICB Solutions`,
-                spacing: { after: 400 }
-            })
-        ];
-    }
-
-    /**
-     * Create detailed section with screenshot and analysis
-     */
-    async createDetailedSection(screenshot, analysis) {
-        const sectionTitle = this.formatSectionTitle(screenshot.section);
-        const elements = [];
-        
-        // Section heading
-        elements.push(
-            new Paragraph({
-                text: '',
-                pageBreakBefore: true
-            }),
-            new Paragraph({
-                text: sectionTitle,
-                heading: HeadingLevel.HEADING_1,
-                spacing: { after: 300 }
-            })
-        );
-        
-        // Screenshot description
-        elements.push(
-            new Paragraph({
-                text: screenshot.description,
-                spacing: { after: 200 },
-                italics: true
-            })
-        );
-        
-        // Embed screenshot
-        try {
-            const imageBuffer = await fs.readFile(screenshot.path);
-            elements.push(
-                new Paragraph({
-                    children: [
-                        new ImageRun({
-                            data: imageBuffer,
-                            transformation: {
-                                width: 600,
-                                height: 400
-                            }
-                        })
-                    ],
-                    spacing: { after: 300 },
-                    alignment: AlignmentType.CENTER
-                }),
-                new Paragraph({
-                    text: `Figure: ${screenshot.name}`,
-                    alignment: AlignmentType.CENTER,
-                    spacing: { after: 400 },
-                    italics: true
-                })
-            );
-        } catch (error) {
-            console.error(`Error embedding screenshot ${screenshot.name}:`, error);
-        }
-        
-        // Analysis summary
-        elements.push(
-            new Paragraph({
-                text: 'Analysis',
-                heading: HeadingLevel.HEADING_2,
-                spacing: { after: 200 }
-            }),
-            new Paragraph({
-                text: analysis.summary,
-                spacing: { after: 300, line: 360 }
-            })
-        );
-        
-        // Key findings
-        if (analysis.findings && analysis.findings.length > 0) {
-            elements.push(
-                new Paragraph({
-                    text: 'Key Findings',
-                    heading: HeadingLevel.HEADING_2,
-                    spacing: { after: 200 }
-                })
-            );
-            
-            for (const finding of analysis.findings) {
-                elements.push(
-                    new Paragraph({
-                        text: finding,
-                        bullet: { level: 0 },
-                        spacing: { after: 150 }
-                    })
-                );
-            }
-        }
-        
-        // Recommendations
-        if (analysis.recommendations && analysis.recommendations.length > 0) {
-            elements.push(
-                new Paragraph({
-                    text: 'Recommendations',
-                    heading: HeadingLevel.HEADING_2,
-                    spacing: { after: 200, before: 300 }
-                })
-            );
-            
-            for (const rec of analysis.recommendations) {
-                const priorityColor = this.getPriorityColor(rec.priority);
-                elements.push(
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: `[${rec.priority}] `,
-                                color: priorityColor,
-                                bold: true
-                            }),
-                            new TextRun({
-                                text: rec.action
-                            }),
-                            new TextRun({
-                                text: ` (${rec.timeEstimate})`,
-                                italics: true,
-                                color: '6b7280'
-                            })
-                        ],
-                        bullet: { level: 0 },
-                        spacing: { after: 150 }
-                    })
-                );
-            }
-        }
-        
-        return elements;
-    }
-
-    /**
-     * Create next month priorities section
-     */
-    createPrioritiesSection(priorities) {
-        const elements = [
-            new Paragraph({
-                text: '',
-                pageBreakBefore: true
-            }),
-            new Paragraph({
-                text: 'Next Month Priorities',
-                heading: HeadingLevel.HEADING_1,
-                spacing: { after: 300 }
-            }),
-            new Paragraph({
-                text: 'Based on the comprehensive analysis, ICB Solutions recommends focusing on the following priorities for the upcoming month:',
-                spacing: { after: 400, line: 360 }
-            })
-        ];
-        
-        if (priorities && priorities.length > 0) {
-            for (let i = 0; i < priorities.length; i++) {
-                const priority = priorities[i];
-                const priorityColor = this.getPriorityColor(priority.priority);
-                
-                elements.push(
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: `${i + 1}. `,
-                                bold: true,
-                                size: 24
-                            }),
-                            new TextRun({
-                                text: `[${priority.priority}] `,
-                                color: priorityColor,
-                                bold: true
-                            }),
-                            new TextRun({
-                                text: priority.action
-                            })
-                        ],
-                        spacing: { after: 150, before: 150 }
-                    }),
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: `   Estimated Effort: ${priority.timeEstimate}`,
-                                italics: true,
-                                color: '6b7280'
-                            })
-                        ],
-                        spacing: { after: 300 }
-                    })
-                );
-            }
-        }
-        
-        return elements;
-    }
-
-    /**
      * Create document header
      */
     createHeader(customerName) {
@@ -563,16 +361,392 @@ class WordDocumentGenerator {
     }
 
     /**
-     * Format section title from section ID
+     * Categorize screenshots by first letter of filename (I, S, E)
      */
-    formatSectionTitle(sectionId) {
-        const titles = {
-            'licenses': 'License Allocation & Usage',
-            'security-summary': 'Security Summary',
-            'security-report': 'Comprehensive Security Report',
-            'device-health': 'Device Health & Compliance'
+    categorizeScreenshots(screenshots) {
+        const categorized = {
+            identity: [],
+            security: [],
+            endpoint: []
         };
-        return titles[sectionId] || sectionId;
+        
+        for (const screenshot of screenshots) {
+            const filename = path.basename(screenshot.name || screenshot.path || '');
+            const firstLetter = filename.charAt(0).toUpperCase();
+            
+            if (firstLetter === 'I') {
+                categorized.identity.push(screenshot);
+            } else if (firstLetter === 'S') {
+                categorized.security.push(screenshot);
+            } else if (firstLetter === 'E') {
+                categorized.endpoint.push(screenshot);
+            }
+        }
+        
+        return categorized;
+    }
+
+    /**
+     * Create a category section (Identity, Security, or Endpoint)
+     */
+    async createCategorySection(title, screenshots, aiAnalysis, category) {
+        const elements = [];
+        
+        // Section heading
+        elements.push(
+            new Paragraph({
+                text: '',
+                pageBreakBefore: true
+            }),
+            new Paragraph({
+                text: title,
+                heading: HeadingLevel.HEADING_1,
+                spacing: { after: 400 }
+            })
+        );
+        
+        // Add each screenshot with analysis
+        for (const screenshot of screenshots) {
+            const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
+            if (sectionAnalysis) {
+                elements.push(...await this.createScreenshotWithComments(screenshot, sectionAnalysis));
+            }
+        }
+        
+        // Add ICB Solutions Priority Areas subsection
+        elements.push(...this.createPriorityAreasSubsection(screenshots, aiAnalysis, category));
+        
+        return elements;
+    }
+
+    /**
+     * Create screenshot with comments section (no title, just image + analysis)
+     */
+    async createScreenshotWithComments(screenshot, analysis) {
+        const elements = [];
+        
+        // Embed screenshot (centered, no title)
+        try {
+            const imageBuffer = await fs.readFile(screenshot.path);
+            elements.push(
+                new Paragraph({
+                    children: [
+                        new ImageRun({
+                            data: imageBuffer,
+                            transformation: {
+                                width: 600,
+                                height: 400
+                            }
+                        })
+                    ],
+                    spacing: { after: 300, before: 200 },
+                    alignment: AlignmentType.CENTER
+                })
+            );
+        } catch (error) {
+            console.error(`Error embedding screenshot ${screenshot.name}:`, error);
+        }
+        
+        // Comments section with detailed analysis
+        elements.push(
+            new Paragraph({
+                text: 'Comments',
+                heading: HeadingLevel.HEADING_3,
+                spacing: { after: 200, before: 200 }
+            }),
+            new Paragraph({
+                text: analysis.summary || 'This month\'s data shows the current state of this area within your Microsoft 365 environment. Our team has reviewed the metrics and identified key observations that warrant attention.',
+                spacing: { after: 400, line: 360 }
+            })
+        );
+        
+        return elements;
+    }
+
+    /**
+     * Create Priority Areas subsection for each category
+     */
+    createPriorityAreasSubsection(screenshots, aiAnalysis, category) {
+        const elements = [];
+        
+        // Collect all recommendations for this category
+        const categoryRecommendations = [];
+        for (const screenshot of screenshots) {
+            const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
+            if (sectionAnalysis && sectionAnalysis.recommendations) {
+                categoryRecommendations.push(...sectionAnalysis.recommendations);
+            }
+        }
+        
+        // Sort by priority (High > Medium > Low) and take top 3-5
+        const sortedRecommendations = this.sortRecommendationsByPriority(categoryRecommendations).slice(0, 5);
+        
+        if (sortedRecommendations.length > 0) {
+            elements.push(
+                new Paragraph({
+                    text: 'ICB Solutions Priority Areas',
+                    heading: HeadingLevel.HEADING_2,
+                    spacing: { after: 300, before: 400 }
+                }),
+                new Paragraph({
+                    text: `Based on our analysis of your ${category} posture this month, we have identified the following priority areas that ICB Solutions recommends addressing to enhance your security, compliance, and operational efficiency:`,
+                    spacing: { after: 300, line: 360 }
+                })
+            );
+            
+            for (let i = 0; i < sortedRecommendations.length; i++) {
+                const rec = sortedRecommendations[i];
+                const priorityColor = this.getPriorityColor(rec.priority);
+                
+                elements.push(
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `${i + 1}. `,
+                                bold: true,
+                                size: 24
+                            }),
+                            new TextRun({
+                                text: `[${rec.priority} Priority] `,
+                                color: priorityColor,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: rec.action
+                            })
+                        ],
+                        spacing: { after: 150, before: 150 }
+                    }),
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `   Estimated Effort: ${rec.timeEstimate}`,
+                                italics: true,
+                                color: '6b7280'
+                            })
+                        ],
+                        spacing: { after: 100 }
+                    }),
+                    new Paragraph({
+                        text: `   ${rec.rationale || 'This priority area has been identified as critical to improving your overall ' + category + ' posture and reducing potential risks to your organization.'}`,
+                        spacing: { after: 300 },
+                        color: '374151'
+                    })
+                );
+            }
+        }
+        
+        return elements;
+    }
+
+    /**
+     * Create Call to Actions section (final summary section)
+     */
+    createCallToActionsSection(aiAnalysis, categorizedScreenshots) {
+        const elements = [
+            new Paragraph({
+                text: '',
+                pageBreakBefore: true
+            }),
+            new Paragraph({
+                text: 'ICB Solutions Call to Actions',
+                heading: HeadingLevel.HEADING_1,
+                spacing: { after: 400 }
+            }),
+            new Paragraph({
+                text: 'Monthly Summary',
+                heading: HeadingLevel.HEADING_2,
+                spacing: { after: 200, before: 200 }
+            }),
+            new Paragraph({
+                text: 'This month, our team has conducted a comprehensive review of your Microsoft 365 environment across Identity, Security, and Endpoint management areas. The analysis has revealed several opportunities for optimization and risk mitigation that we believe warrant immediate attention.',
+                spacing: { after: 300, line: 360 }
+            }),
+            new Paragraph({
+                text: aiAnalysis.executiveSummary || 'Our analysis indicates a generally healthy environment with specific areas requiring focused attention to maintain and enhance your security posture.',
+                spacing: { after: 400, line: 360 }
+            }),
+            new Paragraph({
+                text: 'Next Month Priorities',
+                heading: HeadingLevel.HEADING_2,
+                spacing: { after: 300, before: 400 }
+            }),
+            new Paragraph({
+                text: 'Based on our comprehensive assessment, ICB Solutions has identified the following high-priority areas that we will focus on in the coming month to enhance your Microsoft 365 environment:',
+                spacing: { after: 300, line: 360 }
+            })
+        ];
+        
+        // Get top 3 highest priority items from each category
+        const topPriorities = this.getTopPrioritiesByCategory(aiAnalysis, categorizedScreenshots);
+        
+        // Identity priorities
+        if (topPriorities.identity.length > 0) {
+            elements.push(
+                new Paragraph({
+                    text: 'Identity & Access Management',
+                    heading: HeadingLevel.HEADING_3,
+                    spacing: { after: 200, before: 300 }
+                })
+            );
+            
+            for (let i = 0; i < Math.min(3, topPriorities.identity.length); i++) {
+                const priority = topPriorities.identity[i];
+                const priorityColor = this.getPriorityColor(priority.priority);
+                
+                elements.push(
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `• `,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: `[${priority.priority}] `,
+                                color: priorityColor,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: priority.action
+                            })
+                        ],
+                        spacing: { after: 150 },
+                        bullet: { level: 0 }
+                    })
+                );
+            }
+        }
+        
+        // Security priorities
+        if (topPriorities.security.length > 0) {
+            elements.push(
+                new Paragraph({
+                    text: 'Security Posture',
+                    heading: HeadingLevel.HEADING_3,
+                    spacing: { after: 200, before: 300 }
+                })
+            );
+            
+            for (let i = 0; i < Math.min(3, topPriorities.security.length); i++) {
+                const priority = topPriorities.security[i];
+                const priorityColor = this.getPriorityColor(priority.priority);
+                
+                elements.push(
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `• `,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: `[${priority.priority}] `,
+                                color: priorityColor,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: priority.action
+                            })
+                        ],
+                        spacing: { after: 150 },
+                        bullet: { level: 0 }
+                    })
+                );
+            }
+        }
+        
+        // Endpoint priorities
+        if (topPriorities.endpoint.length > 0) {
+            elements.push(
+                new Paragraph({
+                    text: 'Endpoint Management',
+                    heading: HeadingLevel.HEADING_3,
+                    spacing: { after: 200, before: 300 }
+                })
+            );
+            
+            for (let i = 0; i < Math.min(3, topPriorities.endpoint.length); i++) {
+                const priority = topPriorities.endpoint[i];
+                const priorityColor = this.getPriorityColor(priority.priority);
+                
+                elements.push(
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `• `,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: `[${priority.priority}] `,
+                                color: priorityColor,
+                                bold: true
+                            }),
+                            new TextRun({
+                                text: priority.action
+                            })
+                        ],
+                        spacing: { after: 150 },
+                        bullet: { level: 0 }
+                    })
+                );
+            }
+        }
+        
+        // Closing statement
+        elements.push(
+            new Paragraph({
+                text: '',
+                spacing: { after: 300 }
+            }),
+            new Paragraph({
+                text: 'ICB Solutions Commitment',
+                heading: HeadingLevel.HEADING_3,
+                spacing: { after: 200, before: 400 }
+            }),
+            new Paragraph({
+                text: 'Our team is committed to working alongside you to implement these recommendations and ensure your Microsoft 365 environment remains secure, compliant, and optimized for your business needs. We will schedule follow-up sessions to discuss these priorities and develop an implementation roadmap that aligns with your business objectives.',
+                spacing: { after: 400, line: 360 }
+            })
+        );
+        
+        return elements;
+    }
+
+    /**
+     * Get top priorities by category
+     */
+    getTopPrioritiesByCategory(aiAnalysis, categorizedScreenshots) {
+        const priorities = {
+            identity: [],
+            security: [],
+            endpoint: []
+        };
+        
+        // Collect recommendations by category
+        for (const [category, screenshots] of Object.entries(categorizedScreenshots)) {
+            for (const screenshot of screenshots) {
+                const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
+                if (sectionAnalysis && sectionAnalysis.recommendations) {
+                    priorities[category].push(...sectionAnalysis.recommendations);
+                }
+            }
+            
+            // Sort by priority and take top items
+            priorities[category] = this.sortRecommendationsByPriority(priorities[category]);
+        }
+        
+        return priorities;
+    }
+
+    /**
+     * Sort recommendations by priority (High > Medium > Low)
+     */
+    sortRecommendationsByPriority(recommendations) {
+        const priorityOrder = { 'High': 1, 'Medium': 2, 'Low': 3 };
+        return recommendations.sort((a, b) => {
+            const priorityA = priorityOrder[a.priority] || 999;
+            const priorityB = priorityOrder[b.priority] || 999;
+            return priorityA - priorityB;
+        });
     }
 
     /**

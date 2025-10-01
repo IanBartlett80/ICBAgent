@@ -115,7 +115,7 @@ class OpenAIAnalysisService {
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a senior IT consultant analyzing Microsoft 365 health metrics for business clients. Provide business-focused insights with clear priorities and actionable recommendations.'
+                        content: 'You are a senior IT consultant at an IT Managed Service Provider (MSP) writing a monthly update report for a business owner. Your analysis should be professional, business-focused, and explain technical concepts in terms that emphasize business impact, risk mitigation, and operational efficiency. Write as if you are providing ongoing managed services and are committed to the client\'s success. Use "we" when referring to ICB Solutions and "your" when addressing the client.'
                     },
                     {
                         role: 'user',
@@ -160,56 +160,85 @@ class OpenAIAnalysisService {
      */
     createSectionPrompt(screenshot, customerName) {
         const prompts = {
-            'licenses': `Analyze the license allocation and usage for ${customerName}. 
-                Focus on:
-                - License utilization rates
-                - Underutilized or wasted licenses
-                - License compliance and optimization opportunities
-                - Cost-saving recommendations
+            'licenses': `As the IT managed service provider for ${customerName}, analyze this month's license allocation and usage data.
                 
-                Provide business-focused insights with:
-                - Key findings (2-3 points)
-                - Recommendations with priority (High/Medium/Low) and estimated time/effort
-                - Potential cost impact where applicable`,
+                Write a detailed paragraph (150-200 words) that:
+                - Summarizes the current license utilization and allocation
+                - Explains what the metrics indicate about your environment
+                - Highlights any concerns or opportunities in business terms
+                - Uses an MSP monthly update tone ("This month, we observed...")
+                
+                Then provide 3-5 prioritized recommendations with:
+                - [Priority Level] Clear action item
+                - Detailed rationale explaining WHY this is a priority (business impact, cost savings, risk reduction)
+                - Estimated time/effort
+                - Potential cost impact where applicable
+                
+                Format:
+                SUMMARY:
+                [Your detailed paragraph here]
+                
+                KEY FINDINGS:
+                - Finding 1
+                - Finding 2
+                - Finding 3
+                
+                RECOMMENDATIONS:
+                - [High/Medium/Low] Action item (Time estimate)
+                  Rationale: Detailed explanation of why this matters
+                - [Priority] Next action (Time)
+                  Rationale: Why this is important`,
             
-            'security-summary': `Analyze the monthly security summary for ${customerName}.
-                Focus on:
-                - Security incident trends
-                - Critical vulnerabilities or risks
-                - User risk patterns
-                - Security posture improvements
+            'security-summary': `As the IT managed service provider for ${customerName}, analyze this month's security summary data.
                 
-                Provide business-focused insights with:
-                - Key findings (2-3 points)
-                - Recommendations with priority (High/Medium/Low) and estimated time/effort
-                - Business impact assessment`,
+                Write a detailed paragraph (150-200 words) that:
+                - Summarizes the security incidents and trends this month
+                - Explains what these metrics mean for your business
+                - Contextualizes any alerts or anomalies
+                - Uses an MSP monthly update tone ("Our security monitoring this month revealed...")
+                
+                Then provide 3-5 prioritized recommendations with:
+                - [Priority Level] Clear action item
+                - Detailed rationale explaining WHY this is a priority (threat mitigation, compliance, user protection)
+                - Estimated time/effort
+                - Business risk assessment
+                
+                Format as above with SUMMARY, KEY FINDINGS, and RECOMMENDATIONS sections.`,
             
-            'security-report': `Analyze the comprehensive security report for ${customerName}.
-                Focus on:
-                - Overall security score and trends
-                - High-priority security issues
-                - Compliance gaps
-                - Identity and access management concerns
+            'security-report': `As the IT managed service provider for ${customerName}, analyze this comprehensive security report.
                 
-                Provide business-focused insights with:
-                - Key findings (2-3 points)
-                - Recommendations with priority (High/Medium/Low) and estimated time/effort
-                - Risk mitigation strategies`,
+                Write a detailed paragraph (150-200 words) that:
+                - Provides an overall security posture assessment
+                - Explains critical security scores and what they indicate
+                - Identifies the most significant risks or concerns
+                - Uses an MSP monthly update tone ("This month's security assessment shows...")
+                
+                Then provide 3-5 prioritized recommendations with:
+                - [Priority Level] Clear action item
+                - Detailed rationale explaining WHY this is a priority (compliance gaps, vulnerabilities, attack surface)
+                - Estimated time/effort
+                - Risk mitigation strategy
+                
+                Format as above with SUMMARY, KEY FINDINGS, and RECOMMENDATIONS sections.`,
             
-            'device-health': `Analyze the device health and compliance data for ${customerName}.
-                Focus on:
-                - Device compliance rates
-                - Outdated or vulnerable devices
-                - Management coverage gaps
-                - Endpoint security concerns
+            'device-health': `As the IT managed service provider for ${customerName}, analyze this month's device health and compliance data.
                 
-                Provide business-focused insights with:
-                - Key findings (2-3 points)
-                - Recommendations with priority (High/Medium/Low) and estimated time/effort
-                - Operational impact`
+                Write a detailed paragraph (150-200 words) that:
+                - Summarizes device compliance rates and health status
+                - Explains what these metrics mean for operational security
+                - Highlights any devices requiring attention
+                - Uses an MSP monthly update tone ("Our endpoint monitoring this month identified...")
+                
+                Then provide 3-5 prioritized recommendations with:
+                - [Priority Level] Clear action item
+                - Detailed rationale explaining WHY this is a priority (security risks, productivity impact, compliance)
+                - Estimated time/effort
+                - Operational impact assessment
+                
+                Format as above with SUMMARY, KEY FINDINGS, and RECOMMENDATIONS sections.`
         };
         
-        return prompts[screenshot.section] || `Analyze this ${screenshot.name} data for ${customerName} and provide business-focused insights with prioritized recommendations.`;
+        return prompts[screenshot.section] || `As the IT managed service provider for ${customerName}, analyze this ${screenshot.name} data and provide business-focused insights with prioritized recommendations and detailed rationale for each priority.`;
     }
 
     /**
@@ -230,6 +259,7 @@ class OpenAIAnalysisService {
         
         let currentSection = 'summary';
         let currentRecommendation = null;
+        let capturingRationale = false;
         
         for (const line of lines) {
             const trimmed = line.trim();
@@ -239,37 +269,60 @@ class OpenAIAnalysisService {
             // Detect section headers
             if (trimmed.toLowerCase().includes('key findings') || trimmed.toLowerCase().includes('findings:')) {
                 currentSection = 'findings';
+                capturingRationale = false;
                 continue;
             }
             if (trimmed.toLowerCase().includes('recommendations') || trimmed.toLowerCase().includes('actions:')) {
                 currentSection = 'recommendations';
+                capturingRationale = false;
                 continue;
             }
             
             // Parse content based on current section
-            if (currentSection === 'summary' && analysis.summary.length < 500) {
+            if (currentSection === 'summary' && analysis.summary.length < 800) {
                 analysis.summary += trimmed + ' ';
             } else if (currentSection === 'findings') {
                 if (trimmed.match(/^[-*•]\s/)) {
                     analysis.findings.push(trimmed.replace(/^[-*•]\s/, ''));
                 }
             } else if (currentSection === 'recommendations') {
+                // Check if this is a rationale line
+                if (trimmed.toLowerCase().startsWith('rationale:')) {
+                    capturingRationale = true;
+                    if (currentRecommendation) {
+                        currentRecommendation.rationale = trimmed.replace(/rationale:/i, '').trim();
+                    }
+                    continue;
+                }
+                
                 // Try to extract priority and time estimate
                 const priorityMatch = trimmed.match(/\b(High|Medium|Low)\b/i);
-                const timeMatch = trimmed.match(/(\d+\s*(hours?|days?|weeks?))/i);
+                const timeMatch = trimmed.match(/\((\d+\s*(hours?|days?|weeks?))\)/i);
                 
-                if (trimmed.match(/^[-*•]\s/) || priorityMatch) {
+                if (trimmed.match(/^[-*•]\s/) || (priorityMatch && trimmed.match(/^\[/))) {
                     if (currentRecommendation) {
                         analysis.recommendations.push(currentRecommendation);
                     }
                     
+                    let actionText = trimmed.replace(/^[-*•]\s/, '').replace(/\*\*(.*?)\*\*/g, '$1');
+                    
+                    // Remove time estimate from action if present
+                    if (timeMatch) {
+                        actionText = actionText.replace(timeMatch[0], '').trim();
+                    }
+                    
                     currentRecommendation = {
-                        action: trimmed.replace(/^[-*•]\s/, '').replace(/\*\*(.*?)\*\*/g, '$1'),
+                        action: actionText,
                         priority: priorityMatch ? priorityMatch[1] : 'Medium',
-                        timeEstimate: timeMatch ? timeMatch[1] : 'TBD'
+                        timeEstimate: timeMatch ? timeMatch[1] : 'TBD',
+                        rationale: ''
                     };
-                } else if (currentRecommendation) {
-                    // Continuation of current recommendation
+                    capturingRationale = false;
+                } else if (capturingRationale && currentRecommendation) {
+                    // Continue building rationale
+                    currentRecommendation.rationale += ' ' + trimmed;
+                } else if (currentRecommendation && !capturingRationale) {
+                    // Continuation of current recommendation action
                     currentRecommendation.action += ' ' + trimmed;
                 }
             }
@@ -282,6 +335,12 @@ class OpenAIAnalysisService {
         
         // Clean up summary
         analysis.summary = analysis.summary.trim();
+        
+        // Clean up recommendations
+        for (const rec of analysis.recommendations) {
+            rec.action = rec.action.trim();
+            rec.rationale = rec.rationale.trim();
+        }
         
         return analysis;
     }
@@ -299,14 +358,24 @@ class OpenAIAnalysisService {
             .flatMap(section => section.findings)
             .slice(0, 10); // Top 10 findings
         
-        const prompt = `Based on the following key findings from ${customerName}'s Microsoft 365 environment, 
-            write a concise executive summary (3-4 paragraphs, business-focused) that:
-            - Highlights the overall health status
-            - Identifies the most critical areas requiring attention
-            - Emphasizes business impact and opportunities
-            - Maintains a professional, consultative tone
+        const prompt = `As the IT managed service provider for ${customerName}, write a concise executive summary (3-4 paragraphs) for this month's Microsoft 365 health report.
             
-            Key Findings:
+            Writing style:
+            - Use first person plural ("we") for ICB Solutions
+            - Address the client as "you" or "your organization"
+            - Write as if this is a monthly update to a business owner
+            - Be professional, consultative, and business-focused
+            - Emphasize business impact, risk mitigation, and opportunities
+            - Example opening: "This month, we conducted our regular assessment of your Microsoft 365 environment..."
+            
+            Content to include:
+            - Overall health status and key trends
+            - Most critical areas requiring attention
+            - Positive findings and improvements
+            - Business impact and opportunities
+            - Our commitment to addressing identified issues
+            
+            Key Findings from this month's assessment:
             ${allFindings.map((f, i) => `${i + 1}. ${f}`).join('\n')}
             
             Executive Summary:`;
@@ -317,7 +386,7 @@ class OpenAIAnalysisService {
                 messages: [
                     {
                         role: 'system',
-                        content: 'You are a senior IT consultant writing executive summaries for C-level executives. Be concise, business-focused, and highlight ROI opportunities.'
+                        content: 'You are a senior IT consultant at an IT Managed Service Provider writing executive summaries for business owners. Write in an MSP monthly update style using "we" for ICB Solutions and "you/your" for the client. Be concise, business-focused, and emphasize partnership and commitment to the client\'s success.'
                     },
                     {
                         role: 'user',
