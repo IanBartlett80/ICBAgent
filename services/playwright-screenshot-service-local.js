@@ -41,9 +41,15 @@ class PlaywrightScreenshotServiceLocal {
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         });
         
+        // Set default timeout to 0 (no timeout) for all operations
+        this.context.setDefaultTimeout(0);
+        
         this.page = await this.context.newPage();
         
-        console.log('✅ Browser initialized successfully');
+        // Also set page timeout to 0 for extra safety
+        this.page.setDefaultTimeout(0);
+        
+        console.log('✅ Browser initialized successfully (no timeouts)');
     }
 
     /**
