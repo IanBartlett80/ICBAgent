@@ -169,31 +169,35 @@ class PlaywrightScreenshotServiceMCP {
         const outputPath = path.join(this.screenshotsDir, `report_${Date.now()}`);
         await fs.mkdir(outputPath, { recursive: true });
         
-        // Define all portals to capture
+        // Define all portals to capture - SPECIFIC REPORT PAGES (not landing pages)
         const portals = [
             {
-                name: 'Microsoft 365 Admin Center',
-                url: 'https://admin.microsoft.com',
-                section: 'admin_center',
-                waitFor: 'main content'
+                name: 'Entra Portal - License Allocation',
+                url: 'https://entra.microsoft.com/#view/Microsoft_AAD_IAM/LicensesMenuBlade/~/Products',
+                section: 'licenses',
+                waitFor: 'license table and allocation data',
+                description: 'Navigate to Billing > Licenses > All Products to capture license allocation'
             },
             {
-                name: 'Microsoft Entra Admin Center',
-                url: 'https://entra.microsoft.com',
-                section: 'entra_identity',
-                waitFor: 'navigation'
+                name: 'Security Portal - Monthly Security Summary',
+                url: 'https://security.microsoft.com/reports/monthly-security-summary',
+                section: 'monthly_security_summary',
+                waitFor: 'security metrics and graphs',
+                description: 'Navigate to Reports > Monthly Security Summary to capture all metrics'
             },
             {
-                name: 'Microsoft Defender Portal',
-                url: 'https://security.microsoft.com',
-                section: 'security_center',
-                waitFor: 'dashboard'
+                name: 'Security Portal - Security Report',
+                url: 'https://security.microsoft.com/reports/security-report',
+                section: 'security_report',
+                waitFor: 'security visualizations and data',
+                description: 'Navigate to Reports > Security Report to capture comprehensive security data'
             },
             {
-                name: 'Microsoft Intune Admin Center',
-                url: 'https://intune.microsoft.com',
-                section: 'intune_center',
-                waitFor: 'devices'
+                name: 'Security Portal - Device Health',
+                url: 'https://security.microsoft.com/reports/device-health',
+                section: 'device_health',
+                waitFor: 'device health metrics and graphs',
+                description: 'Navigate to Reports > Device Health to capture device compliance and health'
             }
         ];
         

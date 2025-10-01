@@ -9,7 +9,7 @@
 
 const path = require('path');
 const fs = require('fs').promises;
-const PlaywrightScreenshotService = require('./playwright-screenshot-service');
+const PlaywrightScreenshotService = require('./playwright-screenshot-service-local');
 const OpenAIAnalysisService = require('./openai-analysis-service');
 const WordDocumentGenerator = require('./word-document-generator');
 const SharePointUploadService = require('./sharepoint-upload-service');
@@ -70,8 +70,10 @@ class IntelligentHealthReportService {
                 details: 'Waiting for manual sign-in...'
             });
             
-            // Wait for user to complete manual authentication
-            const authResult = await this.playwrightService.waitForAuthentication();
+            // Wait for user to complete manual authentication with progress updates
+            const authResult = await this.playwrightService.waitForAuthentication(
+                (progress) => this.emitProgress(socketId, progress)
+            );
             
             if (!authResult.success) {
                 throw new Error('Customer tenant authentication failed or was cancelled');
@@ -90,13 +92,13 @@ class IntelligentHealthReportService {
             this.emitProgress(socketId, {
                 step: 'screenshots',
                 progress: 20,
-                message: 'Capturing screenshots from Entra portal... (1 of 4)',
-                details: 'Navigating to Entra portal...'
+                message: 'Capturing screenshots from Microsoft 365 portals...',
+                details: 'Starting screenshot capture...'
             });
             
-            const screenshots = await this.captureAllPortalScreenshots(
-                sessionTempPath, 
-                socketId
+            const screenshots = await this.playwrightService.captureAllPortalScreenshots(
+                sessionTempPath,
+                (progress) => this.emitProgress(socketId, progress)
             );
             
             this.emitProgress(socketId, {
