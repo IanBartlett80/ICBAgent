@@ -49,11 +49,10 @@ class OpenAIAnalysisService {
             for (const screenshot of screenshots) {
                 console.log(`🔍 Analyzing ${screenshot.section}...`);
                 
-                const sectionAnalysis = await this.analyzeSectionWithVision({
+                const sectionAnalysis = await this.analyzeSectionWithVision(
                     screenshot,
-                    customerName,
-                    sessionTempPath
-                });
+                    { customerName, sessionTempPath }
+                );
                 
                 analysis.sectionAnalysis[screenshot.section] = sectionAnalysis;
             }
@@ -82,10 +81,13 @@ class OpenAIAnalysisService {
 
     /**
      * Analyze a specific section using Vision API
-     * @param {Object} options - Analysis options
+     * @param {Object} screenshot - Screenshot metadata
+     * @param {Object} context - Analysis context
      * @returns {Promise<Object>} Section analysis
      */
     async analyzeSectionWithVision(screenshot, context) {
+        const { customerName, sessionTempPath } = context || {};
+        
         console.log(`🔍 Analyzing ${screenshot.section} with GPT-4o Vision...`);
         
         try {
