@@ -85,11 +85,22 @@ class OpenAIAnalysisService {
      * @param {Object} options - Analysis options
      * @returns {Promise<Object>} Section analysis
      */
-    async analyzeSectionWithVision(options) {
-        const { screenshot, customerName, sessionTempPath } = options;
+    async analyzeSectionWithVision(screenshot, context) {
+        console.log(`🔍 Analyzing ${screenshot.section} with GPT-4o Vision...`);
         
         try {
-            // Read screenshot as base64
+            // Skip vision analysis for text-only sections or missing screenshots
+            if (screenshot.isTextExtraction || !screenshot.path || screenshot.path === undefined) {
+                console.log(`  ℹ️  Text-only section or missing screenshot, using text content if available`);
+                return {
+                    summary: screenshot.textContent || 'Section content not captured',
+                    insights: screenshot.textContent ? ['Content extracted directly from portal'] : ['Screenshot not available'],
+                    recommendations: screenshot.textContent ? ['Review the summary text for key security metrics'] : ['Manually capture this section if needed'],
+                    severity: screenshot.textContent ? 'info' : 'warning'
+                };
+            }
+            
+            // Read screenshot image
             const imageBuffer = await fs.readFile(screenshot.path);
             const base64Image = imageBuffer.toString('base64');
             

@@ -119,8 +119,8 @@ class WordDocumentGenerator {
             logoImage = new ImageRun({
                 data: imageBuffer,
                 transformation: {
-                    width: 200,  // pixels
-                    height: 200   // pixels (will maintain aspect ratio)
+                    width: 100,  // pixels (reduced for better proportion)
+                    height: 100   // pixels (maintains aspect ratio)
                 }
             });
         } catch (error) {

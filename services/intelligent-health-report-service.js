@@ -35,9 +35,10 @@ class IntelligentHealthReportService {
      * @returns {Promise<Object>} Report generation result
      */
     async generateReport(options) {
-        const { sessionId, socketId, icbAccessToken } = options;
+        const { sessionId, socketId, icbAccessToken, customerName } = options;
         
         console.log(`📊 Starting intelligent health report generation for session: ${sessionId}`);
+        console.log(`📝 Customer Name: ${customerName}`);
         
         // Create temp directory for this session
         const sessionTempPath = path.join(this.tempPath, sessionId);
@@ -47,7 +48,7 @@ class IntelligentHealthReportService {
             success: false,
             sessionId,
             error: null,
-            customerName: null,
+            customerName: customerName,
             documentPath: null,
             sharepointPath: null
         };
@@ -79,12 +80,10 @@ class IntelligentHealthReportService {
                 throw new Error('Customer tenant authentication failed or was cancelled');
             }
             
-            result.customerName = authResult.tenantName;
-            
             this.emitProgress(socketId, {
                 step: 'authentication',
                 progress: 15,
-                message: `Authenticated to ${result.customerName}. Starting data collection...`,
+                message: `Authenticated successfully. Starting data collection...`,
                 details: 'Authentication successful'
             });
             

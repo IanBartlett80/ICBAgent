@@ -3608,15 +3608,17 @@ io.on('connection', (socket) => {
     console.log('📊 Intelligent health report generation requested:', {
       sessionId: data.sessionId,
       socketId: socket.id,
-      hasToken: !!data.icbAccessToken
+      hasToken: !!data.icbAccessToken,
+      customerName: data.customerName
     });
 
     try {
-      // Generate report with ICB staff token
+      // Generate report with ICB staff token and customer name
       const result = await intelligentReportService.generateReport({
         sessionId: data.sessionId,
         socketId: socket.id,
-        icbAccessToken: data.icbAccessToken
+        icbAccessToken: data.icbAccessToken,
+        customerName: data.customerName
       });
 
       if (result.success) {

@@ -355,6 +355,24 @@
                         <p class="info-description">
                             This automated process will generate a comprehensive health report for your connected Microsoft 365 tenant, powered by AI analysis.
                         </p>
+                        
+                        <!-- Customer Name Input -->
+                        <div class="form-group">
+                            <label for="customerNameInput" class="form-label">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                                </svg>
+                                Customer / Organization Name *
+                            </label>
+                            <input 
+                                type="text" 
+                                id="customerNameInput" 
+                                class="form-input" 
+                                placeholder="Enter customer name (e.g., Contoso Ltd)"
+                                required
+                            />
+                            <small class="form-hint">This name will appear on the report cover page</small>
+                        </div>
                         <div class="checklist">
                             <h3>Process Steps:</h3>
                             <ul>

@@ -3384,6 +3384,21 @@ Once you complete the permission process, your query will be automatically proce
     async startIntelligentReport() {
         console.log('🚀 Starting Intelligent Health Report generation...');
 
+        // Validate customer name input
+        const customerNameInput = document.getElementById('customerNameInput');
+        const customerName = customerNameInput?.value?.trim();
+        
+        if (!customerName) {
+            this.showError('Please enter a customer/organization name');
+            customerNameInput?.focus();
+            return;
+        }
+        
+        console.log('✅ Customer name:', customerName);
+        
+        // Store customer name for later use
+        this.customerName = customerName;
+
         // Get or refresh ICB access token
         let icbAccessToken = this.authService.getAccessToken();
         
@@ -3421,12 +3436,14 @@ Once you complete the permission process, your query will be automatically proce
         // Emit socket event to start report generation
         this.socket.emit('generate-intelligent-report', {
             sessionId: sessionId,
-            icbAccessToken: icbAccessToken
+            icbAccessToken: icbAccessToken,
+            customerName: this.customerName
         });
 
         console.log('📡 Report generation request sent:', {
             sessionId,
-            hasToken: !!icbAccessToken
+            hasToken: !!icbAccessToken,
+            customerName: this.customerName
         });
     }
 

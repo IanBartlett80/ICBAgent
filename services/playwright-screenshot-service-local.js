@@ -266,13 +266,13 @@ class PlaywrightScreenshotServiceLocal {
     }
 
     /**
-     * Capture all required portal screenshots
+     * Capture all required portal screenshots with manual capture overlay
      * @param {string} outputPath - Directory to save screenshots
      * @param {Function} progressCallback - Progress update callback
      * @returns {Promise<Array>} Array of screenshot results
      */
     async captureAllPortalScreenshots(outputPath, progressCallback) {
-        console.log('📸 Capturing all 20 portal screenshots...');
+        console.log('📸 Starting manual screenshot capture with overlay...');
         
         await fs.mkdir(outputPath, { recursive: true });
         
@@ -280,16 +280,523 @@ class PlaywrightScreenshotServiceLocal {
         let progressValue = 20;
         const progressIncrement = 40 / 20;  // Spread across 20-60%
         
+        // Define all 20 sections to capture
+        const sectionsToCapture = this.getSectionDefinitions();
+        
         try {
-            // ========================================
-            // 1. ENTRA PORTAL - LICENSES
-            // ========================================
-            console.log('\n📊 Portal 1/20: Entra Licenses');
-            await this.page.goto('https://entra.microsoft.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
-            await this.page.waitForTimeout(5000);
+            // Navigate to initial Microsoft portal
+            await this.page.goto('https://admin.microsoft.com', { 
+                waitUntil: 'domcontentloaded', 
+                timeout: 60000 
+            });
+            await this.page.waitForTimeout(3000);
             
-            // Click Billing menu
-            await this.safeClick('text=Billing', 'Billing menu');
+            // Inject the capture overlay UI
+            await this.injectCaptureOverlay();
+            
+            // Capture each section sequentially
+            for (let i = 0; i < sectionsToCapture.length; i++) {
+                const section = sectionsToCapture[i];
+                const sectionNumber = i + 1;
+                
+                progressValue += progressIncrement;
+                
+                if (progressCallback) {
+                    progressCallback({
+                        step: 'screenshots',
+                        progress: Math.round(progressValue),
+                        message: `Ready to capture section ${sectionNumber}/20: ${section.displayName}`,
+                        details: section.instructions
+                    });
+                }
+                
+                console.log(`\\n📸 Section ${sectionNumber}/20: ${section.displayName}`);
+                console.log(`   Instructions: ${section.instructions}`);
+                
+                // Show overlay with section info
+                await this.showCapturePrompt(section, sectionNumber, sectionsToCapture.length);
+                
+                // Wait for user to capture the region
+                const captureResult = await this.waitForUserCapture(section, outputPath);
+                
+                if (captureResult.success) {
+                    screenshots.push(captureResult);
+                    console.log(`✅ Captured: ${section.displayName}`);
+                } else {
+                    console.warn(`⚠️ Skipped: ${section.displayName}`);
+                    // Still add to array but mark as skipped
+                    screenshots.push({
+                        success: false,
+                        section: section.name,
+                        displayName: section.displayName,
+                        error: 'User skipped this section'
+                    });
+                }
+            }
+            
+            // Hide overlay
+            await this.hideCaptureOverlay();
+            
+            console.log(`\\n✅ Manual capture complete: ${screenshots.filter(s => s.success).length}/20 sections captured`);
+            
+        } catch (error) {
+            console.error('❌ Error during manual capture:', error);
+            throw error;
+        }
+        
+        return screenshots;
+    }
+    
+    /**
+     * Get definitions for all 20 sections to capture
+     * @returns {Array} Section definitions
+     */
+    getSectionDefinitions() {
+        return [
+            // 1. Entra Licenses
+            {
+                name: 'entra_licenses',
+                displayName: 'Entra Licenses Overview',
+                portal: 'Entra Admin Center',
+                instructions: 'Navigate to: Entra Admin Center → Billing → Licenses → All Products. Capture the licenses table.'
+            },
+            // 2-5. Vulnerability Management (4 sections)
+            {
+                name: 'vulnerability_dashboard',
+                displayName: 'Vulnerability Management Dashboard',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Vulnerability Management → Dashboard. Capture the main dashboard overview.'
+            },
+            {
+                name: 'vulnerability_top10',
+                displayName: 'Top 10 Vulnerabilities',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Vulnerability Management → Recommendations. Capture the top 10 most critical vulnerabilities.'
+            },
+            {
+                name: 'vulnerability_weaknesses',
+                displayName: 'Security Weaknesses',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Vulnerability Management → Weaknesses. Capture the weaknesses summary.'
+            },
+            {
+                name: 'vulnerability_exposed_devices',
+                displayName: 'Exposed Devices',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Vulnerability Management → Exposed Devices. Capture the exposed devices list.'
+            },
+            // 6-10. Security Reports (5 sections)
+            {
+                name: 'security_overview',
+                displayName: 'Security Overview',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Reports → Security Report. Capture the main security overview.'
+            },
+            {
+                name: 'threat_analytics',
+                displayName: 'Threat Analytics',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Threat Analytics. Capture the threat analytics summary.'
+            },
+            {
+                name: 'incidents_alerts',
+                displayName: 'Incidents & Alerts',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Incidents & Alerts. Capture the incidents summary.'
+            },
+            {
+                name: 'email_security',
+                displayName: 'Email & Collaboration Security',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Email & Collaboration → Reports. Capture email security metrics.'
+            },
+            {
+                name: 'secure_score',
+                displayName: 'Microsoft Secure Score',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Secure Score. Capture the secure score overview.'
+            },
+            // 11-13. Device Health (3 sections)
+            {
+                name: 'device_overview',
+                displayName: 'Device Overview',
+                portal: 'Intune Admin Center',
+                instructions: 'Navigate to: Intune → Devices → Overview. Capture the device summary.'
+            },
+            {
+                name: 'device_compliance',
+                displayName: 'Device Compliance',
+                portal: 'Intune Admin Center',
+                instructions: 'Navigate to: Intune → Devices → Compliance. Capture compliance status.'
+            },
+            {
+                name: 'device_health',
+                displayName: 'Device Health Status',
+                portal: 'Intune Admin Center',
+                instructions: 'Navigate to: Intune → Reports → Device Health. Capture health metrics.'
+            },
+            // 14-19. Monthly Security Report (6 sections)
+            {
+                name: 'monthly_security_summary',
+                displayName: 'Monthly Security Summary',
+                portal: 'Microsoft Defender',
+                instructions: 'Navigate to: Defender → Reports → Security Report → Monthly Security Report. Capture summary section.'
+            },
+            {
+                name: 'monthly_identity_security',
+                displayName: 'Identity Security Status',
+                portal: 'Microsoft Defender',
+                instructions: 'In Monthly Security Report: Capture the Identity Security section.'
+            },
+            {
+                name: 'monthly_device_security',
+                displayName: 'Device Security Status',
+                portal: 'Microsoft Defender',
+                instructions: 'In Monthly Security Report: Capture the Device Security section.'
+            },
+            {
+                name: 'monthly_threat_protection',
+                displayName: 'Threat Protection Overview',
+                portal: 'Microsoft Defender',
+                instructions: 'In Monthly Security Report: Capture the Threat Protection section.'
+            },
+            {
+                name: 'monthly_vulnerabilities',
+                displayName: 'Vulnerability Summary',
+                portal: 'Microsoft Defender',
+                instructions: 'In Monthly Security Report: Capture the Vulnerability section.'
+            },
+            {
+                name: 'monthly_recommendations',
+                displayName: 'Security Recommendations',
+                portal: 'Microsoft Defender',
+                instructions: 'In Monthly Security Report: Capture the Recommendations section.'
+            },
+            // 20. Additional Critical Metrics
+            {
+                name: 'conditional_access',
+                displayName: 'Conditional Access Policies',
+                portal: 'Entra Admin Center',
+                instructions: 'Navigate to: Entra → Protection → Conditional Access. Capture policies overview.'
+            }
+        ];
+    }
+    
+    /**
+     * Inject floating capture overlay into the page
+     * @returns {Promise<void>}
+     */
+    async injectCaptureOverlay() {
+        await this.page.addStyleTag({
+            content: `
+                #icb-capture-overlay {
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    z-index: 999999;
+                    background: linear-gradient(135deg, #022541 0%, #2f6b8a 100%);
+                    border: 2px solid #3e8ab4;
+                    border-radius: 12px;
+                    padding: 20px;
+                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+                    font-family: 'Segoe UI', system-ui, sans-serif;
+                    color: white;
+                    max-width: 400px;
+                    display: none;
+                }
+                #icb-capture-overlay h3 {
+                    margin: 0 0 10px 0;
+                    font-size: 18px;
+                    color: #3e8ab4;
+                    font-weight: 600;
+                }
+                #icb-capture-overlay p {
+                    margin: 8px 0;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+                #icb-capture-overlay .progress-text {
+                    color: #10b981;
+                    font-weight: 600;
+                    margin-bottom: 8px;
+                }
+                #icb-capture-overlay .instructions {
+                    background: rgba(62, 138, 180, 0.2);
+                    padding: 12px;
+                    border-radius: 8px;
+                    border-left: 4px solid #3e8ab4;
+                    margin: 12px 0;
+                    font-size: 13px;
+                }
+                #icb-capture-overlay .buttons {
+                    display: flex;
+                    gap: 10px;
+                    margin-top: 16px;
+                }
+                #icb-capture-overlay button {
+                    flex: 1;
+                    padding: 12px 20px;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                #icb-capture-btn {
+                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                    color: white;
+                }
+                #icb-capture-btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+                }
+                #icb-skip-btn {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: white;
+                }
+                #icb-skip-btn:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                }
+                #icb-selection-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    z-index: 999998;
+                    cursor: crosshair;
+                    display: none;
+                }
+                #icb-selection-box {
+                    position: fixed;
+                    border: 3px solid #10b981;
+                    background: rgba(16, 185, 129, 0.1);
+                    z-index: 999999;
+                    pointer-events: none;
+                    display: none;
+                }
+            `
+        });
+        
+        await this.page.evaluate(() => {
+            // Create overlay elements
+            const overlay = document.createElement('div');
+            overlay.id = 'icb-capture-overlay';
+            overlay.innerHTML = `
+                <h3>📸 ICB Screenshot Capture</h3>
+                <p class="progress-text" id="icb-progress-text">Ready to capture</p>
+                <div class="instructions" id="icb-instructions">
+                    Waiting for instructions...
+                </div>
+                <div class="buttons">
+                    <button id="icb-capture-btn">Capture Region</button>
+                    <button id="icb-skip-btn">Skip</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            
+            // Create selection overlay (for region selection)
+            const selectionOverlay = document.createElement('div');
+            selectionOverlay.id = 'icb-selection-overlay';
+            document.body.appendChild(selectionOverlay);
+            
+            // Create selection box
+            const selectionBox = document.createElement('div');
+            selectionBox.id = 'icb-selection-box';
+            document.body.appendChild(selectionBox);
+            
+            // Store capture state
+            window.icbCaptureState = {
+                isCapturing: false,
+                captureRequested: false,
+                skipRequested: false,
+                selectionComplete: false,
+                selectionBounds: null
+            };
+            
+            // Region selection logic
+            let startX, startY, isSelecting = false;
+            
+            selectionOverlay.addEventListener('mousedown', (e) => {
+                isSelecting = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                selectionBox.style.display = 'block';
+                selectionBox.style.left = startX + 'px';
+                selectionBox.style.top = startY + 'px';
+                selectionBox.style.width = '0px';
+                selectionBox.style.height = '0px';
+            });
+            
+            selectionOverlay.addEventListener('mousemove', (e) => {
+                if (!isSelecting) return;
+                
+                const currentX = e.clientX;
+                const currentY = e.clientY;
+                const width = Math.abs(currentX - startX);
+                const height = Math.abs(currentY - startY);
+                const left = Math.min(currentX, startX);
+                const top = Math.min(currentY, startY);
+                
+                selectionBox.style.left = left + 'px';
+                selectionBox.style.top = top + 'px';
+                selectionBox.style.width = width + 'px';
+                selectionBox.style.height = height + 'px';
+            });
+            
+            selectionOverlay.addEventListener('mouseup', (e) => {
+                if (!isSelecting) return;
+                isSelecting = false;
+                
+                const currentX = e.clientX;
+                const currentY = e.clientY;
+                const width = Math.abs(currentX - startX);
+                const height = Math.abs(currentY - startY);
+                const left = Math.min(currentX, startX);
+                const top = Math.min(currentY, startY);
+                
+                // Store bounds
+                window.icbCaptureState.selectionBounds = {
+                    x: left,
+                    y: top,
+                    width: width,
+                    height: height
+                };
+                
+                window.icbCaptureState.selectionComplete = true;
+                
+                // Hide selection UI
+                selectionOverlay.style.display = 'none';
+                selectionBox.style.display = 'none';
+            });
+            
+            // Button handlers
+            document.getElementById('icb-capture-btn').addEventListener('click', () => {
+                window.icbCaptureState.captureRequested = true;
+                selectionOverlay.style.display = 'block';
+            });
+            
+            document.getElementById('icb-skip-btn').addEventListener('click', () => {
+                window.icbCaptureState.skipRequested = true;
+            });
+        });
+    }
+    
+    /**
+     * Show capture prompt for a specific section
+     * @param {Object} section - Section definition
+     * @param {number} sectionNumber - Current section number
+     * @param {number} totalSections - Total number of sections
+     * @returns {Promise<void>}
+     */
+    async showCapturePrompt(section, sectionNumber, totalSections) {
+        await this.page.evaluate((section, sectionNumber, totalSections) => {
+            const overlay = document.getElementById('icb-capture-overlay');
+            const progressText = document.getElementById('icb-progress-text');
+            const instructions = document.getElementById('icb-instructions');
+            
+            overlay.style.display = 'block';
+            progressText.textContent = `Section ${sectionNumber}/${totalSections}: ${section.displayName}`;
+            instructions.innerHTML = `
+                <strong>📍 Portal:</strong> ${section.portal}<br><br>
+                <strong>📋 Instructions:</strong><br>
+                ${section.instructions}
+            `;
+            
+            // Reset state
+            window.icbCaptureState.captureRequested = false;
+            window.icbCaptureState.skipRequested = false;
+            window.icbCaptureState.selectionComplete = false;
+            window.icbCaptureState.selectionBounds = null;
+        }, section, sectionNumber, totalSections);
+    }
+    
+    /**
+     * Wait for user to capture a region or skip
+     * @param {Object} section - Section definition
+     * @param {string} outputPath - Directory to save screenshot
+     * @returns {Promise<Object>} Capture result
+     */
+    async waitForUserCapture(section, outputPath) {
+        // Wait for user action (capture or skip)
+        await this.page.waitForFunction(() => {
+            return window.icbCaptureState.skipRequested || window.icbCaptureState.selectionComplete;
+        }, { timeout: 600000 }); // 10 minute timeout per section
+        
+        const state = await this.page.evaluate(() => window.icbCaptureState);
+        
+        if (state.skipRequested) {
+            console.log('  ⏭️  User skipped this section');
+            return {
+                success: false,
+                section: section.name,
+                displayName: section.displayName,
+                skipped: true
+            };
+        }
+        
+        if (state.selectionComplete && state.selectionBounds) {
+            // Capture the selected region
+            const bounds = state.selectionBounds;
+            const timestamp = Date.now();
+            const filename = `${section.name}_${timestamp}.jpg`;
+            const screenshotPath = path.join(outputPath, filename);
+            
+            // Take screenshot of the selected region
+            await this.page.screenshot({
+                path: screenshotPath,
+                type: 'jpeg',
+                quality: 90,
+                clip: {
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: bounds.width,
+                    height: bounds.height
+                }
+            });
+            
+            const stats = await fs.stat(screenshotPath);
+            console.log(`  ✅ Saved: ${filename} (${(stats.size / 1024).toFixed(2)} KB)`);
+            
+            return {
+                success: true,
+                path: screenshotPath,
+                section: section.name,
+                displayName: section.displayName,
+                filename,
+                size: stats.size,
+                bounds
+            };
+        }
+        
+        return {
+            success: false,
+            section: section.name,
+            displayName: section.displayName,
+            error: 'Unknown error during capture'
+        };
+    }
+    
+    /**
+     * Hide capture overlay
+     * @returns {Promise<void>}
+     */
+    async hideCaptureOverlay() {
+        await this.page.evaluate(() => {
+            const overlay = document.getElementById('icb-capture-overlay');
+            if (overlay) overlay.style.display = 'none';
+        });
+    }
+
+    /**
+     * Safe click helper - continues if element not found
+     * @param {string} selector - Element selector
+     * @param {string} elementName - Human-readable element name
+     */
+    async safeClick(selector, elementName) {
+        try {
             await this.page.waitForTimeout(2000);
             
             // Click Licenses
