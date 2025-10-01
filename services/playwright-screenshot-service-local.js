@@ -313,6 +313,9 @@ class PlaywrightScreenshotServiceLocal {
                 console.log(`\\n📸 Section ${sectionNumber}/20: ${section.displayName}`);
                 console.log(`   Instructions: ${section.instructions}`);
                 
+                // Ensure overlay exists (re-inject if page navigated)
+                await this.ensureOverlayExists();
+                
                 // Show overlay with section info
                 await this.showCapturePrompt(section, sectionNumber, sectionsToCapture.length);
                 
@@ -685,6 +688,21 @@ class PlaywrightScreenshotServiceLocal {
     }
     
     /**
+     * Ensure overlay exists on current page (re-inject if needed after navigation)
+     * @returns {Promise<void>}
+     */
+    async ensureOverlayExists() {
+        const overlayExists = await this.page.evaluate(() => {
+            return !!document.getElementById('icb-capture-overlay') && !!window.icbCaptureState;
+        });
+        
+        if (!overlayExists) {
+            console.log('  🔄 Re-injecting overlay after page navigation...');
+            await this.injectCaptureOverlay();
+        }
+    }
+    
+    /**
      * Show capture prompt for a specific section
      * @param {Object} section - Section definition
      * @param {number} sectionNumber - Current section number
@@ -723,6 +741,8 @@ class PlaywrightScreenshotServiceLocal {
     async waitForUserCapture(section, outputPath) {
         // Wait for user action (capture or skip)
         await this.page.waitForFunction(() => {
+            // Safety check: ensure icbCaptureState exists
+            if (!window.icbCaptureState) return false;
             return window.icbCaptureState.skipRequested || window.icbCaptureState.selectionComplete;
         }, { timeout: 600000 }); // 10 minute timeout per section
         
