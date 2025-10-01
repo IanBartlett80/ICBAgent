@@ -141,8 +141,8 @@ class WordDocumentGenerator {
             logoImage = new ImageRun({
                 data: imageBuffer,
                 transformation: {
-                    width: 80,  // pixels (optimized for report)
-                    height: 80   // pixels (maintains aspect ratio)
+                    width: 198,   // 5.25cm = 198 pixels at 96 DPI (5.25 * 37.795)
+                    height: 53    // 1.4cm = 53 pixels at 96 DPI (1.4 * 37.795)
                 }
             });
         } catch (error) {
