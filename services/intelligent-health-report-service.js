@@ -54,37 +54,33 @@ class IntelligentHealthReportService {
         };
         
         try {
-            // Step 1: Launch Playwright and wait for manual authentication
+            // Step 1: Initialize screenshot capture folder
             this.emitProgress(socketId, {
-                step: 'authentication',
+                step: 'setup',
                 progress: 5,
-                message: 'Launching browser for customer tenant authentication...',
-                details: 'Initializing browser...'
+                message: 'Setting up screenshot capture...',
+                details: 'Creating watch folder...'
             });
             
-            await this.playwrightService.initialize();
+            await this.screenshotService.initialize();
             
             this.emitProgress(socketId, {
-                step: 'authentication',
+                step: 'setup',
                 progress: 10,
-                message: 'Please sign in to the customer\'s Microsoft 365 tenant...',
-                details: 'Waiting for manual sign-in...'
+                message: 'Opening Microsoft login - please authenticate...',
+                details: 'A new browser tab will open for authentication',
+                action: 'openAuthTab', // Frontend will handle opening the tab
+                authUrl: 'https://login.microsoftonline.com'
             });
             
-            // Wait for user to complete manual authentication with progress updates
-            const authResult = await this.playwrightService.waitForAuthentication(
-                (progress) => this.emitProgress(socketId, progress)
-            );
-            
-            if (!authResult.success) {
-                throw new Error('Customer tenant authentication failed or was cancelled');
-            }
+            // Give user time to authenticate (30 seconds)
+            await new Promise(resolve => setTimeout(resolve, 30000));
             
             this.emitProgress(socketId, {
-                step: 'authentication',
+                step: 'setup',
                 progress: 15,
-                message: `Authenticated successfully. Starting data collection...`,
-                details: 'Authentication successful'
+                message: 'Ready to capture screenshots',
+                details: `Watch folder: ${this.screenshotService.watchFolder}`
             });
             
             // Step 2: Capture screenshots from M365 portals
@@ -181,8 +177,8 @@ class IntelligentHealthReportService {
                 details: `Saved to: ${permanentPath}`
             });
             
-            // Clean up browser
-            await this.playwrightService.cleanup();
+            // Cleanup screenshot service
+            await this.screenshotService.cleanup();
             
             // Cleanup temp files if configured
             if (this.autoCleanup) {
@@ -210,11 +206,11 @@ class IntelligentHealthReportService {
                 console.error('Error saving partial report:', saveError);
             }
             
-            // Cleanup Playwright
+            // Cleanup screenshot service
             try {
-                await this.playwrightService.cleanup();
+                await this.screenshotService.cleanup();
             } catch (closeError) {
-                console.error('Error cleaning up Playwright:', closeError);
+                console.error('Error cleaning up screenshot service:', closeError);
             }
         }
         

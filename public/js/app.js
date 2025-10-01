@@ -158,6 +158,12 @@ class ICBAgent {
         // Intelligent Health Report socket events
         this.socket.on('intelligent-report-progress', (data) => {
             this.updateReportProgress(data);
+            
+            // Check if we need to open authentication tab
+            if (data.action === 'openAuthTab' && data.authUrl) {
+                console.log('🔐 Opening authentication tab:', data.authUrl);
+                window.open(data.authUrl, '_blank', 'width=800,height=600');
+            }
         });
 
         this.socket.on('intelligent-report-complete', (data) => {
