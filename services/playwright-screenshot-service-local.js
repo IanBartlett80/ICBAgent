@@ -767,12 +767,12 @@ class PlaywrightScreenshotServiceLocal {
      * @returns {Promise<Object>} Capture result
      */
     async waitForUserCapture(section, outputPath) {
-        // Wait for user action (capture or skip)
+        // Wait for user action (capture or skip) - NO TIMEOUT
         await this.page.waitForFunction(() => {
             // Safety check: ensure icbCaptureState exists
             if (!window.icbCaptureState) return false;
             return window.icbCaptureState.skipRequested || window.icbCaptureState.selectionComplete;
-        }, { timeout: 600000 }); // 10 minute timeout per section
+        }, { timeout: 0 }); // No timeout - user has unlimited time
         
         const state = await this.page.evaluate(() => window.icbCaptureState);
         
