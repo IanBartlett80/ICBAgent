@@ -285,13 +285,17 @@ class PlaywrightScreenshotServiceLocal {
         
         try {
             // Navigate to Entra portal to start capture process
+            console.log('🌐 Navigating to Entra portal...');
             await this.page.goto('https://entra.microsoft.com', { 
-                waitUntil: 'domcontentloaded', 
+                waitUntil: 'networkidle',  // Wait for network to be idle
                 timeout: 60000 
             });
-            await this.page.waitForTimeout(3000);
+            
+            // Wait for page to fully stabilize after any redirects
+            await this.page.waitForTimeout(5000);
             
             // Inject the capture overlay UI
+            console.log('💉 Injecting capture overlay...');
             await this.injectCaptureOverlay();
             
             // Capture each section sequentially
@@ -490,8 +494,12 @@ class PlaywrightScreenshotServiceLocal {
      * @returns {Promise<void>}
      */
     async injectCaptureOverlay() {
-        await this.page.addStyleTag({
-            content: `
+        try {
+            // Wait for page to be ready
+            await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+            
+            await this.page.addStyleTag({
+                content: `
                 #icb-capture-overlay {
                     position: fixed;
                     top: 20px;
@@ -685,6 +693,10 @@ class PlaywrightScreenshotServiceLocal {
                 window.icbCaptureState.skipRequested = true;
             });
         });
+        } catch (error) {
+            console.error('❌ Error injecting capture overlay:', error.message);
+            throw error;
+        }
     }
     
     /**
