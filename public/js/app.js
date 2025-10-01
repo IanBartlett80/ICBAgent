@@ -198,6 +198,18 @@ class ICBAgent {
                         this.currentTenant = tenant;
                         this.sessionId = sessionId;
                         this.isConnected = true;
+                        
+                        // Restore authResponse from auth service account if available
+                        const account = this.authService.getCurrentAccount();
+                        if (account) {
+                            this.authResponse = {
+                                account: account,
+                                accessToken: this.authService.getAccessToken(),
+                                isAuthenticated: true
+                            };
+                            console.log('👤 Restored user info:', account.username);
+                        }
+                        
                         this.updateConnectionStatus('connected', tenant);
                         console.log('🔄 Restored session from unified auth:', { tenant, sessionId });
                         
@@ -342,8 +354,8 @@ class ICBAgent {
         }
 
         if (startReportBtn) {
-            startReportBtn.addEventListener('click', () => {
-                this.startIntelligentReport();
+            startReportBtn.addEventListener('click', async () => {
+                await this.startIntelligentReport();
             });
         }
 
