@@ -11,9 +11,18 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
+// Try to load sharp for JPEG conversion (optional dependency)
+let sharp = null;
+try {
+    sharp = require('sharp');
+} catch (err) {
+    console.warn('⚠️  Sharp library not available - JPEG conversion disabled');
+    console.warn('   To enable JPEG conversion, run: npm install sharp');
+}
+
 class ManualScreenshotService {
     constructor() {
-        this.watchFolder = path.join(process.env.USERPROFILE || 'C:\\Users\\Administrator', 'Documents', 'ICB_Screenshots');
+        this.watchFolder = 'C:\\ICBAgent\\ICB_Screenshots';
         this.capturedScreenshots = [];
         this.currentSectionIndex = 0;
         this.sections = this.getSectionDefinitions();
@@ -117,8 +126,16 @@ class ManualScreenshotService {
             const destFile = path.join(outputPath, destFilename);
 
             try {
-                // Copy file to output folder
-                await fs.copyFile(sourceFile, destFile);
+                // Convert to JPEG if sharp is available, otherwise just copy
+                if (sharp && filename.endsWith('.png')) {
+                    console.log(`   🔄 Converting ${filename} to JPEG...`);
+                    await sharp(sourceFile)
+                        .jpeg({ quality: 90, progressive: true })
+                        .toFile(destFile);
+                } else {
+                    // Just copy file to output folder
+                    await fs.copyFile(sourceFile, destFile);
+                }
                 
                 // Get file size
                 const stats = await fs.stat(destFile);

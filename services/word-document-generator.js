@@ -271,7 +271,7 @@ class WordDocumentGenerator {
     createTableOfContents() {
         return new TableOfContents('Table of Contents', {
             hyperlink: true,
-            headingStyleRange: '1-3'
+            headingStyleRange: '1-2'  // Only show H1 and H2 in TOC
         });
     }
 
@@ -371,17 +371,38 @@ class WordDocumentGenerator {
         };
         
         for (const screenshot of screenshots) {
-            const filename = path.basename(screenshot.name || screenshot.path || '');
+            // Extract just the filename (not the full path)
+            let filename = screenshot.originalName || screenshot.filename || screenshot.name || '';
+            
+            // If it's still a full path, extract just the filename
+            if (filename.includes('\\')) {
+                filename = filename.split('\\').pop();
+            } else if (filename.includes('/')) {
+                filename = filename.split('/').pop();
+            }
+            
             const firstLetter = filename.charAt(0).toUpperCase();
+            
+            console.log(`🔍 Categorizing: ${filename} (first letter: ${firstLetter})`);
             
             if (firstLetter === 'I') {
                 categorized.identity.push(screenshot);
+                console.log(`   → Identity section`);
             } else if (firstLetter === 'S') {
                 categorized.security.push(screenshot);
+                console.log(`   → Security section`);
             } else if (firstLetter === 'E') {
                 categorized.endpoint.push(screenshot);
+                console.log(`   → Endpoint section`);
+            } else {
+                console.log(`   ⚠️  Unknown category (not I, S, or E) - skipping`);
             }
         }
+        
+        console.log(`\n📊 Categorization summary:`);
+        console.log(`   Identity: ${categorized.identity.length} screenshots`);
+        console.log(`   Security: ${categorized.security.length} screenshots`);
+        console.log(`   Endpoint: ${categorized.endpoint.length} screenshots\n`);
         
         return categorized;
     }
@@ -407,9 +428,21 @@ class WordDocumentGenerator {
         
         // Add each screenshot with analysis
         for (const screenshot of screenshots) {
-            const sectionAnalysis = aiAnalysis.sectionAnalysis[screenshot.section];
+            // Create unique key for this screenshot
+            const uniqueKey = screenshot.section || screenshot.originalName || screenshot.filename || screenshot.name;
+            const sectionAnalysis = aiAnalysis.sectionAnalysis[uniqueKey];
+            
+            console.log(`🖼️  Processing screenshot: ${uniqueKey}`);
+            
             if (sectionAnalysis) {
+                console.log(`   ✅ Found analysis for: ${uniqueKey}`);
                 elements.push(...await this.createScreenshotWithComments(screenshot, sectionAnalysis));
+            } else {
+                console.warn(`   ⚠️  No analysis found for: ${uniqueKey}`);
+                // Still add the screenshot even without analysis
+                elements.push(...await this.createScreenshotWithComments(screenshot, {
+                    summary: 'Analysis for this screenshot is being processed. Please ensure the screenshot was captured correctly and the AI analysis completed successfully.'
+                }));
             }
         }
         
@@ -450,8 +483,13 @@ class WordDocumentGenerator {
         // Comments section with detailed analysis
         elements.push(
             new Paragraph({
-                text: 'Comments',
-                heading: HeadingLevel.HEADING_3,
+                children: [
+                    new TextRun({
+                        text: 'Comments',
+                        bold: true,
+                        size: 28
+                    })
+                ],
                 spacing: { after: 200, before: 200 }
             }),
             new Paragraph({

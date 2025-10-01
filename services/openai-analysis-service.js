@@ -47,14 +47,18 @@ class OpenAIAnalysisService {
         try {
             // Analyze each section with its screenshot
             for (const screenshot of screenshots) {
-                console.log(`🔍 Analyzing ${screenshot.section}...`);
+                // Create unique key for this screenshot
+                const uniqueKey = screenshot.section || screenshot.originalName || screenshot.filename || screenshot.name;
+                console.log(`🔍 Analyzing ${uniqueKey}...`);
                 
                 const sectionAnalysis = await this.analyzeSectionWithVision(
                     screenshot,
                     { customerName, sessionTempPath }
                 );
                 
-                analysis.sectionAnalysis[screenshot.section] = sectionAnalysis;
+                // Store analysis using unique key
+                analysis.sectionAnalysis[uniqueKey] = sectionAnalysis;
+                console.log(`   ✅ Stored analysis for: ${uniqueKey}`);
             }
             
             // Generate executive summary from all sections
@@ -88,7 +92,8 @@ class OpenAIAnalysisService {
     async analyzeSectionWithVision(screenshot, context) {
         const { customerName, sessionTempPath } = context || {};
         
-        console.log(`🔍 Analyzing ${screenshot.section} with GPT-4o Vision...`);
+        const uniqueKey = screenshot.section || screenshot.originalName || screenshot.filename || screenshot.name;
+        console.log(`🔍 Analyzing ${uniqueKey} with GPT-4o Vision...`);
         
         try {
             // Skip vision analysis for text-only sections or missing screenshots
