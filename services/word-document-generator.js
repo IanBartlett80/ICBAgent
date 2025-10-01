@@ -110,19 +110,50 @@ class WordDocumentGenerator {
     async createCoverPage(customerName, reportDate) {
         const monthYear = reportDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
         
-        return [
+        // Load ICB Solutions logo
+        const logoPath = path.join(__dirname, '..', 'public', 'images', 'icblogo.jpg');
+        let logoImage = null;
+        
+        try {
+            const imageBuffer = await fs.readFile(logoPath);
+            logoImage = new ImageRun({
+                data: imageBuffer,
+                transformation: {
+                    width: 200,  // pixels
+                    height: 200   // pixels (will maintain aspect ratio)
+                }
+            });
+        } catch (error) {
+            console.warn('⚠️ Could not load ICB logo:', error.message);
+        }
+        
+        const coverElements = [
             new Paragraph({
                 text: '',
-                spacing: { after: 400 }
-            }),
+                spacing: { after: 200 }
+            })
+        ];
+        
+        // Add logo if available
+        if (logoImage) {
+            coverElements.push(
+                new Paragraph({
+                    children: [logoImage],
+                    alignment: AlignmentType.CENTER,
+                    spacing: { after: 400 }
+                })
+            );
+        }
+        
+        // Add remaining cover page elements
+        coverElements.push(
             new Paragraph({
-                text: 'ICB SOLUTIONS',
                 heading: HeadingLevel.HEADING_1,
                 alignment: AlignmentType.CENTER,
-                spacing: { after: 200 },
+                spacing: { after: 400 },
                 children: [
                     new TextRun({
-                        text: 'ICB SOLUTIONS',
+                        text: 'Microsoft 365 Health Report',
                         color: this.icbNavyBlue,
                         size: 48,
                         bold: true
@@ -130,43 +161,30 @@ class WordDocumentGenerator {
                 ]
             }),
             new Paragraph({
-                text: 'Microsoft 365 Health Report',
-                heading: HeadingLevel.HEADING_2,
-                alignment: AlignmentType.CENTER,
-                spacing: { after: 400 },
-                children: [
-                    new TextRun({
-                        text: 'Microsoft 365 Health Report',
-                        color: this.icbPrimaryBlue,
-                        size: 36
-                    })
-                ]
-            }),
-            new Paragraph({
                 text: '',
-                spacing: { after: 600 }
+                spacing: { after: 400 }
             }),
             new Paragraph({
-                text: customerName,
-                heading: HeadingLevel.HEADING_1,
+                heading: HeadingLevel.HEADING_2,
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 200 },
                 children: [
                     new TextRun({
                         text: customerName,
+                        color: this.icbPrimaryBlue,
                         size: 40,
                         bold: true
                     })
                 ]
             }),
             new Paragraph({
-                text: monthYear,
                 alignment: AlignmentType.CENTER,
-                spacing: { after: 400 },
+                spacing: { after: 600 },
                 children: [
                     new TextRun({
                         text: monthYear,
                         size: 28,
+                        color: '666666',
                         italics: true
                     })
                 ]
@@ -176,7 +194,6 @@ class WordDocumentGenerator {
                 spacing: { after: 800 }
             }),
             new Paragraph({
-                text: `Confidential - For ${customerName} Only`,
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 200 },
                 children: [
@@ -189,13 +206,30 @@ class WordDocumentGenerator {
                 ]
             }),
             new Paragraph({
-                text: `Prepared by ICB Solutions - ${reportDate.toLocaleDateString()}`,
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 100 },
+                children: [
+                    new TextRun({
+                        text: 'Prepared by ICB Solutions',
+                        size: 18,
+                        color: this.icbNavyBlue,
+                        bold: true
+                    })
+                ]
+            }),
+            new Paragraph({
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 400 },
                 children: [
                     new TextRun({
-                        text: `Prepared by ICB Solutions - ${reportDate.toLocaleDateString()}`,
-                        size: 18,
+                        text: reportDate.toLocaleDateString('en-US', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                        }),
+                        size: 16,
+                        color: '666666',
                         italics: true
                     })
                 ]
@@ -204,7 +238,9 @@ class WordDocumentGenerator {
                 text: '',
                 pageBreakBefore: true
             })
-        ];
+        );
+        
+        return coverElements;
     }
 
     /**
