@@ -284,8 +284,8 @@ class PlaywrightScreenshotServiceLocal {
         const sectionsToCapture = this.getSectionDefinitions();
         
         try {
-            // Navigate to initial Microsoft portal
-            await this.page.goto('https://admin.microsoft.com', { 
+            // Navigate to Entra portal to start capture process
+            await this.page.goto('https://entra.microsoft.com', { 
                 waitUntil: 'domcontentloaded', 
                 timeout: 60000 
             });
@@ -692,13 +692,21 @@ class PlaywrightScreenshotServiceLocal {
      * @returns {Promise<void>}
      */
     async ensureOverlayExists() {
-        const overlayExists = await this.page.evaluate(() => {
-            return !!document.getElementById('icb-capture-overlay') && !!window.icbCaptureState;
-        });
-        
-        if (!overlayExists) {
-            console.log('  🔄 Re-injecting overlay after page navigation...');
+        try {
+            const overlayExists = await this.page.evaluate(() => {
+                return !!document.getElementById('icb-capture-overlay') && !!window.icbCaptureState;
+            });
+            
+            if (!overlayExists) {
+                console.log('  🔄 Re-injecting overlay after page navigation...');
+                await this.injectCaptureOverlay();
+                // Wait a bit for DOM to be ready
+                await this.page.waitForTimeout(1000);
+            }
+        } catch (error) {
+            console.warn('  ⚠️  Error checking overlay, re-injecting...', error.message);
             await this.injectCaptureOverlay();
+            await this.page.waitForTimeout(1000);
         }
     }
     
@@ -716,6 +724,12 @@ class PlaywrightScreenshotServiceLocal {
             const progressText = document.getElementById('icb-progress-text');
             const instructions = document.getElementById('icb-instructions');
             
+            // Safety checks
+            if (!overlay || !progressText || !instructions) {
+                console.error('Overlay elements not found! Overlay:', !!overlay, 'Progress:', !!progressText, 'Instructions:', !!instructions);
+                return;
+            }
+            
             overlay.style.display = 'block';
             progressText.textContent = `Section ${sectionNumber}/${totalSections}: ${section.displayName}`;
             instructions.innerHTML = `
@@ -725,10 +739,12 @@ class PlaywrightScreenshotServiceLocal {
             `;
             
             // Reset state
-            window.icbCaptureState.captureRequested = false;
-            window.icbCaptureState.skipRequested = false;
-            window.icbCaptureState.selectionComplete = false;
-            window.icbCaptureState.selectionBounds = null;
+            if (window.icbCaptureState) {
+                window.icbCaptureState.captureRequested = false;
+                window.icbCaptureState.skipRequested = false;
+                window.icbCaptureState.selectionComplete = false;
+                window.icbCaptureState.selectionBounds = null;
+            }
         }, { section, sectionNumber, totalSections });
     }
     
