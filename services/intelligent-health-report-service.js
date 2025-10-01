@@ -153,31 +153,31 @@ class IntelligentHealthReportService {
                 details: 'Report document ready'
             });
             
-            // Step 5: Upload to SharePoint
+                        // Step 5: Upload to SharePoint
             this.emitProgress(socketId, {
                 step: 'upload',
                 progress: 90,
-                message: 'Uploading report to ICB Solutions SharePoint...',
-                details: 'Connecting to SharePoint...'
+                message: 'Uploading report to SharePoint...',
+                details: 'Saving to Monthly Health Reports folder...'
             });
             
-            const sharepointResult = await this.sharepointService.uploadReport({
-                documentPath,
+            const sharepointPath = await this.sharepointService.uploadReport({
+                documentPath: result.documentPath,
                 customerName: result.customerName,
-                accessToken: icbAccessToken
+                icbAccessToken
             });
             
-            result.sharepointPath = sharepointResult.webUrl;
+            result.sharepointPath = sharepointPath;
             
             this.emitProgress(socketId, {
                 step: 'upload',
-                progress: 100,
-                message: 'Report generation complete!',
-                details: 'Successfully uploaded to SharePoint'
+                progress: 95,
+                message: 'Report uploaded successfully!',
+                details: `Saved to: ${sharepointPath}`
             });
             
-            // Cleanup Playwright
-            await this.playwrightService.close();
+            // Clean up browser
+            await this.playwrightService.cleanup();
             
             // Cleanup temp files if configured
             if (this.autoCleanup) {
@@ -207,9 +207,9 @@ class IntelligentHealthReportService {
             
             // Cleanup Playwright
             try {
-                await this.playwrightService.close();
+                await this.playwrightService.cleanup();
             } catch (closeError) {
-                console.error('Error closing Playwright:', closeError);
+                console.error('Error cleaning up Playwright:', closeError);
             }
         }
         

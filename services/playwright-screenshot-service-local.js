@@ -85,8 +85,9 @@ class PlaywrightScreenshotServiceLocal {
             // 2. Stay logged in prompt (success)
             // 3. Timeout (failure)
             await this.page.waitForURL(url => {
-                return !url.includes('login.microsoftonline.com') || 
-                       url.includes('kmsi');  // "Keep me signed in" page
+                const urlString = url.toString();
+                return !urlString.includes('login.microsoftonline.com') || 
+                       urlString.includes('kmsi');  // "Keep me signed in" page
             }, { timeout: 300000 });  // 5 minute timeout for manual auth
             
             // Handle "Stay signed in?" prompt if present
