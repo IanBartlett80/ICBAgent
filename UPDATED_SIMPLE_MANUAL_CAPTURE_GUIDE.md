@@ -16,18 +16,36 @@ The **simplest possible approach** - no Playwright, just:
 2. Enter customer name
 3. Click "Generate Report"
 
-### Step 2: Authenticate (Automatic)
+### Step 2: Authenticate (Manual Incognito)
 
 System will:
-- Show message: "Opening Microsoft login - please authenticate..."
-- **Automatically open a new browser tab** to `https://login.microsoftonline.com`
+- Show modal: "Customer Tenant Authentication Required"
+- Display instructions to open incognito/InPrivate window
+- Provide URL to copy: `https://login.microsoftonline.com`
 
 You:
-- Sign in to the **customer's Microsoft 365 tenant** in the new tab
-- Complete MFA if required
-- Once signed in, you'll be redirected to portal.azure.com or similar
+1. **Open Incognito/InPrivate window**:
+   - **Chrome/Edge**: Press `Ctrl+Shift+N`
+   - **Firefox**: Press `Ctrl+Shift+P`
+   
+2. **Copy the URL** from the modal (click to copy)
 
-**Important**: Keep this browser tab open! You'll use it for screenshots.
+3. **Paste in incognito window** and press Enter
+
+4. **Sign in to the CUSTOMER'S Microsoft 365 tenant**
+   - Use customer's admin credentials (e.g., `admin@customer.onmicrosoft.com`)
+   - NOT your own credentials
+   - Complete MFA if required
+
+5. **Click "I've Opened Incognito and Signed In"** in the modal
+
+6. **Keep incognito window open** - you'll use it for all 20 screenshots
+
+**Why Incognito?**
+- Prevents using your current session's access token
+- Ensures you authenticate to the CUSTOMER's tenant
+- Avoids mixing your credentials with customer's
+- Clean authentication session
 
 ### Step 3: Capture Screenshots
 
@@ -183,20 +201,32 @@ Final Word document saved here permanently
 2. Enter "SylviaP Sportswear" as customer name
    → Click "Generate Report"
 
-3. System opens authentication tab automatically
-   → New tab: https://login.microsoftonline.com
+3. System shows modal: "Customer Tenant Authentication Required"
+   → Instructions displayed
 
-4. You sign in with customer credentials
+4. You press Ctrl+Shift+N (Chrome/Edge)
+   → Incognito window opens
+
+5. You copy URL from modal (click to copy)
+   → https://login.microsoftonline.com copied
+
+6. You paste in incognito window and press Enter
+   → Microsoft login page loads
+
+7. You sign in with customer credentials
    → admin@sylviapsportswear.onmicrosoft.com
    → Complete MFA
    → Redirected to portal.azure.com
 
-5. System shows: "Section 1/20: Entra Licenses"
+8. You click "I've Opened Incognito and Signed In" in modal
+   → Modal closes
+
+9. System shows: "Section 1/20: Entra Licenses"
    → Console shows detailed instructions
 
-6. In authenticated tab, navigate to:
-   → https://entra.microsoft.com
-   → Billing → Licenses → All Products
+10. In incognito window, navigate to:
+    → https://entra.microsoft.com
+    → Billing → Licenses → All Products
 
 7. Press Win+Shift+S
    → Drag to select licenses table

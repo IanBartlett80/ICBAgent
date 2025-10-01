@@ -161,8 +161,10 @@ class ICBAgent {
             
             // Check if we need to open authentication tab
             if (data.action === 'openAuthTab' && data.authUrl) {
-                console.log('🔐 Opening authentication tab:', data.authUrl);
-                window.open(data.authUrl, '_blank', 'width=800,height=600');
+                console.log('🔐 Opening authentication instructions...');
+                
+                // Show modal with instructions to open incognito window
+                this.showAuthenticationInstructions(data.authUrl);
             }
         });
 
@@ -3671,6 +3673,132 @@ Once you complete the permission process, your query will be automatically proce
      */
     generateSessionId() {
         return `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    }
+
+    /**
+     * Show authentication instructions modal
+     * @param {string} authUrl - The authentication URL to open
+     */
+    showAuthenticationInstructions(authUrl) {
+        // Create modal overlay
+        const modalHtml = `
+            <div id="authInstructionsModal" style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            ">
+                <div style="
+                    background: white;
+                    border-radius: 12px;
+                    padding: 32px;
+                    max-width: 600px;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                ">
+                    <h2 style="margin-top: 0; color: #022541;">
+                        🔐 Customer Tenant Authentication Required
+                    </h2>
+                    
+                    <p style="font-size: 16px; line-height: 1.6; color: #333;">
+                        To capture screenshots from the customer's Microsoft 365 portals, 
+                        you need to sign in to <strong>their tenant</strong> (not yours).
+                    </p>
+                    
+                    <div style="
+                        background: #f0f9ff;
+                        border-left: 4px solid #3e8ab4;
+                        padding: 16px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    ">
+                        <h3 style="margin-top: 0; color: #022541; font-size: 18px;">
+                            📋 Instructions:
+                        </h3>
+                        <ol style="margin: 0; padding-left: 20px; color: #333;">
+                            <li style="margin-bottom: 12px;">
+                                <strong>Open an Incognito/InPrivate window:</strong>
+                                <ul style="margin-top: 8px;">
+                                    <li><strong>Chrome:</strong> Ctrl+Shift+N</li>
+                                    <li><strong>Edge:</strong> Ctrl+Shift+N</li>
+                                    <li><strong>Firefox:</strong> Ctrl+Shift+P</li>
+                                </ul>
+                            </li>
+                            <li style="margin-bottom: 12px;">
+                                <strong>Copy this URL and paste in the incognito window:</strong>
+                                <div style="
+                                    background: white;
+                                    border: 1px solid #ddd;
+                                    padding: 12px;
+                                    margin-top: 8px;
+                                    border-radius: 4px;
+                                    font-family: monospace;
+                                    word-break: break-all;
+                                    cursor: pointer;
+                                " onclick="
+                                    navigator.clipboard.writeText('${authUrl}');
+                                    this.style.background = '#d1fae5';
+                                    this.innerHTML = '✅ Copied to clipboard!';
+                                    setTimeout(() => {
+                                        this.style.background = 'white';
+                                        this.innerHTML = '${authUrl}';
+                                    }, 2000);
+                                ">${authUrl}</div>
+                                <small style="color: #666;">(Click to copy)</small>
+                            </li>
+                            <li style="margin-bottom: 12px;">
+                                <strong>Sign in to the CUSTOMER'S Microsoft 365 tenant</strong>
+                            </li>
+                            <li style="margin-bottom: 12px;">
+                                <strong>Keep that incognito window open</strong> - you'll use it for all 20 screenshots
+                            </li>
+                        </ol>
+                    </div>
+                    
+                    <div style="
+                        background: #fff3cd;
+                        border-left: 4px solid #ffc107;
+                        padding: 12px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    ">
+                        <strong style="color: #856404;">⚠️ Important:</strong>
+                        <span style="color: #856404;">
+                            Use incognito mode to avoid using your current session's credentials.
+                            This ensures you're authenticated to the CUSTOMER's tenant, not your own.
+                        </span>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 24px;">
+                        <button onclick="
+                            document.getElementById('authInstructionsModal').remove();
+                        " style="
+                            background: #3e8ab4;
+                            color: white;
+                            border: none;
+                            padding: 12px 32px;
+                            border-radius: 6px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            box-shadow: 0 2px 8px rgba(62, 138, 180, 0.3);
+                        " onmouseover="this.style.background='#2f6b8a'"
+                           onmouseout="this.style.background='#3e8ab4'">
+                            ✅ I've Opened Incognito and Signed In
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        console.log('✅ Authentication instructions modal displayed');
     }
 }
 
