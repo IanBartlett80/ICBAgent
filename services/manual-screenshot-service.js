@@ -56,70 +56,145 @@ class ManualScreenshotService {
     }
 
     /**
-     * Start capturing screenshots for all sections
+     * Start capturing screenshots for all sections - BATCH MODE
      * @param {string} outputPath - Destination folder for screenshots
      * @param {Function} progressCallback - Progress update callback
      * @returns {Promise<Array>} Array of screenshot results
      */
     async captureAllScreenshots(outputPath, progressCallback) {
         console.log('\n📸 ========================================');
-        console.log('   MANUAL SCREENSHOT CAPTURE MODE');
+        console.log('   BATCH SCREENSHOT CAPTURE MODE');
         console.log('   ========================================');
         console.log(`\n📁 Watch Folder: ${this.watchFolder}`);
         console.log('🖼️  Instructions:');
         console.log('   1. Use Windows Snipping Tool (Win+Shift+S)');
-        console.log('   2. Capture the required section');
-        console.log('   3. Save to the watch folder above');
-        console.log('   4. Name it: section_1.png, section_2.png, etc.');
-        console.log('   5. System will automatically detect and process');
-        console.log('\n⏳ Waiting for screenshots...\n');
+        console.log('   2. Capture ALL screenshots you want to include');
+        console.log('   3. Save them to the watch folder (any names are OK)');
+        console.log('   4. When finished, click "Process Screenshots" button');
+        console.log('   5. System will process all images at once');
+        console.log('\n⏳ Waiting for you to capture screenshots...\n');
 
         await fs.mkdir(outputPath, { recursive: true });
 
+        // Show progress update
+        if (progressCallback) {
+            progressCallback({
+                step: 'screenshots',
+                progress: 20,
+                message: `Capture your screenshots now - save to watch folder`,
+                details: `Watch folder: ${this.watchFolder}`,
+                action: 'showProcessButton', // Tell frontend to show process button
+                watchFolder: this.watchFolder
+            });
+        }
+
+        // Wait for user to click "Process Screenshots" button
+        console.log(`\n⏳ Waiting for user to click "Process Screenshots" button...`);
+        console.log(`   Check watch folder: ${this.watchFolder}`);
+        console.log(`   Current files will be processed when you're ready\n`);
+
+        // This promise will be resolved when frontend sends confirmation
+        await this.waitForBatchProcessingConfirmation(progressCallback);
+
+        // Now process all files in the watch folder
+        console.log('\n🔄 Processing all screenshots in batch mode...\n');
+        
+        const files = await fs.readdir(this.watchFolder);
+        const imageFiles = files.filter(f => 
+            f.endsWith('.png') || f.endsWith('.jpg') || f.endsWith('.jpeg')
+        );
+
+        console.log(`📸 Found ${imageFiles.length} image files to process`);
+
         this.capturedScreenshots = [];
-        this.currentSectionIndex = 0;
 
-        // Show instructions for each section
-        for (let i = 0; i < this.sections.length; i++) {
-            const section = this.sections[i];
-            const sectionNumber = i + 1;
+        // Process each image file
+        for (let i = 0; i < imageFiles.length; i++) {
+            const filename = imageFiles[i];
+            const sourceFile = path.join(this.watchFolder, filename);
+            const timestamp = Date.now() + i; // Unique timestamp for each
+            const destFilename = `screenshot_${i + 1}_${timestamp}.jpg`;
+            const destFile = path.join(outputPath, destFilename);
 
-            if (progressCallback) {
-                progressCallback({
-                    step: 'screenshots',
-                    progress: Math.round(20 + (40 * i / this.sections.length)),
-                    message: `Waiting for Section ${sectionNumber}/20: ${section.displayName}`,
-                    details: `Navigate to: ${section.instructions}`
-                });
-            }
+            try {
+                // Copy file to output folder
+                await fs.copyFile(sourceFile, destFile);
+                
+                // Get file size
+                const stats = await fs.stat(destFile);
 
-            console.log(`\n📸 Section ${sectionNumber}/20: ${section.displayName}`);
-            console.log(`   Portal: ${section.portal}`);
-            console.log(`   Instructions: ${section.instructions}`);
-            console.log(`   📝 Save as: section_${sectionNumber}.png or section_${sectionNumber}.jpg`);
-            console.log(`   📁 Location: ${this.watchFolder}`);
-            console.log(`   ⏳ Waiting for screenshot...`);
+                // Delete from watch folder
+                await fs.unlink(sourceFile);
 
-            // Wait for user to save screenshot
-            const screenshot = await this.waitForScreenshot(sectionNumber, section, outputPath);
-            
-            if (screenshot.success) {
-                this.capturedScreenshots.push(screenshot);
-                console.log(`   ✅ Captured: ${screenshot.filename}`);
-            } else {
                 this.capturedScreenshots.push({
-                    success: false,
-                    section: section.name,
-                    displayName: section.displayName,
-                    error: 'Screenshot not provided'
+                    success: true,
+                    path: destFile,
+                    section: `screenshot_${i + 1}`,
+                    displayName: `Screenshot ${i + 1}`,
+                    filename: destFilename,
+                    size: stats.size,
+                    originalName: filename
                 });
-                console.log(`   ⏭️  Skipped: ${section.displayName}`);
+
+                console.log(`   ✅ Processed: ${filename} → ${destFilename} (${(stats.size / 1024).toFixed(2)} KB)`);
+
+                if (progressCallback) {
+                    progressCallback({
+                        step: 'screenshots',
+                        progress: Math.round(20 + (40 * (i + 1) / imageFiles.length)),
+                        message: `Processing screenshot ${i + 1}/${imageFiles.length}`,
+                        details: `Processed: ${filename}`
+                    });
+                }
+            } catch (error) {
+                console.error(`   ❌ Error processing ${filename}:`, error.message);
             }
         }
 
-        console.log(`\n✅ Screenshot capture complete: ${this.capturedScreenshots.filter(s => s.success).length}/20 sections captured\n`);
+        console.log(`\n✅ Batch processing complete: ${this.capturedScreenshots.length} screenshots processed\n`);
         
         return this.capturedScreenshots;
+    }
+
+    /**
+     * Wait for user to confirm they're ready to process screenshots
+     * @param {Function} progressCallback - Progress update callback
+     * @returns {Promise<void>}
+     */
+    async waitForBatchProcessingConfirmation(progressCallback) {
+        return new Promise((resolve) => {
+            // Set up a confirmation handler that can be called from outside
+            this.confirmBatchProcessing = () => {
+                console.log('✅ User confirmed - starting batch processing');
+                resolve();
+            };
+
+            // Check every 2 seconds if confirmation received
+            const checkInterval = setInterval(() => {
+                // Check if watch folder has files
+                fs.readdir(this.watchFolder).then(files => {
+                    const imageCount = files.filter(f => 
+                        f.endsWith('.png') || f.endsWith('.jpg') || f.endsWith('.jpeg')
+                    ).length;
+                    
+                    if (imageCount > 0 && progressCallback) {
+                        progressCallback({
+                            step: 'screenshots',
+                            progress: 20,
+                            message: `${imageCount} screenshot(s) ready - click "Process Screenshots" when done`,
+                            details: `Watch folder: ${this.watchFolder}`,
+                            action: 'updateProcessButton',
+                            imageCount: imageCount
+                        });
+                    }
+                }).catch(err => {
+                    console.warn('Error checking watch folder:', err.message);
+                });
+            }, 2000);
+
+            // Store interval so we can clear it when confirmed
+            this._checkInterval = checkInterval;
+        });
     }
 
     /**
@@ -338,6 +413,9 @@ class ManualScreenshotService {
      */
     async cleanup() {
         console.log('🧹 Cleaning up manual screenshot service...');
+        if (this._checkInterval) {
+            clearInterval(this._checkInterval);
+        }
         console.log('✅ Manual screenshot service cleanup complete');
     }
 }

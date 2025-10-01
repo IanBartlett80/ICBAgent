@@ -3652,6 +3652,27 @@ io.on('connection', (socket) => {
       });
     }
   });
+
+  // Process Screenshots - Batch Mode Confirmation
+  socket.on('process-screenshots-batch', async (data) => {
+    console.log('📸 User confirmed - processing screenshots in batch mode');
+    
+    try {
+      // Get the screenshot service instance from the intelligent report service
+      if (intelligentReportService && intelligentReportService.screenshotService) {
+        if (intelligentReportService.screenshotService.confirmBatchProcessing) {
+          intelligentReportService.screenshotService.confirmBatchProcessing();
+          console.log('✅ Batch processing confirmation sent to screenshot service');
+        } else {
+          console.warn('⚠️ No confirmBatchProcessing method available');
+        }
+      } else {
+        console.warn('⚠️ Screenshot service not available');
+      }
+    } catch (error) {
+      console.error('❌ Error confirming batch processing:', error);
+    }
+  });
   
   // Dual-Tenant Socket Events for Tenant Clone Feature
   socket.on('dual_tenant_init', async (data) => {

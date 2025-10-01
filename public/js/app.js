@@ -166,6 +166,17 @@ class ICBAgent {
                 // Show modal with instructions to open incognito window
                 this.showAuthenticationInstructions(data.authUrl);
             }
+            
+            // Check if we need to show process screenshots button
+            if (data.action === 'showProcessButton') {
+                console.log('📸 Showing process screenshots button');
+                this.showProcessScreenshotsButton(data.watchFolder);
+            }
+            
+            // Update process button with image count
+            if (data.action === 'updateProcessButton' && data.imageCount) {
+                this.updateProcessScreenshotsButton(data.imageCount);
+            }
         });
 
         this.socket.on('intelligent-report-complete', (data) => {
@@ -3810,6 +3821,109 @@ Once you complete the permission process, your query will be automatically proce
         }
         
         console.log('✅ Authentication instructions modal displayed');
+    }
+
+    /**
+     * Show process screenshots button
+     * @param {string} watchFolder - The folder being watched
+     */
+    showProcessScreenshotsButton(watchFolder) {
+        // Check if button already exists
+        if (document.getElementById('processScreenshotsButton')) {
+            return;
+        }
+
+        const buttonHtml = `
+            <div id="processScreenshotsContainer" style="
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                z-index: 9999;
+                background: white;
+                padding: 20px;
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                max-width: 400px;
+            ">
+                <h3 style="margin-top: 0; color: #022541; font-size: 18px;">
+                    📸 Screenshot Capture
+                </h3>
+                <p style="margin: 12px 0; color: #333; font-size: 14px;">
+                    Save your screenshots to:
+                </p>
+                <div style="
+                    background: #f0f9ff;
+                    padding: 10px;
+                    border-radius: 6px;
+                    font-family: monospace;
+                    font-size: 12px;
+                    word-break: break-all;
+                    margin-bottom: 12px;
+                ">${watchFolder}</div>
+                <p id="processScreenshotCount" style="
+                    margin: 12px 0;
+                    color: #3e8ab4;
+                    font-weight: bold;
+                    font-size: 14px;
+                ">
+                    0 screenshot(s) ready
+                </p>
+                <button id="processScreenshotsButton" style="
+                    width: 100%;
+                    background: #10b981;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 6px;
+                    font-size: 16px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+                " onmouseover="this.style.background='#059669'"
+                   onmouseout="this.style.background='#10b981'">
+                    🚀 Process Screenshots
+                </button>
+                <p style="margin: 12px 0 0 0; font-size: 12px; color: #666;">
+                    Click when you've captured all screenshots
+                </p>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', buttonHtml);
+
+        const button = document.getElementById('processScreenshotsButton');
+        if (button) {
+            button.addEventListener('click', () => {
+                console.log('📸 User clicked process screenshots button');
+                
+                // Send confirmation to backend
+                this.socket.emit('process-screenshots-batch', {
+                    sessionId: this.currentSessionId
+                });
+
+                // Remove the button container
+                const container = document.getElementById('processScreenshotsContainer');
+                if (container) {
+                    container.remove();
+                }
+
+                console.log('✅ Batch processing started');
+            });
+        }
+
+        console.log('✅ Process screenshots button displayed');
+    }
+
+    /**
+     * Update process screenshots button with image count
+     * @param {number} imageCount - Number of images found
+     */
+    updateProcessScreenshotsButton(imageCount) {
+        const countElement = document.getElementById('processScreenshotCount');
+        if (countElement) {
+            countElement.textContent = `${imageCount} screenshot(s) ready`;
+            countElement.style.color = imageCount > 0 ? '#10b981' : '#666';
+        }
     }
 }
 
