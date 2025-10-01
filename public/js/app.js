@@ -3775,9 +3775,7 @@ Once you complete the permission process, your query will be automatically proce
                     </div>
                     
                     <div style="text-align: center; margin-top: 24px;">
-                        <button onclick="
-                            document.getElementById('authInstructionsModal').remove();
-                        " style="
+                        <button id="authConfirmButton" style="
                             background: #3e8ab4;
                             color: white;
                             border: none;
@@ -3797,6 +3795,19 @@ Once you complete the permission process, your query will be automatically proce
         
         // Add modal to page
         document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Add event listener to the confirm button
+        const confirmButton = document.getElementById('authConfirmButton');
+        if (confirmButton) {
+            confirmButton.addEventListener('click', () => {
+                console.log('🔐 User confirmed authentication - closing modal');
+                const modal = document.getElementById('authInstructionsModal');
+                if (modal) {
+                    modal.remove();
+                    console.log('✅ Authentication modal closed - screenshot process will continue');
+                }
+            });
+        }
         
         console.log('✅ Authentication instructions modal displayed');
     }
