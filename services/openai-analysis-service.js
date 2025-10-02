@@ -259,6 +259,9 @@ class OpenAIAnalysisService {
      */
     parseAIResponse(aiResponse, section) {
         // Parse the AI response to extract findings and recommendations
+        console.log(`\n🔍 Parsing AI Response for section: ${section}`);
+        console.log(`📄 Raw AI Response (first 800 chars):\n${aiResponse.substring(0, 800)}...\n`);
+        
         const lines = aiResponse.split('\n');
         
         const analysis = {
@@ -270,11 +273,19 @@ class OpenAIAnalysisService {
         let currentSection = 'summary';
         let currentRecommendation = null;
         let capturingRationale = false;
+        let recommendationBuffer = '';
         
-        for (const line of lines) {
-            const trimmed = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+            const trimmed = lines[i].trim();
             
-            if (!trimmed) continue;
+            if (!trimmed) {
+                // Empty line might signal end of recommendation
+                if (currentRecommendation && recommendationBuffer) {
+                    currentRecommendation = null;
+                    recommendationBuffer = '';
+                }
+                continue;
+            }
             
             // Detect section headers
             if (trimmed.toLowerCase().includes('key findings') || trimmed.toLowerCase().includes('findings:')) {
@@ -290,66 +301,108 @@ class OpenAIAnalysisService {
             
             // Parse content based on current section
             if (currentSection === 'summary' && analysis.summary.length < 800) {
-                analysis.summary += trimmed + ' ';
+                // Skip lines that look like headers
+                if (!trimmed.match(/^(SUMMARY:|KEY FINDINGS|RECOMMENDATIONS)/i)) {
+                    analysis.summary += trimmed + ' ';
+                }
             } else if (currentSection === 'findings') {
                 if (trimmed.match(/^[-*•]\s/)) {
                     analysis.findings.push(trimmed.replace(/^[-*•]\s/, ''));
                 }
             } else if (currentSection === 'recommendations') {
-                // Check if this is a rationale line
-                if (trimmed.toLowerCase().startsWith('rationale:')) {
-                    capturingRationale = true;
-                    if (currentRecommendation) {
-                        currentRecommendation.rationale = trimmed.replace(/rationale:/i, '').trim();
-                    }
-                    continue;
-                }
+                // More robust recommendation parsing
                 
-                // Try to extract priority and time estimate
-                const priorityMatch = trimmed.match(/\b(High|Medium|Low)\b/i);
-                const timeMatch = trimmed.match(/\((\d+\s*(hours?|days?|weeks?))\)/i);
+                // Check if this line starts a new recommendation (has bullet or priority indicator)
+                const isBulletPoint = trimmed.match(/^[-*•]\s/);
+                const hasPriorityBracket = trimmed.match(/^\[(High|Medium|Low)\]/i);
+                const startsWithPriority = trimmed.match(/^(High|Medium|Low)\s*:/i);
                 
-                if (trimmed.match(/^[-*•]\s/) || (priorityMatch && trimmed.match(/^\[/))) {
-                    if (currentRecommendation) {
+                if (isBulletPoint || hasPriorityBracket || startsWithPriority) {
+                    // Save previous recommendation if exists
+                    if (currentRecommendation && currentRecommendation.action) {
                         analysis.recommendations.push(currentRecommendation);
                     }
                     
-                    let actionText = trimmed.replace(/^[-*•]\s/, '').replace(/\*\*(.*?)\*\*/g, '$1');
+                    // Parse this new recommendation
+                    let cleanText = trimmed.replace(/^[-*•]\s/, '');
                     
-                    // Remove time estimate from action if present
-                    if (timeMatch) {
-                        actionText = actionText.replace(timeMatch[0], '').trim();
+                    // Extract priority
+                    let priority = 'Medium';
+                    const priorityMatch = cleanText.match(/^\[?(High|Medium|Low)\]?\s*:?/i);
+                    if (priorityMatch) {
+                        priority = priorityMatch[1];
+                        cleanText = cleanText.replace(priorityMatch[0], '').trim();
                     }
                     
+                    // Extract time estimate if in format (X hours/days/weeks)
+                    let timeEstimate = 'TBD';
+                    const timeMatch = cleanText.match(/\((\d+\s*(?:hours?|days?|weeks?))\)/i);
+                    if (timeMatch) {
+                        timeEstimate = timeMatch[1];
+                        cleanText = cleanText.replace(timeMatch[0], '').trim();
+                    }
+                    
+                    // Remove any remaining priority indicators
+                    cleanText = cleanText.replace(/^Priority:\s*/i, '').trim();
+                    
                     currentRecommendation = {
-                        action: actionText,
-                        priority: priorityMatch ? priorityMatch[1] : 'Medium',
-                        timeEstimate: timeMatch ? timeMatch[1] : 'TBD',
+                        action: cleanText,
+                        priority: priority,
+                        timeEstimate: timeEstimate,
                         rationale: ''
                     };
                     capturingRationale = false;
+                    
+                } else if (trimmed.toLowerCase().startsWith('rationale:')) {
+                    // This is the rationale for the current recommendation
+                    if (currentRecommendation) {
+                        capturingRationale = true;
+                        currentRecommendation.rationale = trimmed.replace(/^rationale:\s*/i, '').trim();
+                    }
                 } else if (capturingRationale && currentRecommendation) {
                     // Continue building rationale
                     currentRecommendation.rationale += ' ' + trimmed;
-                } else if (currentRecommendation && !capturingRationale) {
-                    // Continuation of current recommendation action
-                    currentRecommendation.action += ' ' + trimmed;
+                } else if (currentRecommendation && !capturingRationale && currentRecommendation.action) {
+                    // This might be continuation of the action, but only if action is not empty
+                    // and the line doesn't look like it should start a new recommendation
+                    if (!trimmed.match(/^(High|Medium|Low|Priority|Rationale|Estimated|Time):/i)) {
+                        currentRecommendation.action += ' ' + trimmed;
+                    }
                 }
             }
         }
         
         // Add last recommendation if any
-        if (currentRecommendation) {
+        if (currentRecommendation && currentRecommendation.action) {
             analysis.recommendations.push(currentRecommendation);
         }
         
         // Clean up summary
         analysis.summary = analysis.summary.trim();
         
-        // Clean up recommendations
+        // Clean up recommendations and validate
+        const validRecommendations = [];
         for (const rec of analysis.recommendations) {
             rec.action = rec.action.trim();
             rec.rationale = rec.rationale.trim();
+            
+            // Only include recommendations with meaningful action text
+            // Filter out malformed ones like "Priority: High" or "Insight:"
+            if (rec.action && 
+                rec.action.length > 10 && 
+                !rec.action.match(/^(Priority|Rationale|Insight|Estimated|Time|Effort):\s*\w+$/i)) {
+                validRecommendations.push(rec);
+            } else {
+                console.log(`   ⚠️  Filtered out malformed recommendation: "${rec.action.substring(0, 50)}"`);
+            }
+        }
+        
+        analysis.recommendations = validRecommendations;
+        
+        console.log(`\n✅ Parsed ${analysis.recommendations.length} valid recommendations`);
+        if (analysis.recommendations.length > 0) {
+            console.log(`   Sample recommendation:`);
+            console.log(JSON.stringify(analysis.recommendations[0], null, 2));
         }
         
         return analysis;
