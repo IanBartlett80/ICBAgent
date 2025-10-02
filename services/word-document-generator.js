@@ -528,6 +528,15 @@ class WordDocumentGenerator {
         // Sort by priority (High > Medium > Low) and take top 3-5
         const sortedRecommendations = this.sortRecommendationsByPriority(categoryRecommendations).slice(0, 5);
         
+        console.log(`\n📊 Priority Areas for ${category}:`);
+        console.log(`   Total recommendations found: ${categoryRecommendations.length}`);
+        console.log(`   Top recommendations to display: ${sortedRecommendations.length}`);
+        
+        if (sortedRecommendations.length > 0) {
+            console.log(`\n   Sample recommendation structure:`);
+            console.log(JSON.stringify(sortedRecommendations[0], null, 2));
+        }
+        
         if (sortedRecommendations.length > 0) {
             elements.push(
                 new Paragraph({
@@ -544,6 +553,12 @@ class WordDocumentGenerator {
             for (let i = 0; i < sortedRecommendations.length; i++) {
                 const rec = sortedRecommendations[i];
                 const priorityColor = this.getPriorityColor(rec.priority);
+                
+                console.log(`\n   📝 Rendering recommendation ${i + 1}:`);
+                console.log(`      Priority: ${rec.priority}`);
+                console.log(`      Action: ${rec.action ? rec.action.substring(0, 50) + '...' : 'MISSING'}`);
+                console.log(`      Time: ${rec.timeEstimate || 'MISSING'}`);
+                console.log(`      Rationale: ${rec.rationale ? rec.rationale.substring(0, 50) + '...' : 'MISSING'}`);
                 
                 elements.push(
                     new Paragraph({
@@ -575,9 +590,13 @@ class WordDocumentGenerator {
                         spacing: { after: 100 }
                     }),
                     new Paragraph({
-                        text: `   ${rec.rationale || 'This priority area has been identified as critical to improving your overall ' + category + ' posture and reducing potential risks to your organization.'}`,
-                        spacing: { after: 300 },
-                        color: '374151'
+                        children: [
+                            new TextRun({
+                                text: `   ${rec.rationale || 'This priority area has been identified as critical to improving your overall ' + category + ' posture and reducing potential risks to your organization.'}`,
+                                color: '374151'
+                            })
+                        ],
+                        spacing: { after: 300 }
                     })
                 );
             }
